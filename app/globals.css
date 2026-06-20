@@ -1,0 +1,434 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+	color-scheme: light;
+
+	--ret-bg: #fbfbfb;
+	--ret-bg-mid: #f7f7f8;
+	--ret-bg-soft: #f0f0f2;
+	--ret-surface: #f5f5f5;
+	--ret-surface-hover: #ebebeb;
+
+	--ret-text: rgba(0, 0, 0, 0.9);
+	--ret-text-secondary: #52525b;
+	--ret-text-dim: rgba(0, 0, 0, 0.55);
+	--ret-text-muted: rgba(0, 0, 0, 0.35);
+
+	--ret-border: rgba(0, 0, 0, 0.22);
+	--ret-border-hover: rgba(0, 0, 0, 0.36);
+	--ret-border-strong: rgba(0, 0, 0, 0.42);
+
+	--ret-grid: rgba(0, 0, 0, 0.14);
+	--ret-rail: rgba(0, 0, 0, 0.18);
+	--ret-cross: rgba(0, 0, 0, 0.3);
+
+	--ret-accent: #18181b;
+	--ret-accent-muted: rgba(0, 0, 0, 0.08);
+	--ret-accent-glow: rgba(0, 0, 0, 0.05);
+	--ret-green: #22c55e;
+	--ret-amber: #f59e0b;
+	--ret-red: #ef4444;
+	--ret-blue: #2563eb;
+
+	--ret-card-radius: 0px;
+	--ret-hairline: 1px;
+	--ret-content-max: 1400px;
+	--ret-rail-offset: 4rem;
+	--ret-scrollbar-size: 6px;
+	--ret-scrollbar-track: #ebebec;
+	--ret-scrollbar-thumb: #919191;
+	--ret-scrollbar-thumb-hover: #767676;
+
+	--font-sans:
+		"Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+		system-ui, sans-serif;
+	--font-display: var(--font-sans);
+	--font-mono:
+		"Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+		Consolas, monospace;
+}
+
+.dark,
+:root[data-theme="dark"] {
+	color-scheme: dark;
+
+	--ret-bg: #09090b;
+	--ret-bg-mid: #0d0d0f;
+	--ret-bg-soft: #111113;
+	--ret-surface: #111113;
+	--ret-surface-hover: #1a1a1e;
+
+	--ret-text: rgba(255, 255, 255, 0.9);
+	--ret-text-secondary: #a1a1aa;
+	--ret-text-dim: rgba(255, 255, 255, 0.5);
+	--ret-text-muted: rgba(255, 255, 255, 0.3);
+
+	--ret-border: rgba(255, 255, 255, 0.16);
+	--ret-border-hover: rgba(255, 255, 255, 0.26);
+	--ret-border-strong: rgba(255, 255, 255, 0.32);
+
+	--ret-grid: rgba(255, 255, 255, 0.08);
+	--ret-rail: rgba(255, 255, 255, 0.14);
+	--ret-cross: rgba(255, 255, 255, 0.22);
+
+	--ret-accent: #ededed;
+	--ret-accent-muted: rgba(255, 255, 255, 0.12);
+	--ret-accent-glow: rgba(255, 255, 255, 0.07);
+	--ret-green: #4ade80;
+	--ret-amber: #fbbf24;
+	--ret-red: #f87171;
+	--ret-blue: #60a5fa;
+
+	--ret-scrollbar-track: #1e2327;
+	--ret-scrollbar-thumb: #919191;
+	--ret-scrollbar-thumb-hover: #a3a3a3;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
+
+		--ret-bg: #09090b;
+		--ret-bg-mid: #0d0d0f;
+		--ret-bg-soft: #111113;
+		--ret-surface: #111113;
+		--ret-surface-hover: #1a1a1e;
+		--ret-text: rgba(255, 255, 255, 0.9);
+		--ret-text-secondary: #a1a1aa;
+		--ret-text-dim: rgba(255, 255, 255, 0.5);
+		--ret-text-muted: rgba(255, 255, 255, 0.3);
+		--ret-border: rgba(255, 255, 255, 0.16);
+		--ret-border-hover: rgba(255, 255, 255, 0.26);
+		--ret-border-strong: rgba(255, 255, 255, 0.32);
+		--ret-grid: rgba(255, 255, 255, 0.08);
+		--ret-rail: rgba(255, 255, 255, 0.14);
+		--ret-cross: rgba(255, 255, 255, 0.22);
+		--ret-accent: #ededed;
+		--ret-accent-muted: rgba(255, 255, 255, 0.12);
+		--ret-accent-glow: rgba(255, 255, 255, 0.07);
+		--ret-green: #4ade80;
+		--ret-amber: #fbbf24;
+		--ret-red: #f87171;
+		--ret-blue: #60a5fa;
+		--ret-scrollbar-track: #1e2327;
+		--ret-scrollbar-thumb: #919191;
+		--ret-scrollbar-thumb-hover: #a3a3a3;
+	}
+}
+
+html,
+body {
+	background: var(--ret-bg);
+	color: var(--ret-text);
+	font-family: var(--font-sans);
+	font-feature-settings: "ss01", "cv11", "tnum";
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+body {
+	margin: 0;
+}
+
+input,
+textarea,
+select,
+button {
+	font: inherit;
+}
+
+input,
+textarea,
+select {
+	background-color: var(--ret-bg);
+	color: var(--ret-text);
+}
+
+input::placeholder,
+textarea::placeholder {
+	color: var(--ret-text-muted);
+}
+
+.ret-display {
+	font-weight: 600;
+	letter-spacing: 0;
+	line-height: 1.05;
+}
+
+* {
+	box-sizing: border-box;
+	border-color: var(--ret-border);
+	scrollbar-width: thin;
+	scrollbar-color: var(--ret-scrollbar-thumb) var(--ret-scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+	width: var(--ret-scrollbar-size);
+	height: var(--ret-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+	background: var(--ret-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+	background-color: var(--ret-scrollbar-thumb);
+	border-radius: 0;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background-color: var(--ret-scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+	background: var(--ret-scrollbar-track);
+}
+
+::selection {
+	background: var(--ret-text);
+	color: var(--ret-bg);
+}
+
+@keyframes ret-caret {
+	0%,
+	49% {
+		opacity: 1;
+	}
+	50%,
+	100% {
+		opacity: 0;
+	}
+}
+
+.ret-caret {
+	display: inline-block;
+	width: 8px;
+	height: 1em;
+	background: var(--ret-accent);
+	margin-left: 2px;
+	vertical-align: text-bottom;
+	animation: ret-caret 1s steps(1) infinite;
+}
+
+@keyframes ret-skeleton-shimmer {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(100%);
+	}
+}
+
+.ret-skeleton {
+	position: relative;
+	overflow: hidden;
+	min-height: 0.75rem;
+}
+
+.ret-skeleton::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		rgba(255, 255, 255, 0.04) 30%,
+		rgba(255, 255, 255, 0.08) 50%,
+		rgba(255, 255, 255, 0.04) 70%,
+		transparent 100%
+	);
+	animation: ret-skeleton-shimmer 1.6s linear infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* SECTOR — spatial board + sensory layer                              */
+/* ------------------------------------------------------------------ */
+
+/* Blueprint backplate: a major drafting grid layered over the inline
+   48px dot-grid set on the world element. */
+.ret-blueprint::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background-image:
+		linear-gradient(var(--ret-rail) 1px, transparent 1px),
+		linear-gradient(90deg, var(--ret-rail) 1px, transparent 1px);
+	background-size: 384px 384px;
+	opacity: 0.4;
+}
+
+/* Heartbeat: healthy agents are STILL. Degrading breathes, critical races. */
+@keyframes ret-hb {
+	0%,
+	100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+	50% {
+		transform: scale(1.4);
+		opacity: 0.6;
+	}
+}
+
+.ret-heartbeat > span:first-child {
+	transform-origin: center;
+}
+
+.ret-heartbeat[data-sev="warn"] > span:first-child {
+	animation: ret-hb 1.8s ease-in-out infinite;
+}
+
+.ret-heartbeat[data-sev="crit"] > span:first-child {
+	animation: ret-hb 0.95s ease-in-out infinite;
+}
+
+/* SonarRing: critical agents ping outward as peripheral bait. */
+@keyframes ret-sonar {
+	0% {
+		transform: scale(1);
+		opacity: 0.5;
+	}
+	100% {
+		transform: scale(5);
+		opacity: 0;
+	}
+}
+
+.ret-sonar {
+	position: absolute;
+	inset: 0;
+	border: 1px solid var(--hb-color);
+	pointer-events: none;
+	animation: ret-sonar 2.4s ease-out infinite;
+}
+
+/* Card-level severity triage: the worst card wins the visual fight. */
+.ret-cell {
+	transition:
+		transform 220ms ease,
+		box-shadow 220ms ease;
+}
+
+.ret-cell[data-sev="warn"] {
+	z-index: 3;
+}
+
+.ret-cell[data-sev="crit"] {
+	z-index: 5;
+	transform: translateY(-4px);
+	box-shadow: 0 14px 36px var(--ret-accent-glow);
+}
+
+/* Tool rail: an active capability flashes gently. */
+@keyframes ret-tool-flash {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.35;
+	}
+}
+
+.ret-tool[data-active="true"] {
+	animation: ret-tool-flash 2.2s ease-in-out infinite;
+}
+
+/* HealthRing: one-shot expanding pulse on a fleet status transition. */
+@keyframes ret-health-ring {
+	0% {
+		transform: scale(0.6);
+		opacity: 0.45;
+	}
+	100% {
+		transform: scale(1.6);
+		opacity: 0;
+	}
+}
+
+.ret-health-ring {
+	animation: ret-health-ring 900ms ease-out forwards;
+}
+
+/* Promotion release pulse — accent (an ink, NOT a health hue), one-shot. */
+@keyframes ret-promote-pulse {
+	0% {
+		transform: translate(-50%, -50%) scale(0.5);
+		opacity: 0.55;
+	}
+	100% {
+		transform: translate(-50%, -50%) scale(3.2);
+		opacity: 0;
+	}
+}
+
+.ret-promote-pulse {
+	width: 120px;
+	height: 120px;
+	border: 2px solid var(--ret-accent);
+	transform: translate(-50%, -50%);
+	animation: ret-promote-pulse 900ms ease-out forwards;
+}
+
+/* Guardrail bracket dissolve + chain shatter (the REMOVE OVERSIGHT beat). */
+@keyframes ret-bracket-dissolve {
+	to {
+		opacity: 0;
+		transform: scale(1.15);
+	}
+}
+
+@keyframes ret-shatter {
+	to {
+		opacity: 0;
+		transform: translateY(6px) rotate(12deg);
+	}
+}
+
+.ret-bracket-dissolve {
+	animation: ret-bracket-dissolve 800ms ease-out forwards;
+}
+
+.ret-shatter {
+	animation: ret-shatter 700ms ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ret-skeleton::after,
+	.ret-caret,
+	.ret-heartbeat > span:first-child,
+	.ret-sonar,
+	.ret-tool[data-active="true"],
+	.ret-health-ring,
+	.ret-bracket-dissolve,
+	.ret-shatter {
+		animation: none !important;
+	}
+	.ret-cell,
+	.ret-token {
+		transition: none !important;
+	}
+	.ret-promote-pulse {
+		display: none !important;
+	}
+}
+
+.ret-grain {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 60;
+	opacity: 0.025;
+	background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	background-size: 160px 160px;
+	mix-blend-mode: multiply;
+}
+
+.dark .ret-grain,
+:root[data-theme="dark"] .ret-grain {
+	opacity: 0.055;
+	mix-blend-mode: screen;
+}

@@ -1,0 +1,26 @@
+export { LensProvider, useLens, type ViewMode } from "./LensProvider";
+export { SectorWorkspace } from "./SectorWorkspace";
+export { SectorCanvas } from "./SectorCanvas";
+export { ListLens } from "./ListLens";
+export { ScatterLens } from "./ScatterLens";
+export { ViewModeSwitch } from "./ViewModeSwitch";
+export { GroupLedger } from "./GroupLedger";
+export { FleetSummary } from "./FleetSummary";
+export { SoundToggle } from "./SoundToggle";
+export { AgentDossier } from "./AgentDossier";
+export { AgentCard, type CardLevel } from "./AgentCard";
+export { HeartbeatDot } from "./HeartbeatDot";
+export { HealthSpine } from "./HealthSpine";
+export { ErrorBudgetArc } from "./ErrorBudgetArc";
+export { ToolsRail } from "./ToolsRail";
+export { TerminalTail } from "./TerminalTail";
+export { ZoneField } from "./ZoneField";
+// promotion engine
+export { PromoteLens } from "./PromoteLens";
+export { TierLane } from "./TierLane";
+export { AutonomyChip } from "./AutonomyChip";
+export { GateCriterion } from "./GateCriterion";
+export { ProvingStepper } from "./ProvingStepper";
+export { PromoteControls } from "./PromoteControls";
+export { CandidateDossier } from "./CandidateDossier";
+export { EvidenceLedger } from "./EvidenceLedger";
