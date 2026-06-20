@@ -16,7 +16,7 @@ export function HealthSpine({
 	burnRate: number;
 	className?: string;
 }) {
-	const fill = Math.round(burnFraction(burnRate) * 100);
+	const frac = burnFraction(burnRate);
 	const color = STATUS_COLOR_VAR[status];
 	return (
 		<span
@@ -24,8 +24,8 @@ export function HealthSpine({
 			aria-hidden="true"
 		>
 			<span
-				className="absolute inset-x-0 bottom-0 block transition-[height] duration-500"
-				style={{ height: `${fill}%`, background: color, "--hb-color": color } as CSSProperties}
+				className="absolute inset-0 block origin-bottom transition-transform duration-500"
+				style={{ transform: `scaleY(${frac})`, background: color, "--hb-color": color } as CSSProperties}
 			/>
 		</span>
 	);

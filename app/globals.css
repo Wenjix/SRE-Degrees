@@ -13,8 +13,8 @@
 
 	--ret-text: rgba(0, 0, 0, 0.9);
 	--ret-text-secondary: #52525b;
-	--ret-text-dim: rgba(0, 0, 0, 0.55);
-	--ret-text-muted: rgba(0, 0, 0, 0.35);
+	--ret-text-dim: rgba(0, 0, 0, 0.65);
+	--ret-text-muted: rgba(0, 0, 0, 0.55);
 
 	--ret-border: rgba(0, 0, 0, 0.22);
 	--ret-border-hover: rgba(0, 0, 0, 0.36);
@@ -62,8 +62,8 @@
 
 	--ret-text: rgba(255, 255, 255, 0.9);
 	--ret-text-secondary: #a1a1aa;
-	--ret-text-dim: rgba(255, 255, 255, 0.5);
-	--ret-text-muted: rgba(255, 255, 255, 0.3);
+	--ret-text-dim: rgba(255, 255, 255, 0.62);
+	--ret-text-muted: rgba(255, 255, 255, 0.5);
 
 	--ret-border: rgba(255, 255, 255, 0.16);
 	--ret-border-hover: rgba(255, 255, 255, 0.26);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { eligible, TIER_LABEL, TIER_RANK, TIERS } from "@/lib/promotion";
@@ -39,6 +39,21 @@ export function PromoteLens({ className }: { className?: string }) {
 	const maxSlots = Math.max(1, ...counts);
 	const trackHeight = TOP0 + maxSlots * GAP + 24;
 
+	// Measure the track width so tokens can be positioned with a compositor-friendly
+	// transform (translate) instead of animating left/top layout properties.
+	const wrapRef = useRef<HTMLDivElement>(null);
+	const [trackW, setTrackW] = useState(1200);
+	useLayoutEffect(() => {
+		const el = wrapRef.current;
+		if (!el) return;
+		const measure = () => setTrackW(el.getBoundingClientRect().width);
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+	const laneWidth = trackW / 4;
+
 	// default candidate: the most-ready non-autonomous agent
 	useEffect(() => {
 		if (promoteSelectedId) return;
@@ -66,8 +81,8 @@ export function PromoteLens({ className }: { className?: string }) {
 					: ""}
 			</div>
 			{/* track */}
-			<div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-				<div className="relative" style={{ height: trackHeight, minHeight: "100%" }}>
+			<div className="relative min-h-0 flex-1 overflow-auto">
+				<div ref={wrapRef} className="relative min-w-[760px]" style={{ height: trackHeight, minHeight: "100%" }}>
 					{/* lane backgrounds */}
 					<div className="absolute inset-0 grid grid-cols-4">
 						{TIERS.map((tier) => (
@@ -104,14 +119,13 @@ export function PromoteLens({ className }: { className?: string }) {
 									aria-label={`${a.name}, ${TIER_LABEL[a.autonomyTier]}, readiness ${Math.round(a.readiness)}, ${a.status}`}
 									data-ceremony={isCeremony ? "1" : undefined}
 									className={cn(
-										"ret-token absolute block text-left outline-none transition-[left,top] duration-[600ms] ease-out",
+										"ret-token absolute left-0 top-0 block text-left outline-none transition-transform duration-[600ms] ease-out",
 										"focus-visible:z-30 focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
 									)}
 									style={{
-										left: `calc(${pos.ti} * 25% + 12px)`,
-										top: `${TOP0 + pos.slot * GAP}px`,
-										width: "calc(25% - 24px)",
+										width: `${laneWidth - 24}px`,
 										height: TOKEN_H,
+										transform: `translate(${pos.ti * laneWidth + 12}px, ${TOP0 + pos.slot * GAP}px)`,
 									}}
 								>
 									<div className={cn("relative h-full", isCandidate && "z-10")}>

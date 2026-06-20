@@ -381,6 +381,23 @@ export function SectorCanvas({ className }: { className?: string }) {
 			const dir = dirs[e.key];
 			if (!dir) return;
 			e.preventDefault();
+			// Shift+Arrow MOVES the agent one cell (keyboard regroup — re-zones +
+			// re-clusters via the reducer). Plain Arrow moves focus (below).
+			if (e.shiftKey) {
+				const dxCell = dir === "left" ? -CELL : dir === "right" ? CELL : 0;
+				const dyCell = dir === "up" ? -CELL : dir === "down" ? CELL : 0;
+				const nx = clamp(agent.pos.x + dxCell, 0, WORLD.width - CARD_W);
+				const ny = clamp(agent.pos.y + dyCell, 0, WORLD.height - CARD_H);
+				moveAgent(agent.id, nx, ny);
+				const cx = nx + CARD_W / 2;
+				const cy = ny + CARD_H / 2;
+				const cam = camRef.current;
+				const sx = cx * cam.scale + cam.tx;
+				const sy = cy * cam.scale + cam.ty;
+				const { w: vw, h: vh } = vpRef.current;
+				if (sx < PAD || sx > vw - PAD || sy < PAD || sy > vh - PAD) panToWorldPoint(cx, cy);
+				return;
+			}
 			const from = center(agent);
 			let best: SreAgent | null = null;
 			let bestScore = Infinity;
@@ -410,7 +427,7 @@ export function SectorCanvas({ className }: { className?: string }) {
 				if (sx < PAD || sx > vw - PAD || sy < PAD || sy > vh - PAD) panToWorldPoint(c.x, c.y);
 			}
 		},
-		[agents, open, panToWorldPoint, select],
+		[agents, moveAgent, open, panToWorldPoint, select],
 	);
 
 	return (
@@ -464,7 +481,7 @@ export function SectorCanvas({ className }: { className?: string }) {
 								role="button"
 								tabIndex={0}
 								aria-pressed={selected}
-								aria-label={`${agent.name}, ${agent.status}, ${agent.zone} zone, ${agent.region}, ${agent.uptime}. Enter to open dossier.`}
+								aria-label={`${agent.name}, ${agent.status}, ${agent.zone} zone, ${agent.region}, ${agent.uptime}. Enter to open dossier; arrow keys to navigate; Shift plus arrow keys to move the agent.`}
 								onKeyDown={(e) => onCellKeyDown(e, agent)}
 								className={cn(
 									"ret-cell absolute outline-none transition-shadow",

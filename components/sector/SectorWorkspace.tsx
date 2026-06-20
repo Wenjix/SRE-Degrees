@@ -21,13 +21,13 @@ export function SectorWorkspace() {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			{/* workspace header */}
-			<div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-2.5">
-				<div className="flex items-center gap-3">
-					<span className="ret-display text-[14px] tracking-[0.16em]">RETICLE // SECTOR</span>
+			<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-2.5">
+				<div className="flex min-w-0 items-center gap-3">
+					<span className="ret-display truncate text-[14px] tracking-[0.16em]">RETICLE // SECTOR</span>
 					<span className="hidden h-4 w-px bg-[var(--ret-border)] sm:block" aria-hidden="true" />
 					<FleetSummary className="hidden sm:flex" />
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex shrink-0 items-center gap-2">
 					<ViewModeSwitch />
 					<SoundToggle />
 				</div>
@@ -35,11 +35,18 @@ export function SectorWorkspace() {
 
 			{/* body */}
 			<div className="flex min-h-0 flex-1">
-				<div className="relative min-h-0 min-w-0 flex-1">
-					{view === "canvas" ? <SectorCanvas /> : null}
-					{view === "list" ? <ListLens /> : null}
-					{view === "scatter" ? <ScatterLens /> : null}
-					{view === "promote" ? <PromoteLens /> : null}
+				<div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+					{view !== "list" ? (
+						<p className="shrink-0 border-b border-[var(--ret-border)] bg-[var(--ret-bg-soft)] px-4 py-1.5 font-mono text-[10px] text-[var(--ret-text-dim)] md:hidden">
+							Spatial view — best on a wider screen. Use <span className="text-[var(--ret-text)]">List</span> for dense triage on mobile.
+						</p>
+					) : null}
+					<div className="relative min-h-0 flex-1">
+						{view === "canvas" ? <SectorCanvas /> : null}
+						{view === "list" ? <ListLens /> : null}
+						{view === "scatter" ? <ScatterLens /> : null}
+						{view === "promote" ? <PromoteLens /> : null}
+					</div>
 				</div>
 				{view === "canvas" || view === "scatter" ? (
 					<aside className="hidden w-[244px] shrink-0 border-l border-[var(--ret-border)] bg-[var(--ret-bg)] xl:block">

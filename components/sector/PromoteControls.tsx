@@ -31,6 +31,7 @@ export function PromoteControls({
 	const ok = eligible(agent);
 	const reason = blockingReason(agent);
 	const isFinal = to === "autonomous";
+	const reasonId = `promote-block-${agent.id}`;
 
 	const [holding, setHolding] = useState(false);
 	const [confirmArmed, setConfirmArmed] = useState(false);
@@ -63,6 +64,11 @@ export function PromoteControls({
 
 	return (
 		<div className="flex items-center gap-2">
+			{!ok && reason ? (
+				<span id={reasonId} className="sr-only">
+					Promotion blocked: {reason}
+				</span>
+			) : null}
 			<button
 				type="button"
 				onClick={onRollback}
@@ -91,7 +97,8 @@ export function PromoteControls({
 				) : (
 					<button
 						type="button"
-						disabled={!ok}
+						aria-disabled={!ok}
+						aria-describedby={!ok ? reasonId : undefined}
 						title={ok ? "Press and hold to remove all human oversight" : (reason ?? "")}
 						onPointerDown={startHold}
 						onPointerUp={cancelHold}
@@ -113,8 +120,8 @@ export function PromoteControls({
 						)}
 					>
 						<span
-							className="pointer-events-none absolute inset-y-0 left-0 bg-[var(--ret-accent)]/25 transition-[width] ease-linear"
-							style={{ width: holding ? "100%" : "0%", transitionDuration: holding ? `${HOLD_MS}ms` : "120ms" }}
+							className="pointer-events-none absolute inset-y-0 left-0 w-full origin-left bg-[var(--ret-accent)]/25 transition-transform ease-linear"
+							style={{ transform: holding ? "scaleX(1)" : "scaleX(0)", transitionDuration: holding ? `${HOLD_MS}ms` : "120ms" }}
 							aria-hidden="true"
 						/>
 						<span className="relative">⌷ hold: remove oversight</span>
@@ -123,8 +130,11 @@ export function PromoteControls({
 			) : (
 				<button
 					type="button"
-					onClick={onPromote}
-					disabled={!ok}
+					onClick={() => {
+						if (ok) onPromote();
+					}}
+					aria-disabled={!ok}
+					aria-describedby={!ok ? reasonId : undefined}
 					title={ok ? "Promote one tier" : (reason ?? "")}
 					className={cn(
 						"border px-3 py-1 font-mono text-[11px] transition-colors",

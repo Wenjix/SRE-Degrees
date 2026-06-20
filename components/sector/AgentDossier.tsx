@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { cn } from "@/lib/cn";
@@ -19,32 +19,72 @@ import { STATUS_COLOR_VAR, TOOL_ICON } from "./visual";
 // board dims behind it (depth-of-field). Esc or backdrop closes.
 export function AgentDossier() {
 	const { state, close } = useLens();
+	const openId = state.openAgentId;
 	const agent = useMemo(
 		() => state.agents.find((a) => a.id === state.openAgentId) ?? null,
 		[state.agents, state.openAgentId],
 	);
+	const asideRef = useRef<HTMLElement>(null);
+	const closeRef = useRef<HTMLButtonElement>(null);
+	const restoreRef = useRef<HTMLElement | null>(null);
 
 	useEffect(() => {
-		if (!agent) return;
+		if (!openId) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") close();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [agent, close]);
+	}, [openId, close]);
+
+	// Modal focus management (WCAG 2.4.3 / 2.1.2): capture the trigger, move focus
+	// into the dialog, restore focus to the trigger on close.
+	useEffect(() => {
+		if (!openId) return;
+		restoreRef.current = (document.activeElement as HTMLElement) ?? null;
+		const raf = window.requestAnimationFrame(() => closeRef.current?.focus());
+		return () => {
+			window.cancelAnimationFrame(raf);
+			restoreRef.current?.focus?.();
+		};
+	}, [openId]);
 
 	if (!agent) return null;
 	const color = STATUS_COLOR_VAR[agent.status];
 	const deps = state.agents.filter((a) => agent.dependsOn.includes(a.id));
 
+	// Trap Tab within the dialog (cycle first <-> last focusable).
+	const onTrap = (e: ReactKeyboardEvent<HTMLElement>) => {
+		if (e.key !== "Tab") return;
+		const root = asideRef.current;
+		if (!root) return;
+		const nodes = root.querySelectorAll<HTMLElement>(
+			'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+		);
+		const list = Array.from(nodes).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
+		if (list.length === 0) return;
+		const first = list[0];
+		const last = list[list.length - 1];
+		if (e.shiftKey && document.activeElement === first) {
+			e.preventDefault();
+			last.focus();
+		} else if (!e.shiftKey && document.activeElement === last) {
+			e.preventDefault();
+			first.focus();
+		}
+	};
+
 	return (
 		<div className="fixed inset-0 z-[70]">
 			<div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" onClick={close} aria-hidden="true" />
 			<aside
+				ref={asideRef}
 				role="dialog"
 				aria-modal="true"
 				aria-label={`${agent.name} dossier`}
-				className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col overflow-y-auto border-l border-[var(--ret-border)] bg-[var(--ret-bg)] shadow-[-24px_0_80px_rgba(0,0,0,0.4)]"
+				tabIndex={-1}
+				onKeyDown={onTrap}
+				className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col overflow-y-auto border-l border-[var(--ret-border)] bg-[var(--ret-bg)] shadow-[-24px_0_80px_rgba(0,0,0,0.4)] focus:outline-none"
 			>
 				{/* header */}
 				<div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-3">
@@ -58,6 +98,7 @@ export function AgentDossier() {
 						</div>
 					</div>
 					<button
+						ref={closeRef}
 						type="button"
 						onClick={close}
 						aria-label="Close dossier"
