@@ -1,3 +1,7 @@
+"use client";
+
+import { memo } from "react";
+
 import { cn } from "@/lib/cn";
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { ReticleFrame } from "@/components/reticle";
@@ -15,7 +19,7 @@ export type CardLevel = "L1" | "L2";
 
 // Presentational. Positioning, selection events and keyboard live on the canvas
 // wrapper; this renders one agent at the requested density. Fills its parent.
-export function AgentCard({
+function AgentCardImpl({
 	agent,
 	level,
 	selected = false,
@@ -143,6 +147,10 @@ export function AgentCard({
 		</ReticleFrame>
 	);
 }
+
+// Memoized: skips re-render when the agent reference is unchanged (idle agents
+// are frozen in stepTelemetry, so their cards stop re-rendering every TICK).
+export const AgentCard = memo(AgentCardImpl);
 
 function Stat({
 	label,

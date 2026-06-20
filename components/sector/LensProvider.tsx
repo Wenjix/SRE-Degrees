@@ -79,16 +79,18 @@ function clamp(v: number, lo: number, hi: number) {
 // Math.random here never affects SSR/first-paint determinism.
 function stepTelemetry(list: SreAgent[]): SreAgent[] {
 	return list.map((a) => {
+		// idle agents are a static pool — freeze their reference so memo'd cards
+		// stop re-rendering every tick (idle CPU shouldn't drift anyway).
+		if (a.status === "idle") return a;
 		const drift = (m: { current: number; unit: string; series: number[] }, jitter: number, lo: number, hi: number) => {
 			const next = clamp(m.current + (Math.random() - 0.5) * jitter, lo, hi);
 			const series = [...m.series.slice(1), Math.round(next * 100) / 100];
 			return { ...m, current: Math.round(next * 100) / 100, series };
 		};
 
-		// idle agents barely move and never page
-		const busy = a.status !== "idle";
-		const cpu = drift(a.cpu, busy ? 0.14 : 0.02, 0.02, 1);
-		const mem = drift(a.mem, busy ? 24 : 4, 16, 512);
+		// (idle agents already returned above)
+		const cpu = drift(a.cpu, 0.14, 0.02, 1);
+		const mem = drift(a.mem, 24, 16, 512);
 		const disk = drift(a.disk, 0.05, 0.2, 8);
 
 		// occasional status flap on non-critical, non-idle agents to exercise
@@ -97,7 +99,7 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 		// rare single-tick health blips keep the board alive without destabilizing
 		// promotion eligibility: a degraded blip ALWAYS recovers the next tick, and
 		// only healthy agents (not Atlas, the anchored fire) occasionally blip.
-		if (a.id !== "sre-7f2a" && a.status !== "idle") {
+		if (a.id !== "sre-7f2a") {
 			if (a.status === "degraded") status = "healthy";
 			else if (Math.random() < 0.04) status = "degraded";
 		}
@@ -113,7 +115,7 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 		const ticks = [...a.heartbeat.ticks.slice(1), Math.round((1 + (Math.random() - 0.5) * 0.3) * 1000) / 1000];
 
 		// --- autonomy / promotion evolution (evidence accrues over time) ---
-		const verifiedRuns = a.verifiedRuns + (busy ? Math.floor(Math.random() * 6) + 2 : 0);
+		const verifiedRuns = a.verifiedRuns + Math.floor(Math.random() * 6) + 2;
 		let provingEnv: ProvingEnv = a.provingEnv;
 		if (provingEnv === "sandbox" && verifiedRuns >= 40) provingEnv = "shadow";
 		if (provingEnv === "shadow" && verifiedRuns >= 200) provingEnv = "canary";
@@ -137,7 +139,7 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 
 		const critStreak = status === "critical" ? a.critStreak + 1 : 0;
 		const incidents = status === "critical" && a.status !== "critical" ? a.incidents + 1 : a.incidents;
-		const soakMs = a.soakMs + (busy ? 0.5 : 0.2) * MS_PER_HOUR;
+		const soakMs = a.soakMs + 0.5 * MS_PER_HOUR;
 		const cooldown = Math.max(0, a.cooldown - 1);
 
 		const draft: SreAgent = {

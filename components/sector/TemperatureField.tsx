@@ -13,7 +13,7 @@ export function TemperatureField() {
 	return (
 		<div
 			aria-hidden="true"
-			className="pointer-events-none absolute inset-0 z-[5] transition-opacity duration-[1200ms]"
+			className="ret-anim-fill pointer-events-none absolute inset-0 z-[5] transition-opacity duration-[1200ms]"
 			style={{
 				opacity: intensity,
 				background: `radial-gradient(120% 90% at 72% 22%, ${color} 0%, transparent 58%)`,

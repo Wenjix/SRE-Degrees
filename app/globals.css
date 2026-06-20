@@ -408,7 +408,8 @@ textarea::placeholder {
 		animation: none !important;
 	}
 	.ret-cell,
-	.ret-token {
+	.ret-token,
+	.ret-anim-fill {
 		transition: none !important;
 	}
 	.ret-promote-pulse {

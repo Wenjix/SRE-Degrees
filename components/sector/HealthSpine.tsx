@@ -24,7 +24,7 @@ export function HealthSpine({
 			aria-hidden="true"
 		>
 			<span
-				className="absolute inset-0 block origin-bottom transition-transform duration-500"
+				className="ret-anim-fill absolute inset-0 block origin-bottom transition-transform duration-500"
 				style={{ transform: `scaleY(${frac})`, background: color, "--hb-color": color } as CSSProperties}
 			/>
 		</span>

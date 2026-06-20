@@ -62,7 +62,7 @@ export function ZoneField({
 				</div>
 				<div className="mt-1 h-[3px] w-full bg-[var(--ret-border)]/50">
 					<div
-						className="h-full w-full origin-left transition-transform duration-500"
+						className="ret-anim-fill h-full w-full origin-left transition-transform duration-500"
 						style={{ transform: `scaleX(${okFrac})`, background: STATUS_COLOR_VAR[worst] }}
 					/>
 				</div>
