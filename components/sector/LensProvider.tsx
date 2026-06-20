@@ -114,6 +114,27 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 
 		const ticks = [...a.heartbeat.ticks.slice(1), Math.round((1 + (Math.random() - 0.5) * 0.3) * 1000) / 1000];
 
+		// --- agent-native work signals + cost drift like vitals ---
+		const actions = drift(a.actions, Math.max(2, a.actions.current * 0.18), 0, 600);
+		const toolSuccess = drift(a.toolSuccess, 0.4, 80, 100);
+		const decisionMs = drift(a.decisionMs, Math.max(8, a.decisionMs.current * 0.15), 20, 4000);
+		const cost = drift(a.cost, Math.max(0.3, a.cost.current * 0.12), 0.2, 200);
+
+		// the OWNED service's budget is independent of agent health: it DRAINS while
+		// the service burns (burnRate stays a stable narrative value) and recovers
+		// otherwise — so a healthy agent can sit over a service bleeding to zero.
+		const svcBudget = clamp(
+			a.service.errorBudgetPct + (a.service.burnRate > 1 ? -(a.service.burnRate - 1) * 0.4 : 0.25),
+			0,
+			100,
+		);
+		const service = { ...a.service, errorBudgetPct: Math.round(svcBudget) };
+
+		// decision quality drifts toward a status-based target; agreement jitters
+		const evalTarget = status === "critical" ? 0.86 : status === "degraded" ? 0.97 : Math.max(a.evalPassRate, 0.99);
+		const evalPassRate = clamp(a.evalPassRate + (evalTarget - a.evalPassRate) * 0.12 + (Math.random() - 0.5) * 0.0005, 0.7, 0.9999);
+		const humanAgreementRate = clamp(a.humanAgreementRate + (Math.random() - 0.5) * 0.002, 0.8, 0.999);
+
 		// --- autonomy / promotion evolution (evidence accrues over time) ---
 		const verifiedRuns = a.verifiedRuns + Math.floor(Math.random() * 6) + 2;
 		let provingEnv: ProvingEnv = a.provingEnv;
@@ -149,6 +170,13 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 			cpu,
 			mem,
 			disk,
+			actions,
+			toolSuccess,
+			decisionMs,
+			cost,
+			service,
+			evalPassRate,
+			humanAgreementRate,
 			slo: { ...a.slo, burnRate: Math.round(burnRate * 10) / 10 },
 			errorBudget: { remainingPct: Math.round(remainingPct) },
 			heartbeat: { ...a.heartbeat, ticks },

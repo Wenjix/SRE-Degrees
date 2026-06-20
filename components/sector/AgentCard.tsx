@@ -29,6 +29,8 @@ function AgentCardImpl({
 	selected?: boolean;
 }) {
 	const color = STATUS_COLOR_VAR[agent.status];
+	const svcColor = serviceColorFor(agent.service);
+	const runaway = agent.cost.current >= 25;
 
 	if (level === "L1") {
 		return (
@@ -48,12 +50,12 @@ function AgentCardImpl({
 				<div className="mt-0.5 truncate font-mono text-[9px] text-[var(--ret-text-muted)]">{agent.id}</div>
 				<div className="mt-1.5">
 					<Sparkline
-						values={agent.cpu.series.slice(-12)}
+						values={agent.actions.series.slice(-12)}
 						width={120}
 						height={16}
 						stroke={color}
 						fill
-						ariaLabel={`${agent.name} cpu trend`}
+						ariaLabel={`${agent.name} actions/min trend`}
 						className="w-full"
 					/>
 				</div>
@@ -103,13 +105,29 @@ function AgentCardImpl({
 					</div>
 				</div>
 
-				{/* status line — textual status so health is never color-only */}
-				<div className="mt-1 truncate font-mono text-[10px]">
+				{/* status line — the AGENT's own reliability + cost (never color-only) */}
+				<div className="mt-1 flex items-center gap-1.5 truncate font-mono text-[10px]">
 					<span style={{ color }} className="uppercase">
 						{agent.status}
 					</span>
-					<span className="text-[var(--ret-text-muted)]">
-						{" · "}burn {agent.slo.burnRate.toFixed(1)}x · EB {agent.errorBudget.remainingPct}%
+					<span className="truncate text-[var(--ret-text-muted)]">
+						· burn {agent.slo.burnRate.toFixed(1)}x · EB {agent.errorBudget.remainingPct}%
+					</span>
+					<span
+						className="ml-auto shrink-0 tabular-nums"
+						style={{ color: runaway ? STATUS_COLOR_VAR.critical : "var(--ret-text-dim)" }}
+						title={runaway ? "runaway cost" : "spend"}
+					>
+						${Math.round(agent.cost.current)}/hr
+					</span>
+				</div>
+
+				{/* the SERVICE this agent owns — its budget is independent of agent health */}
+				<div className="mt-0.5 flex items-center gap-1.5 truncate font-mono text-[10px]">
+					<span className="shrink-0 text-[var(--ret-text-muted)]">owns</span>
+					<span className="truncate text-[var(--ret-text-dim)]">{agent.service.name}</span>
+					<span className="ml-auto shrink-0 tabular-nums" style={{ color: svcColor }}>
+						{agent.service.burnRate > 1 ? `burn ${agent.service.burnRate.toFixed(1)}x` : `EB ${agent.service.errorBudgetPct}%`}
 					</span>
 				</div>
 
@@ -117,9 +135,9 @@ function AgentCardImpl({
 
 				{/* stat strip */}
 				<div className="grid grid-cols-3 gap-2">
-					<Stat label="CPU" value={`${agent.cpu.current.toFixed(2)}`} unit={agent.cpu.unit} series={agent.cpu.series} color={color} />
-					<Stat label="MEM" value={`${Math.round(agent.mem.current)}`} unit={agent.mem.unit} series={agent.mem.series} color={color} />
-					<Stat label="DISK" value={`${agent.disk.current.toFixed(1)}`} unit={agent.disk.unit} series={agent.disk.series} color={color} />
+					<Stat label="ACTIONS" value={`${Math.round(agent.actions.current)}`} unit={agent.actions.unit} series={agent.actions.series} color={color} />
+					<Stat label="TOOL OK" value={`${agent.toolSuccess.current.toFixed(1)}`} unit="%" series={agent.toolSuccess.series} color={color} />
+					<Stat label="DEC p95" value={`${Math.round(agent.decisionMs.current)}`} unit="ms" series={agent.decisionMs.series} color={color} />
 				</div>
 
 				{/* terminal tail */}
@@ -151,6 +169,13 @@ function AgentCardImpl({
 // Memoized: skips re-render when the agent reference is unchanged (idle agents
 // are frozen in stepTelemetry, so their cards stop re-rendering every TICK).
 export const AgentCard = memo(AgentCardImpl);
+
+// The owned SERVICE's health (its own burn/budget), distinct from agent health.
+function serviceColorFor(svc: SreAgent["service"]): string {
+	if (svc.burnRate > 1) return STATUS_COLOR_VAR.critical;
+	if (svc.errorBudgetPct < 30) return STATUS_COLOR_VAR.degraded;
+	return STATUS_COLOR_VAR.healthy;
+}
 
 function Stat({
 	label,

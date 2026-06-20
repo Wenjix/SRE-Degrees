@@ -82,8 +82,9 @@ export function ListLens({ className }: { className?: string }) {
 									<Stat label="zone" value={a.zone.toUpperCase()} />
 									<Stat label="burn" value={`${a.slo.burnRate.toFixed(1)}x`} />
 									<Stat label="EB" value={`${a.errorBudget.remainingPct}%`} />
-									<Stat label="CPU" value={a.cpu.current.toFixed(2)} />
-									<Stat label="lat" value={`${a.latencyMs}ms`} />
+									<Stat label="actions" value={`${Math.round(a.actions.current)}/min`} />
+									<Stat label="$/hr" value={`$${Math.round(a.cost.current)}`} />
+									<Stat label="owns" value={`${a.service.name} ${a.service.burnRate > 1 ? `${a.service.burnRate.toFixed(1)}x` : `${a.service.errorBudgetPct}%`}`} />
 									<Stat label="region" value={a.region} />
 									<Stat label="uptime" value={a.uptime} />
 								</dl>
@@ -95,7 +96,7 @@ export function ListLens({ className }: { className?: string }) {
 
 			{/* desktop: dense table (md+) */}
 			<div className="hidden overflow-x-auto md:block">
-				<table className="w-full min-w-[920px] border-collapse text-left">
+				<table className="w-full min-w-[1060px] border-collapse text-left">
 					<caption className="sr-only">
 						Fleet agents sorted by SLO burn rate, worst first. Press Enter on a row to open its dossier.
 					</caption>
@@ -104,12 +105,13 @@ export function ListLens({ className }: { className?: string }) {
 							<th scope="col" className="px-3 py-2 font-medium">Agent</th>
 							<th scope="col" className="px-3 py-2 font-medium">Zone</th>
 							<th scope="col" className="px-3 py-2 font-medium">Status</th>
+							<th scope="col" className="px-3 py-2 font-medium">Owns service</th>
 							<th scope="col" className="px-3 py-2 font-medium">Autonomy</th>
 							<th scope="col" className="px-3 py-2 text-right font-medium">RDY</th>
 							<th scope="col" className="px-3 py-2 text-right font-medium">Burn</th>
 							<th scope="col" className="px-3 py-2 text-right font-medium">EB</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">CPU</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">Lat</th>
+							<th scope="col" className="px-3 py-2 text-right font-medium">Actions</th>
+							<th scope="col" className="px-3 py-2 text-right font-medium">$/hr</th>
 							<th scope="col" className="px-3 py-2 font-medium">Region</th>
 							<th scope="col" className="px-3 py-2 text-right font-medium">Uptime</th>
 						</tr>
@@ -149,6 +151,12 @@ export function ListLens({ className }: { className?: string }) {
 											{a.status}
 										</span>
 									</td>
+									<td className="px-3 py-2 font-mono text-[11px]">
+										<span className="text-[var(--ret-text-dim)]">{a.service.name}</span>
+										<span className="ml-1.5 tabular-nums" style={{ color: svcColor(a.service) }}>
+											{a.service.burnRate > 1 ? `${a.service.burnRate.toFixed(1)}x` : `${a.service.errorBudgetPct}%`}
+										</span>
+									</td>
 									<td className="px-3 py-2">
 										<AutonomyChip tier={a.autonomyTier} compact />
 									</td>
@@ -157,8 +165,10 @@ export function ListLens({ className }: { className?: string }) {
 									</td>
 									<td className="px-3 py-2 text-right font-mono text-[12px] tabular-nums">{a.slo.burnRate.toFixed(1)}x</td>
 									<td className="px-3 py-2 text-right font-mono text-[12px] tabular-nums">{a.errorBudget.remainingPct}%</td>
-									<td className="px-3 py-2 text-right font-mono text-[12px] tabular-nums">{a.cpu.current.toFixed(2)}</td>
-									<td className="px-3 py-2 text-right font-mono text-[12px] tabular-nums">{a.latencyMs}ms</td>
+									<td className="px-3 py-2 text-right font-mono text-[12px] tabular-nums">{Math.round(a.actions.current)}</td>
+									<td className="px-3 py-2 text-right font-mono text-[12px] tabular-nums" style={a.cost.current >= 25 ? { color: STATUS_COLOR_VAR.critical } : undefined}>
+										${Math.round(a.cost.current)}
+									</td>
 									<td className="px-3 py-2 font-mono text-[11px] text-[var(--ret-text-dim)]">{a.region}</td>
 									<td className="px-3 py-2 text-right font-mono text-[11px] text-[var(--ret-text-muted)]">{a.uptime}</td>
 								</tr>
@@ -169,6 +179,12 @@ export function ListLens({ className }: { className?: string }) {
 			</div>
 		</div>
 	);
+}
+
+function svcColor(svc: { burnRate: number; errorBudgetPct: number }): string {
+	if (svc.burnRate > 1) return STATUS_COLOR_VAR.critical;
+	if (svc.errorBudgetPct < 30) return STATUS_COLOR_VAR.degraded;
+	return STATUS_COLOR_VAR.healthy;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

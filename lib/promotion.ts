@@ -30,7 +30,7 @@ export const TIER_MEANING: Record<AutonomyTier, string> = {
 	harnessed: "Human approves every action",
 	supervised: "Auto routine · human approves risky actions",
 	guarded: "Full auto behind guardrails + auto-rollback",
-	autonomous: "No human in any loop",
+	autonomous: "Human on-the-loop · auto-rollback + kill-switch",
 };
 
 // Monochrome autonomy-fill ramp (NOT a health color) — percentage per tier.
@@ -61,18 +61,20 @@ export function prevTier(t: AutonomyTier): AutonomyTier | null {
 export type GateDef = {
 	to: AutonomyTier;
 	verifiedRuns: number;
-	slo: number; // success-rate threshold (0-1)
-	overrideMax: number; // max acceptable override rate (0-1)
+	serviceBudgetMin: number; // owned service must retain >= this % error budget (and not be burning)
+	evalMin: number; // decision-quality eval pass-rate threshold (0-1)
+	overrideMax: number; // max human-correction rate (0-1)
+	samplingFloor: number; // min review coverage required to CERTIFY a low correction rate (0-1)
 	soakMs: number; // required dwell in current tier
 	requiredEnv: ProvingEnv; // proving ground that must be reached
 };
 
 export const GATES: Record<AutonomyTier, GateDef> = {
 	// keyed by the FROM tier; harnessed -> supervised, etc. autonomous has no gate.
-	harnessed: { to: "supervised", verifiedRuns: 50, slo: 0.995, overrideMax: 0.05, soakMs: 2 * MS_PER_HOUR, requiredEnv: "shadow" },
-	supervised: { to: "guarded", verifiedRuns: 250, slo: 0.999, overrideMax: 0.02, soakMs: 6 * MS_PER_HOUR, requiredEnv: "canary" },
-	guarded: { to: "autonomous", verifiedRuns: 1000, slo: 0.9995, overrideMax: 0.005, soakMs: 12 * MS_PER_HOUR, requiredEnv: "production" },
-	autonomous: { to: "autonomous", verifiedRuns: 0, slo: 1, overrideMax: 0, soakMs: 0, requiredEnv: "production" },
+	harnessed: { to: "supervised", verifiedRuns: 50, serviceBudgetMin: 50, evalMin: 0.95, overrideMax: 0.05, samplingFloor: 0.2, soakMs: 2 * MS_PER_HOUR, requiredEnv: "shadow" },
+	supervised: { to: "guarded", verifiedRuns: 250, serviceBudgetMin: 60, evalMin: 0.985, overrideMax: 0.02, samplingFloor: 0.1, soakMs: 6 * MS_PER_HOUR, requiredEnv: "canary" },
+	guarded: { to: "autonomous", verifiedRuns: 1000, serviceBudgetMin: 70, evalMin: 0.995, overrideMax: 0.005, samplingFloor: 0.05, soakMs: 12 * MS_PER_HOUR, requiredEnv: "production" },
+	autonomous: { to: "autonomous", verifiedRuns: 0, serviceBudgetMin: 0, evalMin: 1, overrideMax: 0, samplingFloor: 0, soakMs: 0, requiredEnv: "production" },
 };
 
 export function gateFor(tier: AutonomyTier): GateDef | null {
@@ -81,8 +83,9 @@ export function gateFor(tier: AutonomyTier): GateDef | null {
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const noCriticals = (a: SreAgent) => a.incidents === 0 && a.status !== "critical";
+const serviceBurning = (a: SreAgent) => a.service.burnRate > 1;
 
-export type CriterionId = "runs" | "slo" | "override" | "criticals" | "soak" | "env";
+export type CriterionId = "runs" | "service" | "quality" | "correction" | "coverage" | "criticals" | "soak" | "env";
 export type CriterionKind = "count" | "pct" | "binary" | "time" | "env";
 
 export type Criterion = {
@@ -92,13 +95,16 @@ export type Criterion = {
 	current: number;
 	target: number;
 	pass: boolean;
-	inverted: boolean; // lower-is-better (override rate)
+	inverted: boolean; // lower-is-better (correction rate)
 	fraction: number; // 0-1 progress toward target (for the fill bar)
 	currentEnv?: ProvingEnv;
 	requiredEnv?: ProvingEnv;
 };
 
 // The verifiable criteria for an agent's NEXT promotion. Derived, never stored.
+// Gates SAFETY-TO-WIDEN, not just past reliability: it reads the SERVICE the
+// agent protects, its decision quality, and — critically — only counts a low
+// correction rate when review COVERAGE is high enough to mean anything.
 export function gateProgress(a: SreAgent): Criterion[] {
 	const g = gateFor(a.autonomyTier);
 	if (!g) return [];
@@ -114,25 +120,46 @@ export function gateProgress(a: SreAgent): Criterion[] {
 			fraction: clamp01(a.verifiedRuns / g.verifiedRuns),
 		},
 		{
-			id: "slo",
-			label: "SLO adherence",
+			id: "service",
+			label: "service SLO",
 			kind: "pct",
-			current: a.successRate * 100,
-			target: g.slo * 100,
-			pass: a.successRate >= g.slo && a.slo.burnRate <= 1,
+			current: a.service.errorBudgetPct,
+			target: g.serviceBudgetMin,
+			// the OWNED service must not be burning and must retain budget
+			pass: !serviceBurning(a) && a.service.errorBudgetPct >= g.serviceBudgetMin,
 			inverted: false,
-			fraction: clamp01(a.successRate / g.slo),
+			fraction: serviceBurning(a) ? 0 : clamp01(a.service.errorBudgetPct / 100),
 		},
 		{
-			id: "override",
-			label: "override rate",
+			id: "quality",
+			label: "decision quality",
+			kind: "pct",
+			current: a.evalPassRate * 100,
+			target: g.evalMin * 100,
+			pass: a.evalPassRate >= g.evalMin,
+			inverted: false,
+			fraction: clamp01(a.evalPassRate / g.evalMin),
+		},
+		{
+			id: "correction",
+			label: "correction rate",
 			kind: "pct",
 			current: a.overrideRate * 100,
 			target: g.overrideMax * 100,
 			pass: a.overrideRate <= g.overrideMax,
 			inverted: true,
-			// fills as override decays toward zero; full at 0, ~half at the limit
 			fraction: clamp01(1 - a.overrideRate / Math.max(g.overrideMax * 2, 1e-6)),
+		},
+		{
+			id: "coverage",
+			label: "review coverage",
+			kind: "pct",
+			current: a.reviewSamplingRate * 100,
+			target: g.samplingFloor * 100,
+			// the override DENOMINATOR: a low correction rate is meaningless if nothing watched
+			pass: a.reviewSamplingRate >= g.samplingFloor,
+			inverted: false,
+			fraction: clamp01(a.reviewSamplingRate / Math.max(g.samplingFloor, 1e-6)),
 		},
 		{
 			id: "criticals",
@@ -169,9 +196,12 @@ export function gateProgress(a: SreAgent): Criterion[] {
 	];
 }
 
-// Weighted 0-100 readiness toward the next tier. A failing zero-criticals gate
-// HARD-CAPS readiness near 60, so a single critical visibly tanks trust.
-const WEIGHTS: Record<CriterionId, number> = { slo: 0.3, override: 0.25, runs: 0.2, soak: 0.15, criticals: 0.1, env: 0 };
+// Weighted 0-100 readiness toward the next tier. Hard caps make catastrophic
+// states (a critical, a burning owned service, an unproven env, an unwatched
+// agent) visibly tank the score regardless of the other criteria.
+const WEIGHTS: Record<CriterionId, number> = {
+	service: 0.22, quality: 0.18, runs: 0.15, correction: 0.12, coverage: 0.1, soak: 0.12, criticals: 0.11, env: 0,
+};
 
 export function computeReadiness(a: SreAgent): number {
 	if (a.autonomyTier === "autonomous") return 100;
@@ -182,10 +212,11 @@ export function computeReadiness(a: SreAgent): number {
 	for (const c of crit) score += (WEIGHTS[c.id] ?? 0) * c.fraction;
 	let pct = Math.round(score * 100);
 	if (pct >= 100) pct = 99; // never show 100 unless actually eligible
-	if (!noCriticals(a)) pct = Math.min(pct, 60);
-	// env not reached also caps progress so readiness can't read "ready" while unproven
+	if (!noCriticals(a)) pct = Math.min(pct, 60); // a critical agent
+	if (serviceBurning(a)) pct = Math.min(pct, 55); // a burning OWNED service
+	if (a.reviewSamplingRate < (gateFor(a.autonomyTier)?.samplingFloor ?? 0)) pct = Math.min(pct, 70); // unwatched
 	const envOk = crit.find((c) => c.id === "env")?.pass ?? true;
-	if (!envOk) pct = Math.min(pct, 85);
+	if (!envOk) pct = Math.min(pct, 85); // unproven environment
 	return Math.max(0, Math.min(100, pct));
 }
 
@@ -202,8 +233,10 @@ export function blockingReason(a: SreAgent): string | null {
 	if (!c) return null;
 	if (c.id === "env") return `needs ${c.requiredEnv} (in ${c.currentEnv})`;
 	if (c.id === "criticals") return "incident in soak window";
-	if (c.id === "override") return `override ${c.current.toFixed(1)}% > ${c.target.toFixed(1)}%`;
+	if (c.id === "service") return serviceBurning(a) ? `${a.service.name} is burning` : `${a.service.name} budget ${c.current.toFixed(0)}% < ${c.target.toFixed(0)}%`;
+	if (c.id === "quality") return `eval ${c.current.toFixed(1)}% < ${c.target.toFixed(1)}%`;
+	if (c.id === "coverage") return `only ${c.current.toFixed(0)}% reviewed (need ${c.target.toFixed(0)}% to certify)`;
+	if (c.id === "correction") return `correction ${c.current.toFixed(1)}% > ${c.target.toFixed(1)}%`;
 	if (c.id === "soak") return "soak time not met";
-	if (c.id === "slo") return `SLO ${c.current.toFixed(2)}% < ${c.target.toFixed(2)}%`;
 	return `verified runs ${c.current}/${c.target}`;
 }

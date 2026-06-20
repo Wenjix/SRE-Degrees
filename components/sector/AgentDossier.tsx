@@ -137,6 +137,12 @@ export function AgentDossier() {
 							/>
 							<span className="font-mono text-[10px] text-[var(--ret-text-dim)]">{TIER_MEANING[agent.autonomyTier]}</span>
 						</div>
+						<div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-[10px] text-[var(--ret-text-dim)]">
+							<span>eval {(agent.evalPassRate * 100).toFixed(1)}%</span>
+							<span>reviewed {(agent.reviewSamplingRate * 100).toFixed(0)}%</span>
+							<span>agreement {(agent.humanAgreementRate * 100).toFixed(0)}%</span>
+							<span>correction {(agent.overrideRate * 100).toFixed(1)}%</span>
+						</div>
 						{nextTier(agent.autonomyTier) ? (
 							<>
 								<ProvingStepper current={agent.provingEnv} required={GATES[agent.autonomyTier].requiredEnv} className="mt-2" />
@@ -149,12 +155,56 @@ export function AgentDossier() {
 						)}
 					</Section>
 
-					{/* metrics — 1h trend */}
-					<Section title="Resources · last hour">
+					{/* the agent's actual WORK — golden signals + cost */}
+					<Section title="Work · last hour">
 						<div className="space-y-2.5">
-							<MetricRow label="CPU" value={`${agent.cpu.current.toFixed(2)} ${agent.cpu.unit}`} series={agent.cpu.series} color={color} />
-							<MetricRow label="MEM" value={`${Math.round(agent.mem.current)} ${agent.mem.unit}`} series={agent.mem.series} color={color} />
-							<MetricRow label="DISK" value={`${agent.disk.current.toFixed(1)} ${agent.disk.unit}`} series={agent.disk.series} color={color} />
+							<MetricRow label="ACTIONS" value={`${Math.round(agent.actions.current)} /min`} series={agent.actions.series} color={color} />
+							<MetricRow label="TOOL OK" value={`${agent.toolSuccess.current.toFixed(1)} %`} series={agent.toolSuccess.series} color={color} />
+							<MetricRow label="DEC p95" value={`${Math.round(agent.decisionMs.current)} ms`} series={agent.decisionMs.series} color={color} />
+							<MetricRow
+								label="COST"
+								value={`$${Math.round(agent.cost.current)}/hr · ${(agent.tokensPerMin / 1000).toFixed(1)}k tok/min`}
+								series={agent.cost.series}
+								color={agent.cost.current >= 25 ? STATUS_COLOR_VAR.critical : color}
+							/>
+						</div>
+					</Section>
+
+					{/* the SERVICE this agent owns — its own SLO/budget, independent of agent health */}
+					<Section title="Owns service">
+						<div className="flex items-center justify-between gap-3 border border-[var(--ret-border)] bg-[var(--ret-bg-soft)] px-3 py-2 font-mono text-[11px]">
+							<div className="min-w-0">
+								<div className="truncate text-[var(--ret-text)]">{agent.service.name}</div>
+								<div className="text-[var(--ret-text-dim)]">
+									SLO {agent.service.sloTarget}% · burn {agent.service.burnRate.toFixed(1)}x
+								</div>
+							</div>
+							<div className="shrink-0 text-right">
+								<div className="tabular-nums" style={{ color: serviceColorFor(agent.service) }}>
+									EB {agent.service.errorBudgetPct}%
+								</div>
+								<div className="text-[9px] uppercase text-[var(--ret-text-muted)]">
+									{agent.service.burnRate > 1 ? "burning" : "stable"}
+								</div>
+							</div>
+						</div>
+					</Section>
+
+					{/* host vitals — relegated (the agent's container, not its work) */}
+					<Section title="Host">
+						<div className="grid grid-cols-3 gap-3 font-mono text-[11px] text-[var(--ret-text-dim)]">
+							<div>
+								<span className="text-[var(--ret-text-muted)]">cpu </span>
+								{agent.cpu.current.toFixed(2)} {agent.cpu.unit}
+							</div>
+							<div>
+								<span className="text-[var(--ret-text-muted)]">mem </span>
+								{Math.round(agent.mem.current)} {agent.mem.unit}
+							</div>
+							<div>
+								<span className="text-[var(--ret-text-muted)]">disk </span>
+								{agent.disk.current.toFixed(1)} {agent.disk.unit}
+							</div>
 						</div>
 					</Section>
 
@@ -222,6 +272,12 @@ export function AgentDossier() {
 			</aside>
 		</div>
 	);
+}
+
+function serviceColorFor(svc: { burnRate: number; errorBudgetPct: number }): string {
+	if (svc.burnRate > 1) return STATUS_COLOR_VAR.critical;
+	if (svc.errorBudgetPct < 30) return STATUS_COLOR_VAR.degraded;
+	return STATUS_COLOR_VAR.healthy;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

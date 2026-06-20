@@ -15,7 +15,8 @@ import type { SreAgent } from "../lib/sre-data.ts";
 
 const HOUR = 3_600_000;
 
-// Minimal fixture — only the fields the promotion engine reads.
+// Minimal fixture — a fully-proven supervised candidate (next tier = guarded).
+// Only the fields the promotion engine reads.
 function agent(over: Partial<SreAgent> = {}): SreAgent {
 	return {
 		status: "healthy",
@@ -24,9 +25,13 @@ function agent(over: Partial<SreAgent> = {}): SreAgent {
 		verifiedRuns: 300,
 		successRate: 0.9995,
 		overrideRate: 0.005,
+		reviewSamplingRate: 0.4,
+		evalPassRate: 0.99,
+		humanAgreementRate: 0.97,
 		incidents: 0,
 		soakMs: 7 * HOUR,
 		slo: { burnRate: 0.5, target: 99.9 },
+		service: { name: "checkout-api", sloTarget: 99.9, burnRate: 0.5, errorBudgetPct: 85 },
 		...over,
 	} as unknown as SreAgent;
 }
@@ -41,11 +46,12 @@ describe("promotion ladder", () => {
 		assert.equal(prevTier("guarded"), "supervised");
 	});
 
-	it("exposes ramping gate targets", () => {
+	it("exposes ramping gate targets incl. service + eval + sampling", () => {
 		assert.equal(GATES.harnessed.verifiedRuns, 50);
-		assert.equal(GATES.supervised.verifiedRuns, 250);
 		assert.equal(GATES.guarded.verifiedRuns, 1000);
-		assert.ok(GATES.guarded.slo > GATES.supervised.slo);
+		assert.ok(GATES.guarded.evalMin > GATES.supervised.evalMin);
+		assert.ok(GATES.guarded.serviceBudgetMin >= GATES.supervised.serviceBudgetMin);
+		assert.ok(GATES.guarded.samplingFloor < GATES.supervised.samplingFloor);
 	});
 });
 
@@ -63,21 +69,43 @@ describe("readiness + eligibility", () => {
 		assert.ok(computeReadiness(a) <= 60, "critical hard-caps readiness near 60");
 	});
 
-	it("cannot promote past an unreached proving ground", () => {
-		const a = agent({ provingEnv: "shadow" }); // needs canary for guarded
+	it("a BURNING owned service blocks promotion even when the agent is healthy", () => {
+		const a = agent({ status: "healthy", service: { name: "payments-ledger", sloTarget: 99.9, burnRate: 3.8, errorBudgetPct: 7 } });
 		assert.equal(eligible(a), false);
-		assert.match(blockingReason(a) ?? "", /canary/);
-		const env = gateProgress(a).find((c) => c.id === "env");
-		assert.equal(env?.pass, false);
+		const svc = gateProgress(a).find((c) => c.id === "service");
+		assert.equal(svc?.pass, false);
+		assert.match(blockingReason(a) ?? "", /burning|payments-ledger/);
+		assert.ok(computeReadiness(a) <= 55, "a burning owned service tanks readiness");
 	});
 
-	it("treats override rate as inverted (lower is better)", () => {
-		const ok = gateProgress(agent({ overrideRate: 0 })).find((c) => c.id === "override");
-		const bad = gateProgress(agent({ overrideRate: 0.5 })).find((c) => c.id === "override");
+	it("low review coverage blocks certifying a low correction rate (the unwatched-gate fix)", () => {
+		const a = agent({ overrideRate: 0, reviewSamplingRate: 0.02 }); // perfect correction, but nothing watched
+		assert.equal(eligible(a), false);
+		const coverage = gateProgress(a).find((c) => c.id === "coverage");
+		assert.equal(coverage?.pass, false);
+		assert.match(blockingReason(a) ?? "", /reviewed/);
+	});
+
+	it("poor decision-quality (eval) blocks promotion", () => {
+		const a = agent({ evalPassRate: 0.9 }); // below the guarded gate's 0.985
+		assert.equal(eligible(a), false);
+		const q = gateProgress(a).find((c) => c.id === "quality");
+		assert.equal(q?.pass, false);
+	});
+
+	it("treats correction rate as inverted (lower is better)", () => {
+		const ok = gateProgress(agent({ overrideRate: 0 })).find((c) => c.id === "correction");
+		const bad = gateProgress(agent({ overrideRate: 0.5 })).find((c) => c.id === "correction");
 		assert.equal(ok?.inverted, true);
 		assert.equal(ok?.pass, true);
 		assert.equal(bad?.pass, false);
 		assert.ok((ok?.fraction ?? 0) > (bad?.fraction ?? 1));
+	});
+
+	it("cannot promote past an unreached proving ground", () => {
+		const a = agent({ provingEnv: "shadow" }); // needs canary for guarded
+		assert.equal(eligible(a), false);
+		assert.match(blockingReason(a) ?? "", /canary/);
 	});
 
 	it("autonomous agents have no further gate", () => {
