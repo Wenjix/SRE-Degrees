@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { agents } from "../lib/sre-data.ts";
 import { WORLD_TAXONOMY, taxonomyRows, worldHeadcount, worldNodes } from "../lib/world.ts";
+import { CHIP_TYPES, chipFilter, parseQuery } from "../lib/world-query.ts";
 
 describe("world taxonomy", () => {
 	it("headcount = live agents + owned services + ambient counts", () => {
@@ -46,5 +47,51 @@ describe("world nodes", () => {
 		const cpa = nodes.find((n) => n.id === "svc:control-plane-api");
 		assert.ok(cpa, "control-plane-api service should exist");
 		assert.equal(cpa.status, "critical"); // burnRate 4.2 > 3
+	});
+});
+
+const id = (name: string) => agents.find((a) => a.name === name)!.id;
+
+describe("causal search parser", () => {
+	it("'what depends on Atlas?' → downstream cascade", () => {
+		const r = parseQuery("what depends on Atlas?", agents);
+		assert.equal(r.intent, "depends");
+		assert.ok(r.focusAgentIds.includes(id("Atlas")));
+		assert.ok(r.focusAgentIds.includes(id("Hera")));
+		assert.ok(r.focusAgentIds.length >= 4); // Atlas + Nyx + Hera + Zeus
+	});
+
+	it("'what's burning' → services over budget", () => {
+		const r = parseQuery("what's burning", agents);
+		assert.equal(r.intent, "burning");
+		assert.equal(r.typeFilter, "service");
+		assert.ok(r.focusAgentIds.length >= 3);
+	});
+
+	it("'cost' → top spenders", () => {
+		const r = parseQuery("highest cost", agents);
+		assert.equal(r.intent, "cost");
+		assert.equal(r.focusAgentIds.length, 3);
+	});
+
+	it("'autonomous in prod' → no-human-in-loop agents", () => {
+		const r = parseQuery("autonomous in prod", agents);
+		assert.equal(r.intent, "autonomy");
+		assert.ok(r.focusAgentIds.includes(id("Hermes")));
+	});
+
+	it("unknown text → fuzzy fallback, never fabricates", () => {
+		const hit = parseQuery("iris", agents);
+		assert.equal(hit.intent, "fallback");
+		assert.ok(hit.focusAgentIds.includes(id("Iris")));
+		const miss = parseQuery("zzzz", agents);
+		assert.equal(miss.intent, "fallback");
+		assert.equal(miss.focusAgentIds.length, 0);
+	});
+
+	it("chip filter maps 'all' → null, type → itself", () => {
+		assert.ok(CHIP_TYPES.includes("all"));
+		assert.equal(chipFilter("all"), null);
+		assert.equal(chipFilter("pod"), "pod");
 	});
 });
