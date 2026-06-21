@@ -1,6 +1,6 @@
 # Production World Model — the `// WORLD` lens
 
-**Status:** Design approved (brainstorm), pending implementation plan.
+**Status:** Implemented baseline; updated with REx evidence framing.
 **Date:** 2026-06-20
 **Surface:** A new 8th lens in the Reticle Console (`/dashboard`), over the existing `LensProvider` store.
 
@@ -23,6 +23,14 @@ the Snorkel AI reading group:
 
 The lens lets the operator toggle between those two ends for any slice of the world.
 
+The preliminary REx sweep sharpens the product framing: Reticle should not claim
+"bigger model wins." It should show the executable proving loop that closes the
+gap. On the current 5-incident calibration set, frontier baselines span
+`0.630-0.810`; REx converges all five models to the ceiling-aware `0.860`
+(`4` clean solves plus correct escalation on the singleton unsafe incident).
+That is a product signal, not a final benchmark law. `Qwen3-30B-A3B` is the
+trainable target to run next, not part of the frontier claim until measured.
+
 Visual reference: a large point-cloud sphere ("Production World Model™", ~1.7M
 nodes / 30 types) with a Causal Search Engine (filter chips + "ask a question") and
 a right-hand details panel of node types + counts.
@@ -37,7 +45,7 @@ a right-hand details panel of node types + counts.
 | 2 | Code vs visualization | **Balanced** — the search engine bridges map ↔ code: a query both highlights the globe and emits the matching code slice. |
 | 3 | Shape / register | **Rotating globe** (a "world model"; anchors sit legibly on the surface). |
 | 4 | Layout | **Right rail toggles Types ↔ Code**: globe dominant, search bar over it, rail shows node-type counts by default and flips to the code slice on a query/selection. |
-| 5 | Code-slice flavor | **Code World Model (typed state + invariants + `step()`)** as the hero, **plus a WORLD MODEL ↔ HARNESS toggle** (A↔B). |
+| 5 | Code-slice flavor | **Code World Model (typed state + invariants + `step()`)** as the hero, **plus a WORLD MODEL ↔ HARNESS toggle** (A↔B); HARNESS carries REx provenance and the `propose_action` / `is_legal` policy contract. |
 | 6 | "Ask a question" fidelity | **Real lightweight parser** over the live store (no LLM/backend): intent grammar + fuzzy fallback. Never fabricates. |
 
 ---
@@ -59,7 +67,7 @@ state.agents (live, ticked by stepTelemetry)
    │                        (burning/cost/autonomous)
    │
    └─ lib/world-code.ts   toWorldModel(result, agents) → code string
-                          toHarness(result, agents)    → code string
+                          toHarness(result, agents)    → code string + REx provenance
 
 components/sector/WorldLens.tsx        composes the three below; view-local state
   ├─ WorldGlobe.tsx     canvas-2D rotating globe; highlight = QueryResult.focus
@@ -197,7 +205,8 @@ Two pure string generators over a `QueryResult` + the live agents:
   autonomous) annotated `✓`/`✗` from live values, and a `function step(w, action)`
   stub.
 - `toHarness(result, agents): string` → the **minimal-patch** view:
-  `legalActions(s)` filter + `apply(action)` guards (blast-instance cap, review
+  `propose_action(s)` candidate generation, `is_legal(s, a)` guard policy,
+  `legalActions(s)` filter + `apply(s)` guards (blast-instance cap, review
   coverage floor, burning-service block).
 
 **Rail behavior.** Default = **NODE TYPES** (taxonomy counts, like the reference).
@@ -207,8 +216,12 @@ touches health** (a burning `burnRate: 4.2` / violated invariant is the only red
 the color invariant holds even in the code panel. A copy-to-clipboard control is a
 nice-to-have.
 
-Generating plain strings (not React trees) makes both views trivially
-unit-testable and deterministic.
+HARNESS output includes the current REx calibration row for the focused agent:
+baseline score, REx score, clean wins, singleton escalation credit, and the
+explicit Qwen pending-target caveat. The on-call Queue turns the same contract
+into operator evidence: proposed action, legal check, policy version, route, and
+learning signal. Generating plain strings (not React trees) makes both views
+trivially unit-testable and deterministic.
 
 ---
 

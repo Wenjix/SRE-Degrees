@@ -159,6 +159,10 @@ export function CommandPalette() {
 										</p>
 									)}
 								</div>
+								<div className="flex items-center justify-between border-t border-[var(--ret-border)] px-3 py-1.5 font-mono text-[9px] uppercase tracking-wide text-[var(--ret-text-muted)]">
+									<span>↑↓ move · ↵ open · esc close</span>
+									<span>⌘K</span>
+								</div>
 							</div>
 						</div>,
 						document.body,

@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, ChevronUp, ShieldCheck, X, type LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 
 import { useLens, type Toast } from "./LensProvider";
@@ -26,8 +27,19 @@ export function ToastStack() {
 	);
 }
 
+// The action class, encoded as an ink glyph so the toast says WHAT happened at a
+// glance — color stays reserved for health; the verb remains in the label too.
+function glyphFor(toast: Toast): LucideIcon {
+	if (toast.undo?.kind === "incident") return ShieldCheck;
+	const l = toast.label.toUpperCase();
+	if (l.includes("DENIED")) return X;
+	if (l.includes("ESCALATED")) return ChevronUp;
+	return Check; // APPROVED / default
+}
+
 function ToastItem({ toast }: { toast: Toast }) {
 	const { undoToast, dismissToast } = useLens();
+	const Icon = glyphFor(toast);
 
 	// Self-dismiss after 6s; the timer is tied to this toast's lifetime.
 	useEffect(() => {
@@ -37,6 +49,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 
 	return (
 		<div className="ret-toast-in pointer-events-auto flex items-center gap-3 border border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-2.5 shadow-none">
+			<Icon className="h-3 w-3 shrink-0 text-[var(--ret-text-dim)]" strokeWidth={2} aria-hidden="true" />
 			<span className="font-mono text-[11px] uppercase tracking-wide text-[var(--ret-text-dim)]">{toast.label}</span>
 			{toast.undo !== null ? (
 				<button

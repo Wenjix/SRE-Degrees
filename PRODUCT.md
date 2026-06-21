@@ -16,7 +16,9 @@ The console is dual-audience by design, but the operator's day-to-day workflow c
 
 The **Reticle Console** is a spatial operations console that makes a fleet of autonomous SRE agents into first-class, legible objects. Eight lenses project one shared live store: a spatial board (Canvas), dense triage (List), a latency×error-budget Scatter, the **Promotion Engine** (agents earn their way from HARNESSED → AUTONOMOUS on verifiable evidence), the **on-call cockpit** (Incidents + the human approval Queue), the **VP telescope** (Fleet Risk & Economics), the **Authority & Blast-Radius map**, and the **World Model** (the production estate as a "code world model" agents plan against).
 
-It exists because operating AI agents demands a different instrument than operating services: you must see an agent's own health *and* the service it owns, the evidence behind its autonomy, the blast radius of its authority, and the real human-in-the-loop decisions it's waiting on. Success: an operator can answer **"what's on fire, what needs me, who can I trust with more autonomy, and what breaks if this agent errs"** in seconds — honestly, without vanity metrics.
+It exists because operating AI agents demands a different instrument than operating services: you must see an agent's own health *and* the service it owns, the evidence behind its autonomy, the blast radius of its authority, and the real human-in-the-loop decisions it's waiting on. REx reframes that evidence: a baseline model proposes, an executable harness refines and blocks unsafe behavior, and the console shows whether that loop reached the known ceiling instead of merely looking green. The live product language is code-as-policy: `propose_action` creates candidate changes, `is_legal` gates them, and every denial/escalation becomes auditable evidence. Success: an operator can answer **"what's on fire, what needs me, who can I trust with more autonomy, and what breaks if this agent errs"** in seconds — honestly, without vanity metrics.
+
+Current evidence posture: the built-in REx sweep is preliminary calibration over 5 incidents and 5 frontier models. It shows baseline scores `0.630-0.810` compressed to the ceiling-aware `0.860` after REx, where the singleton unsafe incident earns escalation credit instead of a fake fix. `Qwen3-30B-A3B` is the open-weight training target, not part of the frontier claim until measured.
 
 ## Brand Personality
 
@@ -34,8 +36,10 @@ Blueprint-precise, calm-under-fire, instrument-grade. Voice: terse, technical, h
 1. **Make the model honest.** Surface the real signals — owned-service SLO burn, cost/runaway spend, review coverage, decision-quality eval — never vanity greens. A healthy agent sitting over a burning service must read as exactly that. Color carries one meaning only: agent health.
 2. **Position is meaning.** Spatial layout encodes truth: service zones on the board, autonomy as left→right position + monochrome ink (never a saturated hue), blast radius as a traversable graph. The operator reads structure, not just numbers.
 3. **Trust is earned and can be lost.** Autonomy is a ladder gated by verifiable evidence in progressively riskier proving grounds; demotion is automatic when trust erodes. The interface dramatizes both directions.
-4. **Human-in-the-loop is a worklist, not a label.** Oversight appears as a real queue of decisions — each with blast radius, the agent's stated reasoning, confidence, and an SLA — that the operator can actually act on.
-5. **Legibility over spectacle.** Calm by default; motion and emphasis are reserved for genuine state change. Every signal is reachable by keyboard and screen reader, and nothing is conveyed by color alone.
+4. **Code is the trust wedge.** The dashboard shows proposed action, legal check, policy version, route, and outcome; policy is deterministic, versioned, and correctable.
+5. **REx is evidence, not magic.** A higher REx score never widens autonomy by itself; task coverage, review coverage, clean wins, and correct escalation on unsolvable cases stay visible.
+6. **Human-in-the-loop is a worklist, not a label.** Oversight appears as a real queue of decisions — each with blast radius, the agent's stated reasoning, confidence, and an SLA — that the operator can actually act on.
+7. **Legibility over spectacle.** Calm by default; motion and emphasis are reserved for genuine state change. Every signal is reachable by keyboard and screen reader, and nothing is conveyed by color alone.
 
 ## Accessibility & Inclusion
 

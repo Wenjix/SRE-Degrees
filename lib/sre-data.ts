@@ -564,6 +564,11 @@ export const pendingActionsSeed: PendingAction[] = [
 		blastServices: 2, blastInstances: 12, blastScope: "us-east-1 · prod",
 		reasoning: "INC-205: ledger budget 7%; promote standby read-replica to shed write pressure and recover burn", confidence: 0.9, ageMs: 3 * MIN, slaMs: 6 * MIN,
 	},
+	{
+		id: "ACT-96", agentId: "sre-3a07", action: "restart auth-cache owned by Ash", risk: "mutate",
+		blastServices: 2, blastInstances: 6, blastScope: "us-east-1 · prod",
+		reasoning: "Sylvie owns edge-router; auth-cache is the upstream dependency, but RBAC denies cross-owner restart", confidence: 0.86, ageMs: 5 * MIN, slaMs: 9 * MIN,
+	},
 ];
 
 export const SEVERITY_LABEL: Record<Severity, string> = { 1: "SEV1", 2: "SEV2", 3: "SEV3", 4: "SEV4" };

@@ -1,6 +1,6 @@
 "use client";
 
-import { Crosshair, ShieldAlert, Users, Zap } from "lucide-react";
+import { Circle, Crosshair, ShieldAlert, Square, Users, Zap } from "lucide-react";
 import { useMemo } from "react";
 
 import { cn } from "@/lib/cn";
@@ -271,8 +271,11 @@ function DownstreamChip({ id, onPick }: { id: string; onPick: (id: string) => vo
 
 function Legend() {
 	return (
-		<div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-0.5 border border-[var(--ret-border)] bg-[var(--ret-bg)]/85 px-2 py-1.5 font-mono text-[9px] text-[var(--ret-text-muted)] backdrop-blur-sm">
-			<span>■ can mutate · ● read-only</span>
+		<div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 border border-[var(--ret-border)] bg-[var(--ret-bg)]/85 px-2 py-1.5 font-mono text-[10px] text-[var(--ret-text-muted)] backdrop-blur-sm">
+			<span className="flex items-center gap-1.5">
+				<Square className="h-2.5 w-2.5" strokeWidth={2} aria-hidden="true" /> can mutate
+				<Circle className="ml-2 h-2.5 w-2.5" strokeWidth={2} aria-hidden="true" /> read-only
+			</span>
 			<span>inner ink = autonomy · dashed ring = production</span>
 			<span>fill = health · accent = blast path</span>
 		</div>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
+import { policyTraceForAction, type ActionPolicyTrace } from "@/lib/policy-trace";
 import type { PendingAction } from "@/lib/sre-data";
 
 import { useLens } from "./LensProvider";
@@ -49,6 +50,7 @@ export function QueueLens({ className }: { className?: string }) {
 							key={p.id}
 							p={p}
 							agentName={state.agents.find((a) => a.id === p.agentId)?.name ?? p.agentId}
+							trace={policyTraceForAction(p, state.agents)}
 							onApprove={() => resolveAction(p.id, "approve")}
 							onDeny={() => resolveAction(p.id, "deny")}
 							onEscalate={() => resolveAction(p.id, "escalate")}
@@ -63,12 +65,14 @@ export function QueueLens({ className }: { className?: string }) {
 function QueueRow({
 	p,
 	agentName,
+	trace,
 	onApprove,
 	onDeny,
 	onEscalate,
 }: {
 	p: PendingAction;
 	agentName: string;
+	trace: ActionPolicyTrace;
 	onApprove: () => void;
 	onDeny: () => void;
 	onEscalate: () => void;
@@ -166,6 +170,16 @@ function QueueRow({
 
 			<p className="mt-1.5 text-[12px] leading-relaxed text-[var(--ret-text-dim)]">{p.reasoning}</p>
 
+			<div className="mt-2 grid grid-cols-1 gap-1.5 border-t border-[var(--ret-border)] pt-2 font-mono text-[10px] md:grid-cols-2">
+				<TraceLine label="propose_action" value={trace.proposedAction} />
+				<TraceLine label="is_legal" value={`${trace.decision} · ${trace.legalCheck}`} />
+				<TraceLine label="policy" value={trace.policyVersion} />
+				<TraceLine label="state" value={trace.finalState} />
+				{trace.blockedReason ? <TraceLine label="blocked" value={trace.blockedReason} /> : null}
+				{trace.ownerRoute ? <TraceLine label="route" value={trace.ownerRoute} /> : null}
+				<TraceLine label="learns" value={trace.learningSignal} className="md:col-span-2" />
+			</div>
+
 			<div className="mt-2 flex flex-wrap items-center justify-between gap-2">
 				<div className="flex items-center gap-3 font-mono text-[10px] text-[var(--ret-text-muted)]">
 					<span title="blast radius">
@@ -186,7 +200,7 @@ function QueueRow({
 						onClick={handleApproveClick}
 						aria-label={armed ? `Confirm approve ${p.id}` : `Approve ${p.id}`}
 						className={cn(
-							"px-2.5 py-1 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
+							"relative overflow-hidden px-2.5 py-1 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
 							armed
 								? // Armed state: accent emphasis to signal intent, border only (no fill)
 								  "border border-[var(--ret-accent)] text-[var(--ret-accent)] hover:bg-[var(--ret-accent)] hover:text-[var(--ret-bg)]"
@@ -194,7 +208,9 @@ function QueueRow({
 								  "border border-[var(--ret-accent)] bg-[var(--ret-accent)] text-[var(--ret-bg)] hover:brightness-110",
 						)}
 					>
-						{armed ? "Confirm?" : "Approve"}
+						{/* depleting bar makes the 3s arm window visible (reduced-motion → static) */}
+						{armed ? <span className="ret-arm-window pointer-events-none absolute inset-x-0 bottom-0 block h-[2px] bg-[var(--ret-accent)]" aria-hidden="true" /> : null}
+						<span className="relative">{armed ? "Confirm?" : "Approve"}</span>
 					</button>
 					<button
 						type="button"
@@ -215,5 +231,14 @@ function QueueRow({
 				</div>
 			</div>
 		</li>
+	);
+}
+
+function TraceLine({ label, value, className }: { label: string; value: string; className?: string }) {
+	return (
+		<div className={cn("min-w-0 border border-[var(--ret-border)]/70 bg-[var(--ret-bg-soft)] px-2 py-1", className)}>
+			<span className="mr-1 uppercase tracking-wide text-[var(--ret-text-muted)]">{label}</span>
+			<span className="break-words text-[var(--ret-text-dim)]">{value}</span>
+		</div>
 	);
 }

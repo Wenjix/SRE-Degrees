@@ -135,9 +135,18 @@ describe("world-as-code generators", () => {
 
 	it("HARNESS emits a legal-action filter and guards", () => {
 		const code = toHarness(atlas, agents);
+		assert.match(code, /function propose_action/);
+		assert.match(code, /function is_legal/);
 		assert.match(code, /function legalActions/);
-		assert.match(code, /reviewSamplingRate >= 0\.05/);
+		assert.match(code, /reviewSamplingRate < 0\.05\) return deny/);
 		assert.match(code, /return block\(a\)/); // control-plane-api is burning
+	});
+
+	it("HARNESS carries REx provenance and the pending Qwen target caveat", () => {
+		const code = toHarness(atlas, agents);
+		assert.match(code, /rex · claude-haiku-4-5 0\.630 -> 0\.860/);
+		assert.match(code, /clean wins 2\/5 -> 4\/5/);
+		assert.match(code, /Qwen3-30B-A3B target pending/);
 	});
 
 	it("falls back to the first agents when a query has no focus", () => {

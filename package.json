@@ -9,7 +9,7 @@
     "build": "node scripts/next-cli.mjs build --webpack",
     "start": "node scripts/next-cli.mjs start -p 3220",
     "typecheck": "node scripts/next-cli.mjs typegen && tsc --noEmit",
-    "test": "node --test test/navigation.test.ts test/promotion.test.ts test/fleet.test.ts test/blast.test.ts test/world.test.ts test/credentials.test.ts"
+    "test": "node --test test/navigation.test.ts test/promotion.test.ts test/fleet.test.ts test/blast.test.ts test/world.test.ts test/credentials.test.ts test/rex-evidence.test.ts test/policy-trace.test.ts"
   },
   "dependencies": {
     "lucide-react": "^1.17.0",

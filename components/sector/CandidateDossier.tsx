@@ -1,10 +1,11 @@
 "use client";
 
-import { GraduationCap } from "lucide-react";
+import { BadgeCheck, GraduationCap, Lock } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { capstoneFor, credentialFor, credentialShortFor, incidentCredits } from "@/lib/credentials";
 import { blockingReason, eligible, gateProgress, GATES, nextTier, TIER_LABEL } from "@/lib/promotion";
+import { formatScore, rexEvidenceForAgent, rexLift } from "@/lib/rex-evidence";
 import { SEVERITY_LABEL, type SreAgent } from "@/lib/sre-data";
 
 import { GateCriterion } from "./GateCriterion";
@@ -36,6 +37,7 @@ export function CandidateDossier({
 	const lastLine = agent.terminalLines[agent.terminalLines.length - 1];
 	const cap = capstoneFor(agent);
 	const credits = incidentCredits(agent.id, state.incidents);
+	const rex = rexEvidenceForAgent(agent.id);
 
 	return (
 		<div className="shrink-0 border-t border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-2.5">
@@ -90,6 +92,15 @@ export function CandidateDossier({
 				</div>
 			) : null}
 
+			{/* REx proving evidence — calibration data, not a standalone promotion pass. */}
+			<div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-[var(--ret-border)] pt-2 sm:grid-cols-4">
+				<EvidenceCell label="rex proof" value={`${formatScore(rex.baselineScore)} -> ${formatScore(rex.rexScore)}`} detail={`${rex.model} · lift +${formatScore(rexLift(rex))}`} />
+				<EvidenceCell label="clean wins" value={`${rex.baselineCleanWins}/${rex.tasksetSize} -> ${rex.rexCleanWins}/${rex.tasksetSize}`} detail="solvable incidents corrected" />
+				<EvidenceCell label="ceiling" value={formatScore(rex.ceilingScore)} detail={`singleton escalation ${formatScore(rex.singletonEscalationScore)}`} />
+				<EvidenceCell label="coverage" value={`${rex.tasksetSize} incidents`} detail={`${rex.status} calibration`} />
+			</div>
+			<div className="mt-1 font-mono text-[9px] uppercase tracking-wide text-[var(--ret-text-muted)]">rex · proof, not luck — baseline → rex at ceiling</div>
+
 			{/* capstone — the distinct, discipline-specific certification scenario */}
 			{to ? (
 				<div className="mt-1.5 font-mono text-[10px] text-[var(--ret-text-muted)]">
@@ -107,8 +118,8 @@ export function CandidateDossier({
 					<span>clean — no incidents in window</span>
 				) : (
 					credits.map((c) => (
-						<span key={c.id} className="whitespace-nowrap">
-							{c.id}{" "}
+						<span key={c.id} className="inline-flex items-center gap-1 whitespace-nowrap">
+							{c.status === "credit" ? <BadgeCheck className="h-3 w-3 text-[var(--ret-text-dim)]" strokeWidth={1.75} aria-hidden="true" /> : <Lock className="h-3 w-3 text-[var(--ret-text-muted)]" strokeWidth={1.75} aria-hidden="true" />} {c.id}{" "}
 							{c.status === "credit" ? (
 								<span className="text-[var(--ret-text-dim)]">recovered · +live-fire credit</span>
 							) : (
@@ -124,6 +135,16 @@ export function CandidateDossier({
 					<span className="text-[var(--ret-text-dim)]">{agent.provingEnv}</span> · {lastLine}
 				</div>
 			) : null}
+		</div>
+	);
+}
+
+function EvidenceCell({ label, value, detail }: { label: string; value: string; detail: string }) {
+	return (
+		<div className="min-w-0 border border-[var(--ret-border)] bg-[var(--ret-bg-soft)] px-2 py-1.5">
+			<div className="truncate font-mono text-[9px] uppercase text-[var(--ret-text-muted)]">{label}</div>
+			<div className="mt-0.5 truncate font-mono text-[10px] tabular-nums text-[var(--ret-text)]">{value}</div>
+			<div className="mt-0.5 truncate font-mono text-[9px] text-[var(--ret-text-muted)]">{detail}</div>
 		</div>
 	);
 }

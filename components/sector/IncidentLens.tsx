@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { cn } from "@/lib/cn";
+import { incidentRunStages, type StageStatus } from "@/lib/policy-trace";
 import { SEVERITY_LABEL, severityTone, type Incident } from "@/lib/sre-data";
 
 import { useLens } from "./LensProvider";
@@ -130,6 +131,7 @@ function IncidentRow({
 			focusZone(firstAgentZone);
 		}
 	}, [select, focusZone, firstAgentId, firstAgentZone]);
+	const stages = incidentRunStages(inc);
 
 	// Ghost button base — square, 1px hairline, mono label, ghost style
 	const ghostBtn =
@@ -199,6 +201,11 @@ function IncidentRow({
 						className="shrink-0"
 					/>
 				</div>
+				<div className="mt-2 grid grid-cols-3 gap-1.5">
+					{stages.map((s) => (
+						<RunStage key={s.id} label={s.label} status={s.status} detail={s.detail} />
+					))}
+				</div>
 			</button>
 
 			{/* action cluster — square ghost buttons; replaced by a note once resolved */}
@@ -246,4 +253,22 @@ function IncidentRow({
 			)}
 		</li>
 	);
+}
+
+function RunStage({ label, status, detail }: { label: string; status: StageStatus; detail: string }) {
+	return (
+		<div className="min-w-0 border border-[var(--ret-border)]/70 bg-[var(--ret-bg-soft)] px-2 py-1 text-left font-mono">
+			<div className="flex items-center justify-between gap-1">
+				<span className="truncate text-[9px] uppercase tracking-wide text-[var(--ret-text-muted)]">{label}</span>
+				<span className={cn("text-[9px] uppercase", stageTone(status))}>{status}</span>
+			</div>
+			<div className="mt-0.5 truncate text-[9px] text-[var(--ret-text-dim)]">{detail}</div>
+		</div>
+	);
+}
+
+function stageTone(status: StageStatus): string {
+	if (status === "done") return "text-[var(--ret-accent)]";
+	if (status === "active") return "text-[var(--ret-text)]";
+	return "text-[var(--ret-text-muted)]";
 }

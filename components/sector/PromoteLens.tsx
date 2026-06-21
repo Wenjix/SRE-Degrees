@@ -171,23 +171,34 @@ export function PromoteLens({ className }: { className?: string }) {
 							})()
 						: null}
 
-					{/* demotion ceremony — health-colored ring (a real health event) */}
+					{/* demotion ceremony — health-colored ring + label (a real health event).
+					    The ring carries color; the label carries the WORD + reason, so the
+					    event never reads by color alone (One-Color-One-Meaning Rule). */}
 					{demotingId && ceremonyAgent
 						? (() => {
 								const pos = slots.get(ceremonyAgent.id);
 								if (!pos) return null;
+								const color = STATUS_COLOR_VAR[ceremonyAgent.status];
+								const reason = state.ledger[0]?.reason ?? "trust revoked";
 								return (
-									<span
+									<div
 										key={`demote-${demotingId}`}
-										className="ret-health-ring pointer-events-none absolute z-30 block h-28 w-28 border-2"
+										className="pointer-events-none absolute z-30"
 										style={{
-											left: `calc(${pos.ti} * 25% + 12%)`,
+											left: `calc(${pos.ti} * 25% + 12.5%)`,
 											top: `${TOP0 + pos.slot * GAP + TOKEN_H / 2}px`,
 											transform: "translate(-50%, -50%)",
-											borderColor: STATUS_COLOR_VAR[ceremonyAgent.status],
 										}}
 										aria-hidden="true"
-									/>
+									>
+										<span className="ret-health-ring block h-28 w-28 border-2" style={{ borderColor: color }} />
+										<span
+											className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap border border-[var(--ret-border)] bg-[var(--ret-bg)] px-1.5 py-0.5 font-mono text-[10px]"
+											style={{ color }}
+										>
+											DEMOTED · {reason}
+										</span>
+									</div>
 								);
 							})()
 						: null}
@@ -206,7 +217,7 @@ export function PromoteLens({ className }: { className?: string }) {
 									>
 										<span className="ret-bracket-dissolve absolute -left-0.5 bottom-3 top-3 w-2 border-y border-l border-[var(--ret-accent)]" />
 										<span className="ret-bracket-dissolve absolute -right-0.5 bottom-3 top-3 w-2 border-y border-r border-[var(--ret-accent)]" />
-										<span className="ret-shatter absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--ret-accent)]">
+										<span className="ret-shatter absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--ret-accent)]">
 											oversight removed
 										</span>
 									</div>

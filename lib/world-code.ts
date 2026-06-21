@@ -3,6 +3,7 @@
 // guard (AutoHarness). Pure string builders → deterministic + node-testable.
 
 import type { Incident, SreAgent } from "./sre-data";
+import { formatScore, rexEvidenceForAgent, rexLift } from "./rex-evidence.ts";
 import type { QueryResult } from "./world-query";
 
 // Minimum review coverage (0–1) below which a mutating prod action can't be
@@ -33,6 +34,17 @@ function incidentNotes(subs: SreAgent[], incidents: Incident[]): string[] {
 		);
 	}
 	return out;
+}
+
+function rexNotes(subs: SreAgent[]): string[] {
+	const first = subs[0];
+	if (!first) return [];
+	const rex = rexEvidenceForAgent(first.id);
+	return [
+		`// rex · ${rex.model} ${formatScore(rex.baselineScore)} -> ${formatScore(rex.rexScore)} (lift +${formatScore(rexLift(rex))})`,
+		`// rex · clean wins ${rex.baselineCleanWins}/${rex.tasksetSize} -> ${rex.rexCleanWins}/${rex.tasksetSize}; singleton escalation ${formatScore(rex.singletonEscalationScore)}`,
+		`// rex · ${rex.status} ${rex.tasksetSize}-incident calibration; Qwen3-30B-A3B target pending`,
+	];
 }
 
 export function toWorldModel(result: QueryResult, agents: SreAgent[], incidents: Incident[] = []): string {
@@ -74,14 +86,26 @@ export function toHarness(result: QueryResult, agents: SreAgent[], incidents: In
 	return [
 		`// harness · ${result.title} — minimal code that keeps the agent valid`,
 		...incidentNotes(subs, incidents),
-		`function legalActions(s) {`,
-		`  return ALL.filter(a =>`,
-		`    !mutatesProd(a) || s.reviewSamplingRate >= ${REVIEW_FLOOR});   // coverage guard`,
+		...rexNotes(subs),
+		`function propose_action(s) {`,
+		`  return rank(CANDIDATES, value).at(0);   // proposer policy`,
 		`}`,
 		``,
-		`function apply(a) {`,
+		`function is_legal(s, a) {`,
+		`  if (mutatesProd(a) && s.reviewSamplingRate < ${REVIEW_FLOOR}) return deny("coverage");`,
 		`  if (a.risk === "mutate" && a.blastInstances > 8) return needsHuman(a);`,
 		burning ? `  if (burning(${JSON.stringify(burning)})) return block(a);   // over budget` : `  // no burning owned service in this slice`,
+		`  return allow(a);`,
+		`}`,
+		``,
+		`function legalActions(s) {`,
+		`  return ALL.filter(a => is_legal(s, a).ok);`,
+		`}`,
+		``,
+		`function apply(s) {`,
+		`  const a = propose_action(s);`,
+		`  const legal = is_legal(s, a);`,
+		`  if (!legal.ok) return legal.route(a);`,
 		`  return commit(a);`,
 		`}`,
 	].join("\n");

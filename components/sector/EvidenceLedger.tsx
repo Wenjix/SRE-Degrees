@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { policyTraceForAction } from "@/lib/policy-trace";
 import { TIER_LABEL, TIER_RANK } from "@/lib/promotion";
 
 import { useLens } from "./LensProvider";
@@ -16,6 +17,10 @@ function hhmm(ts: number) {
 export function EvidenceLedger({ className }: { className?: string }) {
 	const { state } = useLens();
 	const entries = state.ledger;
+	const policySignals = state.pendingActions
+		.map((a) => ({ action: a, trace: policyTraceForAction(a, state.agents) }))
+		.filter((x) => x.trace.decision !== "allow")
+		.slice(0, 3);
 
 	return (
 		<div className={cn("flex h-full flex-col", className)}>
@@ -24,6 +29,22 @@ export function EvidenceLedger({ className }: { className?: string }) {
 				<span className="font-mono text-[10px] text-[var(--ret-text-muted)]">{entries.length}</span>
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto">
+				{policySignals.length ? (
+					<div className="border-b border-[var(--ret-border)] px-3 py-2">
+						<div className="font-mono text-[9px] uppercase tracking-wide text-[var(--ret-text-muted)]">Policy feedback</div>
+						<ul className="mt-1 space-y-1">
+							{policySignals.map(({ action, trace }) => (
+								<li key={action.id} className="border border-[var(--ret-border)]/70 bg-[var(--ret-bg-soft)] px-2 py-1 font-mono">
+									<div className="flex items-center justify-between gap-2 text-[10px]">
+										<span className="truncate text-[var(--ret-text)]">{action.id} · {trace.decision}</span>
+										<span className="shrink-0 text-[var(--ret-text-muted)]">learn</span>
+									</div>
+									<div className="mt-0.5 truncate text-[9px] text-[var(--ret-text-muted)]">{trace.learningSignal}</div>
+								</li>
+							))}
+						</ul>
+					</div>
+				) : null}
 				{entries.length === 0 ? (
 					<p className="px-3 py-4 font-mono text-[10px] text-[var(--ret-text-muted)]">
 						No promotions yet. Promote a candidate to record an auditable entry.
