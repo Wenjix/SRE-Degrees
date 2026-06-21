@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { agents } from "../lib/sre-data.ts";
 import { WORLD_TAXONOMY, taxonomyRows, worldHeadcount, worldNodes } from "../lib/world.ts";
 import { CHIP_TYPES, chipFilter, parseQuery } from "../lib/world-query.ts";
+import { toHarness, toWorldModel } from "../lib/world-code.ts";
 
 describe("world taxonomy", () => {
 	it("headcount = live agents + owned services + ambient counts", () => {
@@ -93,5 +94,32 @@ describe("causal search parser", () => {
 		assert.ok(CHIP_TYPES.includes("all"));
 		assert.equal(chipFilter("all"), null);
 		assert.equal(chipFilter("pod"), "pod");
+	});
+});
+
+describe("world-as-code generators", () => {
+	const atlas = parseQuery("depends on Atlas", agents);
+
+	it("WORLD MODEL emits typed state, the owned service, and a violated invariant", () => {
+		const code = toWorldModel(atlas, agents);
+		assert.match(code, /const world = \{/);
+		assert.match(code, /control-plane-api/);
+		assert.match(code, /burnRate: 4\.2/);
+		assert.match(code, /✗/); // burn 4.2 > 1 violates the SLO invariant
+		assert.match(code, /function step\(w, action\)/);
+	});
+
+	it("HARNESS emits a legal-action filter and guards", () => {
+		const code = toHarness(atlas, agents);
+		assert.match(code, /function legalActions/);
+		assert.match(code, /reviewSamplingRate >= 0\.05/);
+		assert.match(code, /return block\(a\)/); // control-plane-api is burning
+	});
+
+	it("falls back to the first agents when a query has no focus", () => {
+		const empty = parseQuery("zzzz", agents);
+		const code = toWorldModel(empty, agents);
+		assert.match(code, /const world = \{/);
+		assert.ok(code.split("\n").length > 5);
 	});
 });
