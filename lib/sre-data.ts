@@ -107,6 +107,8 @@ export type Incident = {
 	trend: IncidentTrend;
 	commander: string | null; // human incident commander; null = unassigned
 	ageMs: number; // accumulated sim duration since onset
+	acknowledged: boolean; // operator has acknowledged the incident
+	resolved: boolean; // operator has resolved the incident (fire out)
 };
 
 export type ActionRisk = "read" | "mutate";
@@ -521,17 +523,17 @@ export const incidentsSeed: Incident[] = [
 	{
 		id: "INC-204", severity: 1, title: "control-plane API error budget burning", service: "control-plane-api",
 		zones: ["core"], customerImpact: true, agentIds: ["sre-7f2a"], trigger: "SLO burn 4.2x · probe core-2 FAIL x3",
-		burnTrend: [1.1, 1.4, 1.9, 2.6, 3.4, 4.2], lastAction: "Atlas paging on-call", trend: "worsening", commander: null, ageMs: 12 * MIN,
+		burnTrend: [1.1, 1.4, 1.9, 2.6, 3.4, 4.2], lastAction: "Atlas paging on-call", trend: "worsening", commander: null, ageMs: 12 * MIN, acknowledged: false, resolved: false,
 	},
 	{
 		id: "INC-205", severity: 2, title: "payments-ledger budget exhausting", service: "payments-ledger",
 		zones: ["core"], customerImpact: true, agentIds: ["sre-8a13"], trigger: "service burn 3.8x · budget 7%",
-		burnTrend: [4.1, 3.9, 3.8, 3.8, 3.7, 3.8], lastAction: "Zeus armed auto-rollback", trend: "stable", commander: "@rivera", ageMs: 34 * MIN,
+		burnTrend: [4.1, 3.9, 3.8, 3.8, 3.7, 3.8], lastAction: "Zeus armed auto-rollback", trend: "stable", commander: "@rivera", ageMs: 34 * MIN, acknowledged: false, resolved: false,
 	},
 	{
 		id: "INC-206", severity: 3, title: "edge cache latency elevated", service: "cdn-cache",
 		zones: ["edge"], customerImpact: false, agentIds: ["sre-9c1f"], trigger: "probe edge-3 SLOW 268ms",
-		burnTrend: [2.8, 2.4, 2.0, 1.7, 1.4, 1.2], lastAction: "Nyx scheduled purge-cache", trend: "recovering", commander: "@okafor", ageMs: 51 * MIN,
+		burnTrend: [2.8, 2.4, 2.0, 1.7, 1.4, 1.2], lastAction: "Nyx scheduled purge-cache", trend: "recovering", commander: "@okafor", ageMs: 51 * MIN, acknowledged: false, resolved: false,
 	},
 ];
 
@@ -556,6 +558,16 @@ export const pendingActionsSeed: PendingAction[] = [
 		id: "ACT-94", agentId: "sre-6c18", action: "compact-parquet on ingest", risk: "read",
 		blastServices: 1, blastInstances: 1, blastScope: "us-east-1 · prod",
 		reasoning: "scan latency rising; compaction is reversible and low blast radius", confidence: 0.97, ageMs: 6 * MIN, slaMs: 20 * MIN,
+	},
+	{
+		id: "ACT-95", agentId: "sre-8a13", action: "promote read-replica · payments-ledger", risk: "mutate",
+		blastServices: 2, blastInstances: 12, blastScope: "us-east-1 · prod",
+		reasoning: "INC-205: ledger budget 7%; promote standby read-replica to shed write pressure and recover burn", confidence: 0.9, ageMs: 3 * MIN, slaMs: 6 * MIN,
+	},
+	{
+		id: "ACT-96", agentId: "sre-3a07", action: "restart auth-cache owned by Ash", risk: "mutate",
+		blastServices: 2, blastInstances: 6, blastScope: "us-east-1 · prod",
+		reasoning: "Sylvie owns edge-router; auth-cache is the upstream dependency, but RBAC denies cross-owner restart", confidence: 0.86, ageMs: 5 * MIN, slaMs: 9 * MIN,
 	},
 ];
 

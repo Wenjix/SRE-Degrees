@@ -6,8 +6,10 @@ import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } 
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { cn } from "@/lib/cn";
 import { blockingReason, eligible, GATES, nextTier, TIER_MEANING } from "@/lib/promotion";
+import { formatScore, rexAtCeiling, rexEvidenceForAgent } from "@/lib/rex-evidence";
 
 import { AutonomyChip } from "./AutonomyChip";
+import { EncodingKey } from "./EncodingKey";
 import { ErrorBudgetArc } from "./ErrorBudgetArc";
 import { HeartbeatDot } from "./HeartbeatDot";
 import { useLens } from "./LensProvider";
@@ -52,6 +54,7 @@ export function AgentDossier() {
 	if (!agent) return null;
 	const color = STATUS_COLOR_VAR[agent.status];
 	const deps = state.agents.filter((a) => agent.dependsOn.includes(a.id));
+	const rex = rexEvidenceForAgent(agent.id);
 
 	// Trap Tab within the dialog (cycle first <-> last focusable).
 	const onTrap = (e: ReactKeyboardEvent<HTMLElement>) => {
@@ -84,7 +87,7 @@ export function AgentDossier() {
 				aria-label={`${agent.name} dossier`}
 				tabIndex={-1}
 				onKeyDown={onTrap}
-				className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col overflow-y-auto border-l border-[var(--ret-border)] bg-[var(--ret-bg)] shadow-[-24px_0_80px_rgba(0,0,0,0.4)] focus:outline-none"
+				className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col overflow-y-auto border-l border-[var(--ret-border)] bg-[var(--ret-bg)] focus:outline-none"
 			>
 				{/* header */}
 				<div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-3">
@@ -143,6 +146,7 @@ export function AgentDossier() {
 							<span>agreement {(agent.humanAgreementRate * 100).toFixed(0)}%</span>
 							<span>correction {(agent.overrideRate * 100).toFixed(1)}%</span>
 						</div>
+						<p className="mt-1.5 font-mono text-[10px] text-[var(--ret-text-dim)]">rex {formatScore(rex.baselineScore)} → {formatScore(rex.rexScore)}{rexAtCeiling(rex) ? " · at ceiling" : ""} <span className="text-[var(--ret-text-muted)]">· proof, not luck</span></p>
 						{nextTier(agent.autonomyTier) ? (
 							<>
 								<ProvingStepper current={agent.provingEnv} required={GATES[agent.autonomyTier].requiredEnv} className="mt-2" />
@@ -268,6 +272,7 @@ export function AgentDossier() {
 					<Section title="Live tail">
 						<TerminalTail lines={agent.terminalLines} maxLines={agent.terminalLines.length} className="max-h-48 overflow-y-auto" />
 					</Section>
+					<EncodingKey items={[{ label: "color = health" }, { label: "ink = autonomy" }, { label: "sparkline = last hour" }]} className="mt-1 border-t border-[var(--ret-border)] pt-3" />
 				</div>
 			</aside>
 		</div>

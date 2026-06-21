@@ -13,7 +13,9 @@ import {
 	TIER_ORDER,
 	type AuthorityRisk,
 } from "@/lib/fleet";
+import { policyRemediationSummary } from "@/lib/policy-trace";
 import { AUTONOMY_FILL_PCT, TIER_LABEL } from "@/lib/promotion";
+import { formatScore, frontierRexSummary } from "@/lib/rex-evidence";
 
 import { useLens } from "./LensProvider";
 import { burnFraction, STATUS_COLOR_VAR } from "./visual";
@@ -30,6 +32,8 @@ export function FleetLens({ className }: { className?: string }) {
 	const risks = useMemo(() => correlatedAuthority(agents), [agents]);
 	const owners = useMemo(() => ownershipRollup(agents), [agents]);
 	const budget = useMemo(() => budgetPortfolio(agents), [agents]);
+	const rex = useMemo(() => frontierRexSummary(), []);
+	const policy = useMemo(() => policyRemediationSummary(state.pendingActions, agents), [state.pendingActions, agents]);
 	const fleetTotal = agents.length;
 
 	const focusAgentByName = (name: string) => {
@@ -130,6 +134,27 @@ export function FleetLens({ className }: { className?: string }) {
 					<p className="mt-0.5 pl-5 font-mono text-[10px] text-[var(--ret-text-muted)]">
 						{gov.highAutonomyInProd} guarded+ on real traffic · {gov.inCooldown} recovering trust · {gov.autoDemotions7d} auto-demotion (7d)
 					</p>
+
+					<div className="mt-3 border-t border-[var(--ret-border)] pt-2 font-mono">
+						<div className="flex items-baseline justify-between gap-2">
+							<span className="text-[10px] uppercase tracking-wide text-[var(--ret-text)]">REx calibration</span>
+							<span className="text-[9px] uppercase tracking-wide text-[var(--ret-text-muted)]">{rex.status} · {rex.tasksetSize} incidents</span>
+						</div>
+						<p className="mt-1 text-[10px] text-[var(--ret-text-muted)]">
+							spread <span className="tabular-nums text-[var(--ret-text-dim)]">{formatScore(rex.baselineMin)}-{formatScore(rex.baselineMax)}</span> -&gt;{" "}
+							<span className="tabular-nums text-[var(--ret-text-dim)]">{formatScore(rex.rexMin)}-{formatScore(rex.rexMax)}</span> · ceiling{" "}
+							<span className="tabular-nums text-[var(--ret-text-dim)]">{formatScore(rex.ceilingScore)}</span>
+						</p>
+						<p className="mt-0.5 text-[10px] text-[var(--ret-text-muted)]">
+							clean wins <span className="tabular-nums text-[var(--ret-text-dim)]">{rex.cleanWinsBaseline}/{rex.cleanWinSlots}</span> -&gt;{" "}
+							<span className="tabular-nums text-[var(--ret-text-dim)]">{rex.cleanWinsRex}/{rex.cleanWinSlots}</span> · {rex.qwenTarget} target pending
+						</p>
+						<p className="mt-0.5 text-[10px] text-[var(--ret-text-muted)]">
+							safe-action time saved <span className="tabular-nums text-[var(--ret-text-dim)]">{policy.mttrSavedMin}m</span> ·{" "}
+							<span className="tabular-nums text-[var(--ret-text-dim)]">{policy.needsHuman}</span> guarded ·{" "}
+							<span className="tabular-nums text-[var(--ret-text-dim)]">{policy.blocked}</span> owner-routed
+						</p>
+					</div>
 				</Panel>
 			</div>
 

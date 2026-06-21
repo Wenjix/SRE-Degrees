@@ -68,7 +68,7 @@ export function WorldLens({ className }: { className?: string }) {
 					{result?.summary ?? ""}
 				</div>
 			</div>
-			<WorldCodePanel agents={agents} result={result} headcount={headcount} />
+			<WorldCodePanel agents={agents} result={result} headcount={headcount} incidents={state.incidents} />
 		</div>
 	);
 }

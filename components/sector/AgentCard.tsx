@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { Maximize2 } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { Sparkline } from "@/components/dashboard/Sparkline";
@@ -66,6 +67,20 @@ function AgentCardImpl({
 						</div>
 					))}
 				</div>
+
+				{/* open-dossier affordance — ink corner tag, visible on hover or when selected.
+				    aria-hidden: the aria-label on the canvas wrapper already says "Enter to open dossier". */}
+				<span
+					aria-hidden="true"
+					className={cn(
+						"pointer-events-none absolute right-0 top-0 flex items-center justify-center border-b border-l border-[var(--ret-border)] bg-[var(--ret-bg)] p-0.5",
+						"opacity-0 transition-opacity duration-0",
+						"group-hover:opacity-100",
+						selected && "opacity-100",
+					)}
+				>
+					<Maximize2 size={9} strokeWidth={1.75} className="text-[var(--ret-text-muted)]" />
+				</span>
 			</ReticleFrame>
 		);
 	}
@@ -162,6 +177,21 @@ function AgentCardImpl({
 
 			{/* tools rail on the right edge */}
 			<ToolsRail tools={agent.tools} className="absolute right-1.5 top-2.5" />
+
+			{/* open-dossier affordance — ink corner tag, visible on hover or when selected.
+			    Positioned at the top-right corner (above the tools rail which starts at top-2.5).
+			    aria-hidden: the aria-label on the canvas wrapper already says "Enter to open dossier". */}
+			<span
+				aria-hidden="true"
+				className={cn(
+					"pointer-events-none absolute right-0 top-0 flex items-center justify-center border-b border-l border-[var(--ret-border)] bg-[var(--ret-bg)] p-0.5",
+					"opacity-0 transition-opacity duration-0",
+					"group-hover:opacity-100",
+					selected && "opacity-100",
+				)}
+			>
+				<Maximize2 size={10} strokeWidth={1.75} className="text-[var(--ret-text-muted)]" />
+			</span>
 		</ReticleFrame>
 	);
 }

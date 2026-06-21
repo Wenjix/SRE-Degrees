@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { agents } from "../lib/sre-data.ts";
+import { agents, incidentsSeed } from "../lib/sre-data.ts";
 import { WORLD_TAXONOMY, taxonomyRows, worldHeadcount, worldNodes } from "../lib/world.ts";
 import { CHIP_TYPES, chipFilter, parseQuery } from "../lib/world-query.ts";
 import { toHarness, toWorldModel } from "../lib/world-code.ts";
@@ -106,6 +106,24 @@ describe("causal search parser", () => {
 describe("world-as-code generators", () => {
 	const atlas = parseQuery("depends on Atlas", agents);
 
+	it("surfaces incident provenance when incidents are passed", () => {
+		const code = toWorldModel(atlas, agents, incidentsSeed);
+		assert.match(code, /implicated in INC-204/);
+		const harness = toHarness(atlas, agents, incidentsSeed);
+		assert.match(harness, /implicated in INC-204/);
+	});
+
+	it("prefers an active fire over a resolved one for the same agent", () => {
+		const atlasId = id("Atlas");
+		const mixed = [
+			{ ...incidentsSeed[0], id: "INC-900", agentIds: [atlasId], resolved: true, severity: 2 as const },
+			{ ...incidentsSeed[0], id: "INC-901", agentIds: [atlasId], resolved: false, severity: 1 as const },
+		];
+		const code = toWorldModel(atlas, agents, mixed);
+		assert.match(code, /implicated in INC-901/); // the live fire, not the recovered one
+		assert.doesNotMatch(code, /recovered from INC-900/);
+	});
+
 	it("WORLD MODEL emits typed state, the owned service, and a violated invariant", () => {
 		const code = toWorldModel(atlas, agents);
 		assert.match(code, /const world = \{/);
@@ -117,9 +135,18 @@ describe("world-as-code generators", () => {
 
 	it("HARNESS emits a legal-action filter and guards", () => {
 		const code = toHarness(atlas, agents);
+		assert.match(code, /function propose_action/);
+		assert.match(code, /function is_legal/);
 		assert.match(code, /function legalActions/);
-		assert.match(code, /reviewSamplingRate >= 0\.05/);
+		assert.match(code, /reviewSamplingRate < 0\.05\) return deny/);
 		assert.match(code, /return block\(a\)/); // control-plane-api is burning
+	});
+
+	it("HARNESS carries REx provenance and the pending Qwen target caveat", () => {
+		const code = toHarness(atlas, agents);
+		assert.match(code, /rex · claude-haiku-4-5 0\.630 -> 0\.860/);
+		assert.match(code, /clean wins 2\/5 -> 4\/5/);
+		assert.match(code, /Qwen3-30B-A3B target pending/);
 	});
 
 	it("falls back to the first agents when a query has no focus", () => {
