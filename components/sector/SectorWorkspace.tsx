@@ -6,6 +6,7 @@ import { SEVERITY_LABEL, severityTone } from "@/lib/sre-data";
 
 import { AgentDossier } from "./AgentDossier";
 import { EvidenceLedger } from "./EvidenceLedger";
+import { FleetLens } from "./FleetLens";
 import { FleetSummary } from "./FleetSummary";
 import { GroupLedger } from "./GroupLedger";
 import { IncidentLens } from "./IncidentLens";
@@ -108,6 +109,7 @@ export function SectorWorkspace() {
 						{view === "promote" ? <PromoteLens /> : null}
 						{view === "incidents" ? <IncidentLens /> : null}
 						{view === "queue" ? <QueueLens /> : null}
+						{view === "fleet" ? <FleetLens /> : null}
 					</div>
 				</div>
 				{view === "canvas" || view === "scatter" ? (

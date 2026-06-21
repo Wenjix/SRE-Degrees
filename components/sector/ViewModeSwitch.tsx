@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Inbox, LayoutGrid, Rocket, ScatterChart, Table2 } from "lucide-react";
+import { AlertTriangle, Inbox, LayoutGrid, Rocket, ScatterChart, Table2, Telescope } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 
@@ -14,6 +14,7 @@ const VIEWS: { id: ViewMode; label: string; Icon: typeof LayoutGrid }[] = [
 	{ id: "promote", label: "Promote", Icon: Rocket },
 	{ id: "incidents", label: "Incidents", Icon: AlertTriangle },
 	{ id: "queue", label: "Queue", Icon: Inbox },
+	{ id: "fleet", label: "Fleet", Icon: Telescope },
 ];
 
 // Tab strip over the one shared store. Every lens is a live projection — switch
