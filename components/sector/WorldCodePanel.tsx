@@ -18,7 +18,8 @@ function CodeBlock({ code }: { code: string }) {
 	return (
 		<pre className="flex-1 overflow-auto whitespace-pre px-3 py-2.5 font-mono text-[11.5px] leading-[1.55] text-[var(--ret-text-dim)]">
 			{code.split("\n").map((line, i) => {
-				const hot = line.includes("✗") || /burnRate: [1-9]/.test(line);
+				const bm = line.match(/burnRate: (\d+(?:\.\d+)?)/);
+				const hot = line.includes("✗") || (bm !== null && parseFloat(bm[1]) > 1);
 				return (
 					<div key={i} style={hot ? { color: STATUS_COLOR_VAR.critical } : undefined}>
 						{line || " "}
@@ -54,9 +55,10 @@ export function WorldCodePanel({ agents, result, headcount }: { agents: SreAgent
 								<button
 									key={m}
 									type="button"
+									aria-pressed={view === m}
 									onClick={() => setView(m)}
 									className={cn(
-										"px-2 py-0.5 font-mono text-[9px] uppercase tracking-wide transition-colors",
+										"px-2 py-0.5 font-mono text-[9px] uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
 										view === m ? "bg-[var(--ret-accent)] text-[var(--ret-bg)]" : "text-[var(--ret-text-dim)] hover:text-[var(--ret-text)]",
 									)}
 								>

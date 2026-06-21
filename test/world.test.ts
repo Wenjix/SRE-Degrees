@@ -95,6 +95,12 @@ describe("causal search parser", () => {
 		assert.equal(chipFilter("all"), null);
 		assert.equal(chipFilter("pod"), "pod");
 	});
+
+	it("the bare word 'autonomy' reaches the autonomy intent", () => {
+		const r = parseQuery("autonomy", agents);
+		assert.equal(r.intent, "autonomy");
+		assert.ok(r.focusAgentIds.includes(id("Hermes")));
+	});
 });
 
 describe("world-as-code generators", () => {
@@ -121,5 +127,18 @@ describe("world-as-code generators", () => {
 		const code = toWorldModel(empty, agents);
 		assert.match(code, /const world = \{/);
 		assert.ok(code.split("\n").length > 5);
+	});
+
+	it("flips the review invariant to ✗ for an autonomous-but-unreviewed slice", () => {
+		const auton = parseQuery("autonomy", agents); // focuses Hermes (autonomous, sampling < 0.05)
+		const code = toWorldModel(auton, agents);
+		assert.match(code, /reviewed\(w\) \|\| !autonomous\(w\)\)\s+\/\/ ✗/);
+	});
+
+	it("HARNESS omits the block guard for a non-burning slice", () => {
+		const auton = parseQuery("autonomy", agents); // Hermes owns event-bus (burn ≤ 1)
+		const code = toHarness(auton, agents);
+		assert.match(code, /no burning owned service/);
+		assert.doesNotMatch(code, /return block\(a\)/);
 	});
 });

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import { worldHeadcount, worldNodes } from "@/lib/world";
+import { worldHeadcount, worldNodes, type WorldNode } from "@/lib/world";
 import { chipFilter, parseQuery, type ChipType, type QueryResult } from "@/lib/world-query";
 
 import { CausalSearch } from "./CausalSearch";
@@ -19,6 +19,10 @@ export function WorldLens({ className }: { className?: string }) {
 	const agents = state.agents;
 	const nodes = useMemo(() => worldNodes(agents), [agents]);
 	const headcount = useMemo(() => worldHeadcount(agents), [agents]);
+	const nameById = useMemo(() => new Map(agents.map((a) => [a.id, a.name])), [agents]);
+	// human-readable anchor label: agents → name, services → service name.
+	const label = (n: WorldNode) =>
+		n.type === "agent" && n.agentId ? (nameById.get(n.agentId) ?? n.id.slice(6)) : n.id.replace(/^svc:/, "");
 
 	const [chip, setChip] = useState<ChipType>("all");
 	const [result, setResult] = useState<QueryResult | null>(() =>
@@ -52,13 +56,17 @@ export function WorldLens({ className }: { className?: string }) {
 	return (
 		<div className={cn("flex h-full min-h-0", className)}>
 			<div className="relative min-w-0 flex-1">
-				<WorldGlobe nodes={nodes} focusIds={focusIds} selectedId={state.selectedId} onPick={pickAnchor} />
+				<WorldGlobe nodes={nodes} focusIds={focusIds} selectedId={state.selectedId} onPick={pickAnchor} label={label} />
 				<CausalSearch chip={chip} onChip={pickChip} onQuery={runQuery} />
 				{result?.summary ? (
 					<div className="pointer-events-none absolute left-4 top-4 max-w-[280px] border border-[var(--ret-border)] bg-[var(--ret-bg)]/70 px-3 py-2 font-mono text-[11px] text-[var(--ret-text-dim)] backdrop-blur-sm">
 						{result.summary}
 					</div>
 				) : null}
+				{/* screen-reader announcement of the active query/selection */}
+				<div aria-live="polite" aria-atomic="true" className="sr-only">
+					{result?.summary ?? ""}
+				</div>
 			</div>
 			<WorldCodePanel agents={agents} result={result} headcount={headcount} />
 		</div>

@@ -65,7 +65,7 @@ export function parseQuery(q: string, agents: SreAgent[]): QueryResult {
 		const ids = [...agents].sort((a, b) => b.cost.current - a.cost.current).slice(0, 3).map((a) => a.id);
 		return { intent: "cost", title: "Top spend", summary: "The 3 most expensive agents.", focusAgentIds: ids, typeFilter: "agent" };
 	}
-	if (/\b(autonomous|autonom|no human|unsupervised)\b/.test(n)) {
+	if (/\b(autonomous|autonomy?|no human|unsupervised)\b/.test(n)) {
 		const ids = agents.filter((a) => a.autonomyTier === "autonomous").map((a) => a.id);
 		return { intent: "autonomy", title: "Autonomous agents", summary: `${ids.length} agents act with no human in the loop.`, focusAgentIds: ids, typeFilter: "agent" };
 	}

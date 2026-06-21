@@ -25,9 +25,10 @@ export function CausalSearch({
 					<button
 						key={c}
 						type="button"
+						aria-pressed={c === chip}
 						onClick={() => onChip(c)}
 						className={cn(
-							"px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide transition-colors",
+							"px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
 							c === chip ? "bg-[var(--ret-accent)] text-[var(--ret-bg)]" : "text-[var(--ret-text-dim)] hover:text-[var(--ret-text)]",
 						)}
 					>
@@ -47,7 +48,7 @@ export function CausalSearch({
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 					placeholder="ask: what depends on Atlas? · what's burning? · cost"
-					className="w-full bg-transparent font-mono text-[12px] text-[var(--ret-text)] placeholder:text-[var(--ret-text-muted)] focus:outline-none"
+					className="w-full bg-transparent font-mono text-[12px] text-[var(--ret-text)] placeholder:text-[var(--ret-text-muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ret-accent)]"
 					aria-label="Causal search"
 				/>
 			</form>

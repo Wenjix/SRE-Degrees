@@ -12,25 +12,37 @@ const STATUS_VAR: Record<AgentStatus, string> = {
 	idle: "--ret-text-muted",
 };
 
+const defaultLabel = (n: WorldNode) => n.id.replace(/^(agent|svc):/, "");
+
 // Hand-rolled canvas globe. Points live on a unit sphere (lat/lon); each frame
 // rotates around the Y axis, projects to 2D, depth-sorts, and draws. Rotation is
-// a view-local rAF loop (NOT a store timer); reduced-motion renders one frame.
+// a view-local rAF loop (NOT a store timer). Under reduced-motion it renders a
+// single static frame and redraws it on resize / state change. The canvas is
+// pointer-only, so a visually-hidden anchor list carries the keyboard +
+// screen-reader path to the same selection.
 export function WorldGlobe({
 	nodes,
 	focusIds,
 	selectedId,
 	onPick,
+	label = defaultLabel,
 }: {
 	nodes: WorldNode[];
 	focusIds: Set<string>;
 	selectedId: string | null;
 	onPick: (agentId: string) => void;
+	label?: (n: WorldNode) => string;
 }) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const hitsRef = useRef<{ agentId: string; x: number; y: number; z: number }[]>([]);
 	// keep latest props for the animation loop without re-subscribing
 	const stateRef = useRef({ nodes, focusIds, selectedId });
 	stateRef.current = { nodes, focusIds, selectedId };
+	const labelRef = useRef(label);
+	labelRef.current = label;
+	// reduced-motion: redraw the single static frame on demand (resize / state change)
+	const drawRef = useRef<(() => void) | null>(null);
+	const reduceRef = useRef(false);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -40,24 +52,13 @@ export function WorldGlobe({
 		const root = document.documentElement;
 		const cssVar = (name: string) => getComputedStyle(root).getPropertyValue(name).trim() || "#888";
 		const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		reduceRef.current = reduce;
 
 		let raf = 0;
 		let angle = 0;
 		let w = 0;
 		let h = 0;
 		const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-		const resize = () => {
-			const rect = canvas.getBoundingClientRect();
-			w = rect.width;
-			h = rect.height;
-			canvas.width = Math.round(w * dpr);
-			canvas.height = Math.round(h * dpr);
-			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		};
-		resize();
-		const ro = new ResizeObserver(resize);
-		ro.observe(canvas);
 
 		const draw = () => {
 			const { nodes: ns, focusIds: focus, selectedId: sel } = stateRef.current;
@@ -114,7 +115,7 @@ export function WorldGlobe({
 						ctx.globalAlpha = 0.4 + depth * 0.6;
 						ctx.fillStyle = isFocus || p.n.agentId === sel ? text : dim;
 						ctx.font = "11px ui-monospace, monospace";
-						ctx.fillText(p.n.id.replace(/^(agent|svc):/, ""), p.x + r + 4, p.y + 3);
+						ctx.fillText(labelRef.current(p.n), p.x + r + 4, p.y + 3);
 					}
 					if (p.n.agentId && p.z > -0.2) hits.push({ agentId: p.n.agentId, x: p.x, y: p.y, z: p.z });
 				} else {
@@ -128,20 +129,40 @@ export function WorldGlobe({
 			ctx.globalAlpha = 1;
 			hitsRef.current = hits;
 		};
+		drawRef.current = draw;
+
+		const resize = () => {
+			const rect = canvas.getBoundingClientRect();
+			w = rect.width;
+			h = rect.height;
+			canvas.width = Math.round(w * dpr);
+			canvas.height = Math.round(h * dpr);
+			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+			draw(); // redraw after a resize so the reduced-motion frame never blanks
+		};
+		resize();
+		const ro = new ResizeObserver(resize);
+		ro.observe(canvas);
 
 		const loop = () => {
 			angle += 0.0016;
 			draw();
 			raf = requestAnimationFrame(loop);
 		};
-		if (reduce) draw();
-		else raf = requestAnimationFrame(loop);
+		if (!reduce) raf = requestAnimationFrame(loop);
 
 		return () => {
 			cancelAnimationFrame(raf);
 			ro.disconnect();
+			drawRef.current = null;
 		};
 	}, []);
+
+	// reduced-motion: the rAF loop isn't running, so redraw the static frame when
+	// the projected data (nodes / focus / selection) changes.
+	useEffect(() => {
+		if (reduceRef.current) drawRef.current?.();
+	}, [nodes, focusIds, selectedId]);
 
 	const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
 		const rect = e.currentTarget.getBoundingClientRect();
@@ -155,5 +176,22 @@ export function WorldGlobe({
 		if (best) onPick(best.agentId);
 	};
 
-	return <canvas ref={canvasRef} onClick={handleClick} className="h-full w-full cursor-pointer" aria-label="Production world model globe" />;
+	const anchors = nodes.filter((n) => n.anchor && n.agentId);
+
+	return (
+		<>
+			<canvas ref={canvasRef} onClick={handleClick} className="h-full w-full cursor-pointer" aria-label="Production world model globe" />
+			{/* keyboard + screen-reader path: the canvas is pointer-only, so every anchor
+			    is also a focusable control that fires the same cross-lens selection. */}
+			<ul className="sr-only" aria-label="Globe anchors">
+				{anchors.map((n) => (
+					<li key={n.id}>
+						<button type="button" onClick={() => onPick(n.agentId as string)}>
+							Focus {label(n)} ({n.status})
+						</button>
+					</li>
+				))}
+			</ul>
+		</>
+	);
 }
