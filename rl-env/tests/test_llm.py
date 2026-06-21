@@ -28,6 +28,16 @@ def test_fireworks_request_shape():
     assert "ping" in payload["prompt"]                    # text-completion endpoint
 
 
+def test_gateway_request_shape():
+    # frontier models route through the HUD inference gateway (OpenAI-compatible chat)
+    url, headers, payload = build_request("gpt-5.5", "ping", max_tokens=16)
+    assert url == "https://inference.beta.hud.ai/v1/chat/completions"
+    assert "Authorization" in headers                     # Bearer HUD_API_KEY (value at call time)
+    assert payload["model"] == "gpt-5.5"
+    assert payload["messages"][-1]["content"] == "ping"
+    assert "temperature" not in payload                   # reasoning models -> no_temperature
+
+
 def test_unknown_model_raises():
     with pytest.raises(KeyError):
         build_request("not-a-model", "ping")

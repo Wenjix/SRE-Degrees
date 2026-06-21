@@ -19,6 +19,20 @@ ROSTER = {
     "claude-haiku-4-5": {
         "provider": "anthropic", "model": "claude-haiku-4-5-20251001", "anchor": "weak",
     },
-    # qwen3.x / gemma drop in here once the exact Fireworks slugs are confirmed
-    # (their account /models endpoint is down, so the slugs can't be enumerated).
+    # --- cross-provider frontier models via the HUD inference gateway (one key) ---
+    # These are reasoning models that only accept the default temperature, hence
+    # no_temperature; the gateway is OpenAI-compatible chat. Enumerated from
+    # `hud models list` against https://inference.beta.hud.ai.
+    "gpt-5.5": {
+        "provider": "gateway", "model": "gpt-5.5", "anchor": "strong", "no_temperature": True,
+    },
+    "gemini-3.1-pro": {
+        "provider": "gateway", "model": "gemini-3.1-pro-preview", "anchor": "strong", "no_temperature": True,
+    },
+    "deepseek-v4-pro": {
+        "provider": "gateway", "model": "deepseek/deepseek-v4-pro", "anchor": "strong", "no_temperature": True,
+    },
+    "grok-4.3": {
+        "provider": "gateway", "model": "grok-4.3", "anchor": "strong", "no_temperature": True,
+    },
 }
