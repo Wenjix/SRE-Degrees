@@ -4,19 +4,28 @@
 // zero-shot answer; REx = propose -> harness feedback -> refine (with the safety
 // gate). Run it: `HUD_API_KEY=... python3 -m rex.frontier`.
 //
-// PROVENANCE (be honest — this is the lab's discipline):
-//   MEASURED  — the 5-row per-model totals (baseline_mean, rex_mean, lift) and
-//               clean-wins (2/5->4/5 etc.) are the published sweep result, from
-//               rl-env/ARCHITECTURE.md ("REx lifts every frontier model" table),
-//               produced by rl-env/rex/frontier.py.
-//   STRUCTURAL — the REx per-(model,incident) cells. The sweep converges every
-//               model to the SAME 0.86 = (4x1.0 + 0.30)/5: under REx every model
-//               solves the 4 solvable incidents (1.0) and correctly ESCALATES the
-//               1 unsolvable singleton (0.30, diagnosis-only, no safe fix). This
-//               structure is stated in ARCHITECTURE.md; the heatmap renders it.
-//   NOT PUBLISHED — per-(model,incident) BASELINE cells are not individually
-//               reported. We render baselines only as the per-model total +
-//               clean-wins count, never as fabricated per-cell numbers.
+// SINGLE SOURCE OF TRUTH: the per-model sweep numbers come from
+// lib/rex-evidence.ts (FRONTIER_REX_SWEEP), the same module the promotion
+// dossier reads — so the Lab leaderboard and the per-agent REx evidence can
+// never drift apart. This module only adds the Lab's view-model extras (the
+// incident set, the reward formula, the narrative findings).
+//
+// PROVENANCE (the lab's discipline):
+//   MEASURED  — per-model baseline/rex/lift + clean-wins, from rl-env/ARCHITECTURE.md
+//               ("REx lifts every frontier model"), produced by rl-env/rex/frontier.py.
+//   STRUCTURAL — the REx per-(model,incident) cells: every model converges to the
+//               SAME 0.86 = (4×1.0 + 0.30)/5 (4 solvable solved @1.0 + the unsolvable
+//               singleton ESCALATED @0.30). The heatmap renders this structure.
+//   NOT PUBLISHED — per-(model,incident) BASELINE cells are not individually reported;
+//               we render baselines only as the per-model total + clean-wins count.
+
+import {
+	FRONTIER_REX_SWEEP,
+	REX_TASKSET,
+	frontierRexSummary,
+	rexLift,
+	type ScoredRexEvidence,
+} from "@/lib/rex-evidence";
 
 export const REWARD_FORMULA = {
 	// rl-env/rex/scoring.py  (W_ROOT, W_FIX, W_RESOLVED, TRAP_PENALTY)
@@ -30,16 +39,18 @@ export const REWARD_FORMULA = {
 	],
 } as const;
 
-// The fixed sweep grid — rl-env/rex/frontier.py SCENARIOS.
+const _summary = frontierRexSummary();
+
+// The fixed sweep grid — derived from rex-evidence (REX_TASKSET) so the Lab and
+// the promotion dossier agree on size/ceiling. budget is a frontier.py detail.
 export const SWEEP = {
 	budget: 3, // REx tree budget (frontier.py BUDGET)
-	nIncidents: 5,
-	nSolvable: 4,
-	nModels: 5,
-	// 0.86 = (4 × 1.0 + 1 × 0.30) / 5
-	ceiling: 0.86,
+	nIncidents: REX_TASKSET.tasksetSize,
+	nSolvable: REX_TASKSET.solvableIncidents,
+	nModels: _summary.modelCount,
+	ceiling: _summary.ceilingScore, // 0.86 = (4 × 1.0 + 1 × 0.30) / 5
 	ceilingIdentity: "(4×1.0 + 0.30) / 5 = 0.86",
-} as const;
+};
 
 export type Provider = "Anthropic" | "OpenAI" | "Google" | "DeepSeek";
 
@@ -57,65 +68,32 @@ export type LeaderboardRow = {
 	rexCleanWins: number; // MEASURED — clean wins under REx, of 5
 };
 
-// rl-env/ARCHITECTURE.md — "REx lifts every frontier model" (the 5 rows).
-export const LEADERBOARD: LeaderboardRow[] = [
-	{
-		model: "claude-haiku-4-5",
-		provider: "Anthropic",
-		route: "native",
-		anchor: "weak anchor",
-		baseline: 0.63,
-		rex: 0.86,
-		lift: 0.23,
-		baselineCleanWins: 2,
-		rexCleanWins: 4,
-	},
-	{
-		model: "gpt-5.5",
-		provider: "OpenAI",
-		route: "gateway",
-		baseline: 0.63,
-		rex: 0.86,
-		lift: 0.23,
-		baselineCleanWins: 2,
-		rexCleanWins: 4,
-	},
-	{
-		model: "gemini-3.1-pro",
-		provider: "Google",
-		route: "gateway",
-		baseline: 0.75,
-		rex: 0.86,
-		lift: 0.11,
-		baselineCleanWins: 3,
-		rexCleanWins: 4,
-	},
-	{
-		model: "deepseek-v4-pro",
-		provider: "DeepSeek",
-		route: "gateway",
-		baseline: 0.81,
-		rex: 0.86,
-		lift: 0.05,
-		baselineCleanWins: 3,
-		rexCleanWins: 4,
-	},
-	{
-		model: "claude-opus-4-8",
-		provider: "Anthropic",
-		route: "native",
-		anchor: "strong",
-		baseline: 0.81,
-		rex: 0.86,
-		lift: 0.05,
-		baselineCleanWins: 3,
-		rexCleanWins: 4,
-	},
-];
+// rex-evidence encodes the route/anchor inside the provider string, e.g.
+// "Anthropic (weak anchor)", "OpenAI (gateway)", "Anthropic (strong)".
+function rowFromEvidence(e: ScoredRexEvidence): LeaderboardRow {
+	const provider = e.provider.split(" (")[0] as Provider;
+	const paren = e.provider.match(/\(([^)]+)\)/)?.[1];
+	const route: "native" | "gateway" = paren === "gateway" ? "gateway" : "native";
+	const anchor = paren && paren !== "gateway" ? paren : undefined;
+	return {
+		model: e.model,
+		provider,
+		route,
+		anchor,
+		baseline: e.baselineScore,
+		rex: e.rexScore,
+		lift: rexLift(e),
+		baselineCleanWins: e.baselineCleanWins,
+		rexCleanWins: e.rexCleanWins,
+	};
+}
+
+export const LEADERBOARD: LeaderboardRow[] = FRONTIER_REX_SWEEP.map(rowFromEvidence);
 
 // The fixed incident set (rl-env/rex/frontier.py SCENARIOS), in cascade order.
 // `solvable` incidents have a safe causal fix; the singleton has NONE by design —
-// the only correct move is to ESCALATE (diagnosis-only credit, 0.30).
+// the only correct move is to ESCALATE (diagnosis-only credit, 0.30). Unique to
+// the Lab view (rex-evidence carries the taskset shape, not per-incident labels).
 export type SweepIncident = {
 	id: string;
 	label: string;
@@ -133,7 +111,7 @@ export const SWEEP_INCIDENTS: SweepIncident[] = [
 		id: "singleton_node_notready",
 		label: "singleton_node_notready",
 		solvable: false,
-		rexCell: 0.3,
+		rexCell: REX_TASKSET.singletonEscalationScore,
 		note: "no safe automated fix — REx ESCALATES instead of flailing; 0.30 = diagnosis-only credit",
 	},
 ];
