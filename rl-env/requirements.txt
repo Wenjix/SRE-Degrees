@@ -1,0 +1,8 @@
+# Install on a GPU box / Colab. Unsloth pulls a matching torch/transformers.
+unsloth
+trl>=0.9.0
+datasets>=2.18.0
+transformers>=4.44.0
+accelerate
+trackio
+huggingface_hub

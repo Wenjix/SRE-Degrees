@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-015
+  severity: 1
+  title: "Stuck Rollout — shipping"
+  category: deployment-problems
+  author: rlvr-bench
+  description: |
+    - shipping rollout not progressing, replicas unavailable
+    - New revision wedged past its progress deadline
+  cause: |
+    - Unpullable/broken image revision, deadline exceeded
+  impact: |
+    - shipping stuck between revisions, reduced available replicas
+  mitigation: |
+    - Roll back the rollout OR fix the image OR bump the progress deadline
+  references:
+    - https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#progress-deadline-seconds
+  tags:
+    - cre-2025-rlvr-015
+    - rlvr
+    - stuck-rollout
+    - deployment
+metadata:
+  kind: prequel
+  id: b097fd60-stuk-44fa-86c7-shipping00015
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "StuckRollout: shipping new revision not progressing"

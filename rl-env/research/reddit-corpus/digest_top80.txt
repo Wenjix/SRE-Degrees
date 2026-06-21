@@ -1,0 +1,320 @@
+# Reddit SRE / Founder corpus — 1475 posts across 15 subreddits
+# Date range: 2013-06-14 → 2026-06-19 (13 years)
+
+## Top 80 highest-signal posts (pain-keyword hits × upvote-weighted)
+
+[01] r/startups | score=1058 | comments=251 | src=?
+     How I bootstrapped a $40m company overnight
+     > And by overnight, I mean it took 11 YEARS and I SURE AS HELL didn’t build it by myself. Here’s my story, my epic failures, the successes, and the heartaches.  **2010:**  I was 22 and worked at an engineering firm as an assistant, and I sucked at it. I hated having to dress up and
+
+[02] r/kubernetes | score=1 | comments=0 | src=arctic-shift
+     Thinking about building your own SRE agent at work? Here's what I learned doing it
+     > A few weeks ago I got tired enough of context-switching and wasting my exceedingly valuable engineering time investigating incidents, so I created an investigation agent which has been doing the bulk of the work for me since.  We host thousands of k8s managed customer deployments
+
+[03] r/Entrepreneur | score=3735 | comments=809 | src=?
+     4 years ago I wrote a case study on reddit on my $4k per month local business. I've since built that company into a multi-million dollar com
+     > 4 Years ago I wrote [this post](https://www.reddit.com/r/Entrepreneur/comments/sblc6/from_an_idea_to_replacing_my_fulltime_salary_in_4/) about me making $4k per month and then turned it into a [case study](https://www.reddit.com/r/EntrepreneurRideAlong/comments/tltuy/day_26_from_
+
+[04] r/sre | score=66 | comments=29 | src=?
+     Have you ever caused a major outage? 
+     > I run the web series [Humans of Reliability](https://rootly.com/humans-of-reliability), and in our most recent episode I interviewed Chris Ferraro (VP of Platform Eng at Garner Health), and he talked about the time he caused a global outage at Microsoft. Quite a few people have t
+
+[05] r/startups | score=487 | comments=64 | src=?
+     People Don't Quit Jobs; They Quit Bosses
+     > In actual sense, people don’t leave bad companies; they leave bad bosses.   &gt;“People leave managers, not companies.” - Marcus Buckingham   Bad bosses are the greatest liability to an establishment and even worse than fraud. Employees leave bad bosses and the companies that all
+
+[06] r/sysadmin | score=1 | comments=0 | src=arctic-shift
+     Limbo Pool — Zero Trust Isolation Without Hardware or Agents
+     > I built something I thought was impossible: a way to enforce zero trust isolation natively, without hardware appliances or third‑party software.  **Limbo Pool** is pure PowerShell. When a machine lands, it’s instantly dropped into an isolated zone. That event is fired straight in
+
+[07] r/ExperiencedDevs | score=9344 | comments=681 | src=?
+     Drunk Post: Things I've learned as a Sr Engineer
+     > I'm drunk and I'll probably regret this, but here's a drunken rank of things I've learned as an engineer for the past 10 years.  * The best way I've advanced my career is by changing companies. * Technology stacks don't really matter because there are like 15 basic patterns of so
+
+[08] r/Entrepreneur | score=3023 | comments=1063 | src=?
+     11 years ago I got a $428 million dollar lesson when I was fired from Facebook as employee #30. I went on to build two multi-million dollar 
+     > **I’m Noah Kagan, host of [Podcast](http://www.okdork.com/podcast) / [YouTube](https://www.youtube.com/user/crxnamja/videos?sub_confirmation=1) and founder of [Sumo](http://www.sumo.com) (free tools to grow your website and business) and [AppSumo](http://www.appsumo.com) (Groupon
+
+[09] r/Entrepreneur | score=2265 | comments=257 | src=?
+     From $0 to $323,010.43 in 14 months with a simple startup. The exact Facebook ads, landing pages, website, pricing strategy, sales aids and 
+     > TL;DR. Me and my college buddy took our startup to $323,000.43 in 14 months and we will soon pass $1,000,000 in annual recurring revenue. I’m creating this post to give you a ski lift up the hard-fought mountain of success. I wish someone had done that for me.  This is how we did
+
+[10] r/ExperiencedDevs | score=917 | comments=78 | src=?
+     Work isn't therapy. Lessons I learned too late as a Principal SWE
+     > Today is my first day of being unemployed after quitting my job as a Principal SWE due to personal reasons and just wanted to share a few non-technical lessons I've learned over the past few years. They might seem extremely basic to some, but I definitely learned them the hard wa
+
+[11] r/ExperiencedDevs | score=521 | comments=116 | src=?
+     My company laid off our best people without warning and now I am thinking of leaving myself
+     > I'm a dev lead who was just promoted a few months ago at a company of a few hundred people or so. My company has always had some culture issues, but their quarterly reports were always solid and they exceeded expectations so I didn't have any financial worry about the company's f
+
+[12] r/startups | score=458 | comments=60 | src=?
+     Don't quit your job to do your startup full-time until it generates enough revenue to support yourself.
+     > I've attempted over 6 software startup ideas on my own. 5 failed, one worked and I sold it to private equity 2 years ago. The companies that failed were when I decided to go full-time on something that wasn't even validated yet. The stress of having runway on something that may o
+
+[13] r/devops | score=340 | comments=61 | src=?
+     DevOps Engineer Skills Matrix - What do you think about it? Do your company use it?
+     > What are the requirements for a DevOps engineer in your company? Do your company use the skill matrix? We've describe here our vision about what a DevOps engineer should know to be an expert and wanted to know your opinion.  So, since we understand that people come to companies f
+
+[14] r/devops | score=340 | comments=154 | src=?
+     The next time your devs complain about production being locked down:
+     > Respect to Resend for their transparency in publishing this post mortem, but this is one of your worst nightmares:  &gt;While building a feature, we performed a database migration command locally, but it incorrectly pointed to the production environment instead, which **dropped a
+
+[15] r/devops | score=324 | comments=184 | src=?
+     Why is DevOps still such a fragmented, exhausting (and ofc costly) mess in 2025?
+     > # I have been thinking about this for quite sometime and thought of getting your thoughts. I feel like DevOps was supposed to make life easier for developers, but honestly, it still feels like an endless headache. Every year, there’s a new tool, a new “best practice,” and a new w
+
+[16] r/sre | score=56 | comments=6 | src=?
+     Don’t do this with your k8s health checks
+     > **Link:** [https://doordash.engineering/2022/08/09/how-to-handle-kubernetes-health-checks/](https://doordash.engineering/2022/08/09/how-to-handle-kubernetes-health-checks/)  After suffering an outage on black friday our team realized the root cause came from our poor understandin
+
+[17] r/chaosengineering | score=3 | comments=0 | src=arctic-shift
+     Don’t do this with your k8s health checks
+     > **Link:** [https://doordash.engineering/2022/08/09/how-to-handle-kubernetes-health-checks/](https://doordash.engineering/2022/08/09/how-to-handle-kubernetes-health-checks/)  After suffering an outage on black friday our team realized the root cause came from our poor understandin
+
+[18] r/kubernetes | score=1 | comments=0 | src=arctic-shift
+     The hard part of autonomous SRE was never the AI. It's how much you trust it.
+     > **An AI agent just did the 3 AM on-call diagnosis I used to wake up for. In 30 seconds. On my laptop. With nothing but open source.**  So I filmed the whole thing. One continuous take, no cuts. I crashed a real pod, the kernel killed it, and \~30 seconds later a full post-mortem
+
+[19] r/sysadmin | score=1 | comments=0 | src=arctic-shift
+     Looking for sysadmins with stories worth telling
+     > I've been working in IT for more than 25 years, and one thing I've learned is that every sysadmin has at least one story that still gets brought up years later.  Maybe it was a datacenter incident. A failed migration. A ransomware event. Shadow IT that somehow became production.
+
+[20] r/kubernetes | score=0 | comments=0 | src=arctic-shift
+     Managing Kubernetes at Scale Is Getting Harder
+     > As Kubernetes environments grow, troubleshooting becomes increasingly complex.  A single incident can require checking logs, metrics, events, deployments, and multiple dashboards just to understand what went wrong.  I've noticed that the biggest challenge isn't detecting issues a
+
+[21] r/startups | score=733 | comments=337 | src=?
+     After losing $38676 as an entrepreneur. I can't do it anymore. I quit.
+     > Around a year ago I left my job to start a company.  I had around $12K in savings. Enough to cover a year of expenses and a bit more. I stopped spending money on almost everything.  How hard could that be, right? I create something, find 10-20 clients, and done. I'll make $1K per
+
+[22] r/ExperiencedDevs | score=687 | comments=107 | src=?
+     My story of joining the Great Resignation
+     > Twenty years into my software engineering career, I have decided I had to take a break for my mental health.  I became part of the Great Resignation of the Early 2020s (I hope the history books phrase it, and capitalize it, just like that).  One thing I never felt until the las
+
+[23] r/startups | score=658 | comments=76 | src=?
+     How I got into YC twice, with 2 different ideas, in back-to-back years
+     > Hey all.  This is my story of how I got into YC twice, with 2 different ideas in back-to-back years. My style of entrepreneurship is different from most because I launch companies in spaces where I start with 0 domain knowledge. Here's my process.  *Edit 1: Moderators removed my
+
+[24] r/ExperiencedDevs | score=618 | comments=132 | src=?
+     Burnout Prevention
+     > I’ve been doing this for about 5 years now. In that time I’ve worked on more technologies, frameworks, languages, and awful codebases/databases than I can count. I’ve also experienced burnout a number of times. I’ve found out how to avoid it, and I’d like to share my secret:  Sto
+
+[25] r/ExperiencedDevs | score=598 | comments=137 | src=?
+     Here’s few things I have been telling junior developers in 1:1 and it’s working out pretty well
+     > X post.  Here's few things I am telling junior developers in 1:1 and it's working out pretty well  It's very basic thing but often ignored so thought to put it out.  I don't know if you would believe it or not, but some junior developers are shit scared when they join any team. I
+
+[26] r/startups | score=535 | comments=83 | src=?
+     Remote work was destroying my team. This is what we've done.
+     > Like many of you, my company has decided to go fully remote during the peak of c0vid. This was a company-wide decision where everyone weighed in the pros and cons.   At first, I actually celebrated this move (I've always been a bit of a homebody) even though as the CEO, I was sli
+
+[27] r/startups | score=522 | comments=55 | src=?
+     Here's the exact process Seth Godin uses to launch a new business (from scratch) with only $1,000 in the bank and 90 days to spare
+     > Most of the so-called marketing "influencers" out there are celebrities.  They've made it. They're not in the trenches anymore.   They forgot how to "do" marketing; their employees promote their new books for them, build their new websites, launch their new products... all they h
+
+[28] r/startups | score=505 | comments=76 | src=?
+     Work-life balance is no joke.
+     > One of my employees has been struggling with chronic overworking for the past two months. She is the kind of person who monitors her emails in the evening just to make sure our client gets a prompt email reply or can make an urgent Zoom call, even though her workday starts at 7 a
+
+[29] r/devops | score=399 | comments=53 | src=?
+     Bit of a "wow" this company is great to work for post, feel free to share stories yourselves
+     > So i started at a big financial tech firm recently, Ive had my share of shitty jobs in the past where blame culture is massive, but I was shocked a few weeks ago by this new company.   Someone in another team fat fingered an update in a tool which took down everything in producti
+
+[30] r/startups | score=373 | comments=60 | src=?
+     After 5 Years of Fail, I made $147,000 in Two Months: An /r/startups Success Story
+     > This whole thing started about 5 years ago and I was inspired to rehash the journey when I happened upon a post I’d made back in Dec. 2012 on the [Fires of Heaven] [p] gaming forums.   &amp;nbsp;  tl;dr - So, after nearly 5 years of failing at SAAS, within two months we did $147,
+
+[31] r/aws | score=360 | comments=68 | src=?
+     AWS Cognito &amp; Amplify Auth - Bad, Bugged, Baffling
+     > ## What this article is about  I'm going to express my dissatisfaction with **AWS Cognito** and **Amplify Auth**. If you intend to use these services in the future, or you're already using them, you can probably get something out of reading the article, potentially save yourself
+
+[32] r/ycombinator | score=228 | comments=54 | src=arctic-shift
+     If you ever feel like giving up, just sleep
+     > I’ve noticed a pattern  Sometimes I’ll be working on something and suddenly everything feels impossible  The product isn’t good enough, the market is too competitive, the problems are too big and blah blah. It feels like nothing is going to work out  And the weird thing is that i
+
+[33] r/sre | score=69 | comments=20 | src=?
+     Thank you /r/SRE &lt;3
+     > Hi SRE friends,  As many of you may know I started an incident management company called [Rootly](https://rootly.io/) last year after feeling the pain of how hard resolving incidents at Instacart was (where my cofounder and I prev worked).  We worked with so many people in this p
+
+[34] r/SaaS | score=1 | comments=0 | src=arctic-shift
+     Would you trust an AI to run your entire marketing?
+     > genuinely curious:  if there was an ai that could autonomously handle most of your marketing (finding viral content, doing market research, creating ugc ads, posting on tiktok daily, testing angles, etc.), would you actually trust it to run by itself?  or would you still want to
+
+[35] r/sysadmin | score=1 | comments=0 | src=arctic-shift
+     Is there an outage? What fresh hell awaits today?
+     > I run a lot of smart lights and such, and one thing I like about them is I get a heads up on if there's an outage. Today all my smart outlets weren't working, including my coffee maker.   &#x200B;  After resolving the C1, I checked down detector and didn't see anything stand out.
+
+[36] r/Entrepreneur | score=2970 | comments=347 | src=?
+     SEO is Not Hard . A step-by-step SEO Tutorial for beginners that will get you ranked every single time
+     > After my post about making money from an affiliate site was at the top of this sub for a couple days, I've received more than 50 PMs asking for more info on how SEO works and how to get authority sites ranking. I have a chapter about that in my book, so I'm just going to publish
+
+[37] r/Entrepreneur | score=2794 | comments=461 | src=?
+     Mental health matters. Toxic positivity is a thing. Dont listen to Gary Vee and others who say you need to sleep 2 hours a night and never h
+     > This may be pretty controversial to lots of you here who hero worship people like Gary Vee and others, but it is important. The industry that has developed around entrepreneurship is infested with what I call 'Toxic Positivity'. It is dangerous and counterproductive.   Here are s
+
+[38] r/Entrepreneur | score=2506 | comments=283 | src=?
+     I dont care if my employees watch Netflix, shop on amazon and only work 4 hours a week. As long as they can get assigned tasks completed as 
+     > 1. I think a lot of people, in personal and business life, get offended and threatened by the wrong things and it costs them in time and suffering.   2. My role as an entrepreneur is not to squeeze my workers for every unit of productivity as possible. Its to ensure that I'm gett
+
+[39] r/Entrepreneur | score=2373 | comments=212 | src=?
+     From $18K/mo to $260K/mo in 5 months selling backpacks.
+     > I’ll save you the long form word vomit and just get to the bullet points so you can see what worked for us and replicate it in your own business.  *(if you sell even half decent physical goods you can follow this exact formula &amp; get comparable results.)*  Alright, the company
+
+[40] r/Entrepreneur | score=1950 | comments=262 | src=?
+     I lost $140k importing from China. Learn from my dumb mistake.
+     > A Chinese supplier screwed me for $216k and I had to sue them. This may be worth a quick read if you source from China.  My company imports and sells Bitcoin miners from China. Last December I placed an 18 miner order @ $12k each from a supplier I had used successfully a couple o
+
+[41] r/Entrepreneur | score=1912 | comments=796 | src=?
+     My 8 year old daughter started a business on Friday with 1k in revenue this weekend.
+     > My daughter has been begging me to help her set up a lemonade stand as she saw some older kids across the street try one for a few days.   She is very insistent on pushing me to help her.  As hot as it has been in my state I felt like it was a perfect time to try an idea I've had
+
+[42] r/Entrepreneur | score=1886 | comments=176 | src=?
+     4 months ago I quit my job to start a brewery, I've been waiting for this photo...
+
+[43] r/Entrepreneur | score=1835 | comments=252 | src=?
+     6 Years ago I quit my full time job to start a business. We’ve bootstrapped it to over $50 million/year in revenue and just won Top 25 Faste
+     > We are debt free, 185 employees (trying to hire another 20…), and I started it with less then $1000. We’ve just won Top 25 Fastest Growing Companies in South Carolina for the 4th year in a row, and we are still growing around 30% YoY. We also place on the Inc 5000 every year.   W
+
+[44] r/Entrepreneur | score=1833 | comments=145 | src=?
+     In March, my niche sites made $98,458 💰 Breakdown: - $27,756 affiliate - $32,866 mediavine - $37,836 ecommerce. Here's how I did it 👇
+     > I didn't. I'm just lying. Didn't make a penny. Even if I did it would just be revenue and not profit which is meaningless. Please don't trust or pay attention to most of the people who post these things.
+
+[45] r/Entrepreneur | score=1619 | comments=578 | src=?
+     I have millions of users, but no businesses use it
+     > Hi, my name is Ivan and I made a free photo editor [www.Photopea.com](https://www.Photopea.com) . It is very advanced and I am confident to say, that it can replace Adobe Photoshop, Pixelmator, Affinity Photo and other tools.  I released it in 2013 and now, 4 million people have
+
+[46] r/Entrepreneur | score=1618 | comments=202 | src=?
+     I quit my dead end $60k sales job and started a marketing firm. Today I closed my books on my sixth month.
+     > I started with about $5,000 in cash.  I was able to bring on two good customers really quickly from my last job and I started selling.  I’ve paid myself every month comparatively to what I was making before to basically keep my lifestyle and stay out of personal debt.  Today I cl
+
+[47] r/startups | score=1603 | comments=284 | src=?
+     Quit my full time corporate job. Built an iOS game. It became #1 in the App Store. Here are revenue numbers and what I learned.
+     > ## TL;DR  Made a little over $700k selling a premium mobile game with no IAP or Ads as a one man shop. It _is_ possible to create sustainable income from apps (albeit very difficult).  **[Part 2 is here.](https://www.reddit.com/r/startups/comments/4g935t/part_2_quit_my_full_time_
+
+[48] r/Entrepreneur | score=1602 | comments=470 | src=?
+     Web Design: Only started in Jan this year, making over $10,000 consistently every month. Lots of lessons... AMA
+     > **Thanks for the massive response on this everyone. I run a business during the day and wasn't really planning on this much feedback - I have tried to get back to everyone best as possible and will continue to do so as best as I can. Why am I sharing this? Steel sharpens steel. T
+
+[49] r/Entrepreneur | score=1594 | comments=388 | src=?
+     I became a self made millionaire at 25 in a third world country. I will share my story here:
+     > I am from Central America, a tropical region with lots of poverty and problems. Since I was a kid, I had the drive to put extra effort on achieving something. I started selling bananas to construction workers at 7 later selling candy to schoolmates at 10.  At 15 I decided to stud
+
+[50] r/Entrepreneur | score=1557 | comments=142 | src=?
+     I fired a customer today - don't be afraid to stand up to abusive customers in your business (no matter how bad you need their money)
+     > I own and manage 7 self storage facilities in upstate NY and PA. We pride ourselves on the best customer service around. Always smiling. Always very respectful. We go out of our way to make things right when we mess up. We also fight hard for rentals and new customers because we
+
+[51] r/Entrepreneur | score=1525 | comments=141 | src=?
+     The ladders of wealth creation: a step-by-step roadmap to building wealth
+     > This summer I wrote a post on growing my software company to $15M ARR ([reddit thread](https://www.reddit.com/r/Entrepreneur/comments/axncm4/15_lessons_from_our_first_15_million_in_recurring/)) that you all seemed to enjoy. So I thought I'd share my latest writing.  Back when I d
+
+[52] r/Entrepreneur | score=1511 | comments=195 | src=?
+     I scraped the top 100 e-commerce stores using Shopify. Here are my boring findings.
+     > Hey guys,  Last month I realized anyone could pretty much find out who the biggest Shopify stores are since they're all hosted under the same IP: 23.227.38.32  Knowing this, I scraped the Top 100 Shopify Stores by Alexa Rank, using myips.ms - so these are the most visited e-comme
+
+[53] r/startups | score=1255 | comments=361 | src=?
+     My $0-&gt;$100m-&gt;$0 in 5 years story
+     > I see a lot of hopefuls here glamorizing VCs and fundraising. Too much survivor bias. Hopefully my story can give you another perspective.   Quit my executive job at a FAANG. Started a SaaS as a first time founder. Raised a modest amount (under a million) and got to work alone.
+
+[54] r/ExperiencedDevs | score=754 | comments=129 | src=?
+     This morning a hard decision was finalized
+     > I'm a manager who is about to make a very tough call but I think it helps to share instances like this so we can talk about as a group.  I have been managing "Jeff" for about 1 year, I took over this team after some products were moved around and this one fell to me.  Jeff is the
+
+[55] r/devops | score=744 | comments=75 | src=?
+     im finally a DevOps Engineer
+     > 5 years ago I had zero college, zero experience, no certifications, and no marketable skills coming out of the army. i set the goal for myself to become a DevOps engineer and today I did it.  got into IT with zero experience and one certification in 2020 when i got out of the arm
+
+[56] r/startups | score=707 | comments=204 | src=?
+     From a sucky accounting job to doing $1.4 million dollars a year with my mobile app 4 years after launch! (And I can't write a single line o
+     > Pull up a chair family!  I’m going to peel back the layers to show that this stuff is actually doable.  And while we’re not making 10’s of millions like some other apps yet, I think we have a real path to get there. We’re growing at a measured and manageable rate, are completely
+
+[57] r/ExperiencedDevs | score=644 | comments=269 | src=?
+     Why do companies spend so much time, money, and effort on recruiting but nothing on retention?
+     > It's incredibly expensive to hire engineers. First there is the salary cost, signing bonus, and stock. Then you also have to take workers off their regular job queue to do phone screens, run interviews, etc. Also consider the army of recruiters, HR coordinators, and other middle-
+
+[58] r/ExperiencedDevs | score=631 | comments=342 | src=?
+     Anyone have experience with rage quitting?
+     > I have had a seriously insulting performance review at work, and am considering quitting without notice even after sleeping on it. It was the no bonus/no raise “you might as well not have been here last year and we’re setting up to be able to let you go” type, with a while lot of
+
+[59] r/ExperiencedDevs | score=627 | comments=33 | src=?
+     How I escaped toxic workplace - 9 months after
+     > I want to share this with you because here are people who helped me and I wanna say THANK YOU.  I’ve deleted my post, but some of you will remember.  So, 9 months ago I reached this sub for advise asking if my team is toxic sharing with you details like - they exclude me from mee
+
+[60] r/ExperiencedDevs | score=594 | comments=87 | src=?
+     One year as a CTO - Thoughts, ideas, regrets and more
+     > This might be a rant, screaming into the void or it might be helpful for someone in a similar position in the future. Follow me in an personal, uninteresting and opinionated story about mental breakdowns, impostor syndrome and lessons learnt. Let me start at the beginning.  A lit
+
+[61] r/ExperiencedDevs | score=548 | comments=94 | src=?
+     6 Lessons I learned from working at a dysfunctional workplace!
+     > 10 YOE, had a lead role at my previous company. Switched to being an IC for more money at a larger company 1.5 years ago. When I joined the team was small, capable and effective. There were problems (mostly related to Jenkins :)) but the team was delivering value and customers w
+
+[62] r/startups | score=539 | comments=72 | src=?
+     My manager (who I loved) recently left my company. I summarized some of my notes from our many conversations. Here they are: I wish someone 
+     > *I was reviewing some notes from 1-1 meetings that me and my manager Dave used to have, and I thought I'd summarize a bunch of the repeated talking points we've had over the years. Here's some of what I've learned about being a competent professional.*  # Identify and focus on yo
+
+[63] r/ExperiencedDevs | score=499 | comments=52 | src=?
+     Questions I've asked during interviews
+     > Currently going through a round of hiring,  After getting past their screening process, I've come up with a few questions to judge if I want to work at a place that apply generically to any company at this level.  Thought I'd compile my list of questions for others to use and com
+
+[64] r/devops | score=498 | comments=152 | src=?
+     Shit guys, I need a fucking job
+     > Shit guys, I need a fucking job because my goddamn wallet has a hole in it. My family keeps eating all my food and spending my cash on shit like water and gas. Like, piss off already, right? The fuck is wrong with this world.  I can kick ass with Ansible. I'll terraform all your
+
+[65] r/startups | score=495 | comments=108 | src=?
+     I ALSO Quit my full time corporate job. Built an Android game. It failed! Here are revenue numbers and what I learned.
+     > #TL;DR Made a little over $25.00 in my mobile game with IAP and Ads as a one man show.  It *is* very **hard** to become successful in the gaming market for a single individual.    &amp;nbsp;  #Background I write my games in Gamemaker - Studio.   My wife suggested I make a post.
+
+[66] r/devops | score=456 | comments=245 | src=?
+     Do you guys know what you are doing most of the time?
+     > I am a DevOps Engineer but most of the time I have no idea what I am doing.  It is pretty common that seemingly simple tasks take a week or two to be completed because I struggle when trying to find out what I need to do.  I also procrastinate a lot but this is mostly because I h
+
+[67] r/startups | score=456 | comments=62 | src=?
+     This exact process has gotten my startup written about in the New York Times, CNN, Mashable, TechCrunch, etc. It's a long, detailed post, bu
+     > **Shameless plug: This is a chapter of a book I co-wrote with Vincent Dignan. You can** [buy the full book](https://secretsaucenow.com) **and get 14 more chapters, just like this one, breaking down every other channel.**  #How to get press: the complete guide#  We can pretend lik
+
+[68] r/devops | score=444 | comments=136 | src=?
+     So long, and thanks for all the fish.
+     > Apparently I am a Software Developer rather than SRE now. Thanks all, it's been real. I'll be studying LeetCode for now on and forgetting everything I've learned as a SRE. I will no longer have to be on-call for infrastructure, I'll be throwing all problems that relate to my code
+
+[69] r/startups | score=435 | comments=179 | src=?
+     Jealous of my best friend's success
+     > This will most likely get removed since I'm basically venting, but I feel it's better than keeping all these thoughts bottled up.  Me [25M] and my friend [26M] have known eachother since we were 9. For years we would constantly talk about the company we would start and got really
+
+[70] r/devops | score=420 | comments=54 | src=?
+     What makes a "good" junior engineer? My 2c as a senior.
+     > Something we see a lot in DevOps community forums are posts asking how to get into DevOps. This has been answered endlessly and will continue to be with varying degrees of snark depending on the mood of the people replying. Please, [read the friendly manual](https://roadmap.sh/de
+
+[71] r/startups | score=400 | comments=80 | src=?
+     Don't listen to VCs telling you "think big". They push you take huge risks so that your startup fits their portfolio made of many such bets.
+     > So that's typical of the VC jargon, "think big", "be bold", "not fear incumbents", "move fast", "break things".  In the end it all means this:  1) They like the idea  2) They like the team  3) They like the vision  4) THEY don't like how conservative you are being  VCs think in b
+
+[72] r/startups | score=394 | comments=38 | src=?
+     A perspective of working in the Startup world for 8 yrs
+     > 8 yrs have passed since I quit my corporate job to start a career in the startup world. In these 8 yrs, I have founded 3 startups and worked in 3. Some of the time I have spent doing miscellaneous projects.  But what a rewarding journey it has been. It's not that I have earned a
+
+[73] r/startups | score=377 | comments=55 | src=?
+     I noticed that a lot of landing pages on "Share your startup" lack the basic principles of copywriting, so I wrote this for you
+     > Hello!  I noticed that quite a lot of websites on the "Share your startup" thread lack the basic principles of copywriting. So I wrote this post to help you out.  If you've not heard of copywriting before, it's simply salesmanship in print.  Now, I'm not saying that your website
+
+[74] r/startups | score=366 | comments=115 | src=?
+     Don't build a startup, build a business instead
+     > Everybody and their dog seems to want to build a startup, but guess how many of those actually get to delivering a finished product and turning a profit? Not many!  The problem is the way most approach entrepreneurship is flawed from the beginning. They try to be disruptors, buil
+
+[75] r/aws | score=364 | comments=244 | src=?
+     Employees response to AWS RTO mandate 
+     > Following the claims behind this article, what do you think will happen next?   I see some possible options  1. A lot of people will quit, especially the most talented that could find another job easier. So other companies may be discouraged from following Amazon's example.  2. T
+
+[76] r/aws | score=327 | comments=123 | src=?
+     Amazon’s AWS face third outage this month, affecting Slack, Epic Games Store, Asana, and more – HA Bytes
+
+[77] r/devops | score=323 | comments=175 | src=?
+     I was officially automated out of my job - pitfall of DevOps
+     > I often hear the joke in DevOps departments "If we automate everything we won't have a job" it's usually said facetiously.  However in this case it did happen to myself, and about 100+ other DevOps engineers.  I can't say too much due to NDA, I'm sure it'll probably end up public
+
+[78] r/aws | score=303 | comments=145 | src=?
+     AWS us-east-1 outage brings down services around the world
+
+[79] r/azure | score=286 | comments=53 | src=?
+     My Azure dedicated YouTube channel just passed 100,000 subscribers. Thank you! 🥳
+     > &amp;#x200B;  https://preview.redd.it/e0m9sbgnsef81.jpg?width=2048&amp;format=pjpg&amp;auto=webp&amp;s=d87bd81d3e09e137bfb4fa639cb25f0fa4d56c6a  It's hard to believe, but we're finally here. 100,000 subscribers on my YouTube channel. 🥳🥳🥳🥳  Let me tell you... what a journey it has
+
+[80] r/aws | score=272 | comments=23 | src=?
+     Slack’s Outage on January 4th 2021

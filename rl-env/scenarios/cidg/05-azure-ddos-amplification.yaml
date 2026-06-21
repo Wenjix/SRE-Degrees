@@ -1,0 +1,178 @@
+# CIDG scenario — reconstruction of a real post-mortem as an emergent-cascade topology.
+#
+# Incident #5: Microsoft Azure / M365 DDoS-defense amplification (Jul 30 2024).
+# A genuine volumetric DDoS attack hit Azure Front Door and the M365 fabric. The attack
+# was real — but Microsoft's own DDoS PROTECTION/mitigation behaviour AMPLIFIED the
+# impact: an implementation error in the defensive path meant that under load the
+# mitigation began throttling/dropping LEGITIMATE traffic alongside attack traffic, so
+# the defense itself became the failure amplifier and starved customer-facing services.
+#
+# MISLEADING by construction: it really WAS an attack, so the obvious operator read
+# ("we're under attack -> turn the mitigation UP / block harder") is exactly the TRAP.
+# Tightening or scaling the defensive path makes the shared rate-limit pool starve even
+# MORE legitimate callers. The correct move is the counter-intuitive one: TUNE the
+# mitigation logic back to sane thresholds and ISOLATE the customer-facing dependency
+# path from the defensive control path so legit traffic no longer contends in the
+# defense's finite token pool.
+#
+# Public technical detail is thin (MS confirmed an "error in the implementation of our
+# defenses amplified the impact" rather than mitigating it). The mechanism below is a
+# plausible orchestration-level approximation: the mitigation enforces a shared
+# rate-limit token POOL that, under attack, is exhausted by attack volume and throttles
+# ALL fan-in callers — including legitimate front-door traffic.
+#
+# Maps onto the 4-criteria pattern:
+#   cascade            -> pool + required edges fan the throttle out from the defense
+#                         to every downstream customer-facing service
+#   misleading symptom -> loudest alerts are 5xx/timeouts on product VICTIMS and the
+#                         "attack volume" metric, NOT the defense being misconfigured
+#   multi-step diag    -> the "legit traffic dropped by mitigation" smoking gun is
+#                         buried under a flood of attack-traffic drop traces; monitoring
+#                         (traffic-analytics) observes the front-door and is itself
+#                         degraded as the data plane chokes
+#   naive fix worsens  -> increase mitigation / scale the defense -> more contention on
+#                         the shared token pool -> more legit drops -> worse
+
+meta:
+  id: azure-ddos-amplification
+  title: "Azure / M365 DDoS-defense amplification (mitigation starves legit traffic)"
+  source: "Microsoft Azure status / M365 service incident (Jul 30 2024) — 'error in the implementation of our defenses amplified the impact'"
+  urls:
+    - https://azure.status.microsoft/en-us/status/history/
+  failure_class: ddos + defense-amplification + shared-pool-fan-in-contention
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: external-traffic         # mixed attack + legitimate ingress
+      kind: external
+      resources: { replicas: 1 }
+      labels: { mix: "attack+legit" }
+    - name: ddos-mitigation          # the defensive control path = the amplifier
+      kind: control_plane
+      resources: { pool_size: 100 }   # rate-limit TOKEN pool shared by ALL callers
+      limits: { defense_over_block: true }
+    - name: front-door               # Azure Front Door — edge LB for all customer traffic
+      kind: lb
+      resources: { replicas: 6 }
+    - name: api-gateway              # auth/routing for product traffic
+      kind: lb
+      resources: { replicas: 4 }
+    - name: m365-auth                # customer-facing victim (sign-in)
+      kind: service
+      resources: { replicas: 4 }
+    - name: teams-api                # customer-facing victim
+      kind: service
+      resources: { replicas: 4 }
+    - name: outlook-api              # customer-facing victim
+      kind: service
+      resources: { replicas: 4 }
+    - name: traffic-analytics        # monitoring; observes the front-door data plane
+      kind: monitoring
+      resources: { replicas: 2 }
+  edges:
+    # All ingress is forced through the defensive path first.
+    - { from: external-traffic, to: ddos-mitigation, type: required, weight: 1.0, retry: 0.2 }
+    # The defense enforces a shared finite token pool: Σ(attack+legit) demand >> pool_size
+    # => ALL legitimate callers contend and get throttled (fan-in contention = amplifier).
+    - { from: front-door, to: ddos-mitigation, type: pool, weight: 1.0 }
+    # Front Door fronts the customer-facing path; the throttle propagates downstream.
+    - { from: front-door, to: api-gateway, type: required, latency_add_ms: 6, retry: 0.4 }
+    - { from: m365-auth,  to: api-gateway, type: required, latency_add_ms: 5, retry: 0.5 }
+    - { from: teams-api,  to: api-gateway, type: required, latency_add_ms: 5, retry: 0.5 }
+    - { from: outlook-api, to: api-gateway, type: required, latency_add_ms: 5, retry: 0.5 }
+    # Monitoring is in the blast radius: it observes the front-door data plane, so as the
+    # plane chokes the analytics lag and the operator loses ground-truth on legit drops.
+    - { from: traffic-analytics, to: front-door, type: observes }
+    - { from: traffic-analytics, to: ddos-mitigation, type: observes }
+
+root_cause:
+  location: ddos-mitigation
+  kind: defense_amplify            # the defensive path itself starves legitimate traffic
+  severity: 0.9
+  hidden: true
+  # Hysteresis: once the mitigation has ratcheted its block aggressiveness to the cap and
+  # poisoned its in-memory block/penalty state, simply relaxing the policy does NOT free
+  # the pool — the saturated mitigation state must be reset.
+  persistent: true
+  reset_by: [restart_service, modify_network_policy]
+  rate_law:
+    var: mitigation_block_aggressiveness   # adaptive block threshold ratchets under load
+    per_tick: 6
+    driver: attack_request_rate            # higher attack volume drives faster ratcheting
+    driver_gain: 0.5
+    cap: 100                               # at the cap the pool admits ~0 legit tokens
+    # The tempting "turn it up" actions push the aggressiveness straight toward the cap,
+    # consuming the shared token pool and dropping ever more legitimate callers.
+    worsened_by: [modify_network_policy, scale_deployment]
+  params:
+    legit_fraction: 0.35           # share of ingress that is legitimate (gets starved)
+    pool_demand_per_tighten: 30    # each "tighten mitigation" adds this much pool demand
+
+fault:
+  chaos_kind: networkchaos
+  exec_cmd: "drive volumetric attack traffic into external-traffic; mitigation ratchets block aggressiveness"
+  sim: { set: { ddos_attack_active: true, mitigation_over_block: true } }
+  duration_s: 150
+
+observation:
+  alerting: uniform                # loudness is emergent: it surfaces on the downstream victims
+  monitoring_degrades: true        # traffic-analytics observes front-door/mitigation -> lagged
+  smoking_guns:
+    - tool: query_traces
+      node: ddos-mitigation
+      signature: "rate_limit_drop: client_class=legitimate (dropped by mitigation, not attacker)"
+      buried_under: 80             # buried under the flood of attack-traffic drop traces
+    - tool: get_metrics
+      node: ddos-mitigation
+      signature: "token_pool_admit_rate=0 while legit_inflight>>0"
+      buried_under: 30
+
+slo:
+  # The loudest breach lands on the customer-facing VICTIMS, not on the mitigation root.
+  - { metric: error_rate_pct, node: m365-auth,  direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: teams-api,  direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: outlook-api, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: latency_p99_ms, node: front-door, direction: higher_bad, threshold: 800, sustain_ticks: 3 }
+
+# The DERIVED trap set is computed by the engine ({a : ΔSLO(a) < 0}); these are the
+# INTENDED traps, asserted at author time so the engine must reproduce them as worsening.
+# "Under attack -> turn the defense UP" is the seductive wrong move: it ratchets the
+# block aggressiveness toward the cap and floods the shared token pool with more demand,
+# starving even more legitimate callers.
+trap_actions:
+  - { tool: modify_network_policy, args: { target: ddos-mitigation, action: tighten_block_threshold } }
+  - { tool: scale_deployment, args: { target: ddos-mitigation, replicas: 12 } }   # more enforcers, same pool -> more contention
+
+canonical_fix:
+  ordering_notes: >
+    Do NOT escalate the defense. First TUNE the mitigation logic back to sane thresholds
+    (recalibrate the adaptive block aggressiveness) so the shared token pool stops
+    starving legitimate callers; then ISOLATE the customer-facing dependency path from
+    the defensive control path (carve legit/front-door traffic out of the shared pool)
+    so attack volume can no longer contend with legit traffic; only THEN restart the
+    mitigation to flush its saturated in-memory block state (the persistent counter does
+    not drain on its own). Tuning before isolating matters: isolating while the
+    aggressiveness is still pinned at the cap just moves the starvation to the carve-out.
+  steps:
+    - { tool: modify_network_policy, args: { target: ddos-mitigation, action: recalibrate_thresholds, mode: tune_down } }
+    - { tool: modify_network_policy, args: { target: front-door, action: isolate_legit_from_defense_pool } }
+    - { tool: scale_deployment, args: { target: front-door, replicas: 10 } }   # widen the isolated legit path
+    - { tool: restart_service, args: { target: ddos-mitigation } }             # flush saturated block state (reset)
+
+paired_positive: leaf-cpu-saturation-positive   # a sibling where scale_deployment IS the right fix
+
+assertions:
+  cascades: true
+  loudest_alert_not_cause: true
+  fix_resolves: true
+  buried_gun_exists: true
+  hysteresis: true
+  monitoring_degrades: true
+
+chance:
+  flap_prob: 0.12          # mitigation flaps as the adaptive threshold partially backs off
+  jitter: 0.06
+  partial_recovery_prob: 0.15
+
+seed: 730

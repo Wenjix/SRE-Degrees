@@ -1,0 +1,406 @@
+{
+  "incident": "circleci_waf_manual_edit",
+  "provider": "k8s",
+  "source_company": "CircleCI",
+  "source_url": "https://discuss.circleci.com/t/post-incident-report-april-4-2025-circleci-ui-loading-build-triggering-issues/53208",
+  "failure_mode": "out_of_band_waf_rule_blocks_legit_traffic",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "alert": {
+    "title": "[real-k8s] frontend cannot reach backend — CORS errors + webhook drop on circleci-frontend",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "FrontendBackendConnectivityErrors",
+      "severity": "critical",
+      "service": "circleci-frontend",
+      "namespace": "circleci-prod",
+      "workload_type": "deployment",
+      "workload_name": "circleci-frontend",
+      "cluster_name": "ci-edge-prod"
+    },
+    "commonAnnotations": {
+      "summary": "circleci-frontend (UI) and api-gateway connectivity failing: browser CORS preflight failures, UI not loading, GitHub webhooks not arriving, build/workflow triggering stalled",
+      "description": "edge_request_blocked_ratio at the CloudFront/edge tier in front of api.circleci.com and circleci.com jumped to 0.62 (SLO 0.005). Browsers report CORS errors on preflight to api.circleci.com; the UI fails to load; inbound GitHub webhooks are being dropped at the edge so workflows are not being triggered. This started ~minutes after a SEPARATE 'delays in starting workflows' incident was declared resolved, so it is initially suspected to be an aftereffect of that incident.",
+      "error": "Access to fetch at 'https://api.circleci.com/...' from origin 'https://app.circleci.com' has been blocked by CORS policy / 403 Forbidden from edge (CloudFront) before request reaches origin",
+      "suspected_symptom": "frontend_backend_connectivity_loss_cors",
+      "k8s_failure_mode": "edge_request_block",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,k8s_events,prometheus_metrics,k8s_deployments,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The incident started only minutes after a SEPARATE, unrelated 'delays in starting workflows' incident was marked resolved — strong pull to treat these CORS/connectivity errors as aftereffects of the prior incident and re-open it. This anchoring is the documented trap; the two incidents share no causal link.",
+      "CORS errors dominate browser consoles and app logs, making this look like a frontend CORS/API-gateway misconfiguration or a same-origin/headers regression — but the api-gateway and circleci-frontend pods emit correct Access-Control-Allow-Origin headers when reached directly in-cluster; the requests are being 403'd at the edge BEFORE they reach the origin.",
+      "Engineers suspect a recent deploy of circleci-frontend or api-gateway — but both deployments show rollout Complete with revisions and images unchanged for days, all replicas Available, zero restarts; no app code or config changed.",
+      "The edge WAF / CloudFront protection is managed by Terraform (infrastructure-as-code), so the team assumes ANY WAF change would appear in the IaC pipeline / git history — there is no Terraform plan or PR for this change, which (wrongly) leads them to rule out the WAF as a suspect and chase CORS/network instead. The change was made out-of-band via a console/IAM role, so it is invisible to git but VISIBLE in the live cloud/edge state and in drift detection.",
+      "api-gateway and circleci-frontend pods are Running and Ready with nominal CPU and memory and zero OOM/restarts — this is not resource exhaustion, not a crashloop, and not a bad deploy of the victim services.",
+      "DNS resolves correctly and origin services are healthy when probed from inside the cluster — the failure is purely a request-block at the edge layer, not name resolution or backend outage."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "circleci-prod",
+      "pods": [
+        {
+          "name": "circleci-frontend-6b7c9d8f54-4xq2p",
+          "namespace": "circleci-prod",
+          "node": "gke-ci-edge-prod-np-7c1a-9k2v",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "circleci-frontend:2025.03.31-rel.118",
+          "started": "2026-06-17T09:12:04Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Victim UI pod is healthy at the lifecycle layer and unchanged for days; it simply cannot be reached by browsers because the edge is 403-ing requests before they arrive. Loud symptom, not root cause."
+        },
+        {
+          "name": "api-gateway-58d4f6c7b9-rt8mn",
+          "namespace": "circleci-prod",
+          "node": "gke-ci-edge-prod-np-7c1a-2hrl",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "api-gateway:2025.03.28-rel.402",
+          "started": "2026-06-17T09:12:04Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: api-gateway emits correct CORS headers when called in-cluster; CORS errors in browsers are a side effect of edge 403s, NOT a gateway misconfiguration."
+        },
+        {
+          "name": "edge-gateway-cloudfront-sync-7f9b6c5d4a-zp6lk",
+          "namespace": "circleci-edge",
+          "node": "gke-ci-edge-prod-np-7c1a-9k2v",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "edge-gateway-cloudfront-sync:1.14.2",
+          "started": "2026-06-15T03:41:09Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING-GUN CARRIER: this controller mirrors the live CloudFront/WAF (edge) ruleset for circleci.com and api.circleci.com. Its pod is healthy, but its logs report a WAF rule present in LIVE state that is NOT in the Terraform-managed desired state (out-of-band change / configuration drift)."
+        },
+        {
+          "name": "github-webhook-receiver-69c8d7b5f6-m4w2t",
+          "namespace": "circleci-prod",
+          "node": "gke-ci-edge-prod-np-7c1a-2hrl",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "github-webhook-receiver:2025.03.20-rel.77",
+          "started": "2026-06-17T09:12:04Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Webhook receiver is healthy but is receiving almost no inbound GitHub webhooks because the edge WAF rule is blocking them upstream — this is why build/workflow triggering stalled (downstream symptom)."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "multiple (circleci-prod + circleci-edge)",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "EdgeConfigDriftDetected",
+          "object": "deployment/terraform-drift-detector",
+          "namespace": "circleci-edge",
+          "count": 1,
+          "first_seen": "2026-06-20T01:35:00Z",
+          "last_seen": "2026-06-20T01:35:00Z",
+          "message": "Drift detected on WAF web-ACL 'edge-waf-circleci': LIVE ruleset contains rule 'sec-monitor-block-rule' (priority 3, action=BLOCK) that is NOT present in Terraform desired state. Rule was applied out-of-band at 2026-06-20T00:16Z by IAM role 'security-monitoring-operator' (no Terraform plan/apply, no PR). SMOKING GUN."
+        },
+        {
+          "type": "Warning",
+          "reason": "EdgeRequestBlocked",
+          "object": "service/edge-gateway-cloudfront",
+          "namespace": "circleci-edge",
+          "count": 51840,
+          "first_seen": "2026-06-20T00:16:31Z",
+          "last_seen": "2026-06-20T01:40:55Z",
+          "message": "WAF rule 'sec-monitor-block-rule' returned 403 Forbidden for legitimate requests to api.circleci.com and circleci.com CloudFront distributions (UI assets, API calls, GitHub webhook POSTs)."
+        },
+        {
+          "type": "Warning",
+          "reason": "CORSPreflightFailed",
+          "object": "pod/circleci-frontend-6b7c9d8f54-4xq2p",
+          "namespace": "circleci-prod",
+          "count": 12044,
+          "first_seen": "2026-06-20T00:16:40Z",
+          "last_seen": "2026-06-20T01:40:58Z",
+          "message": "Browser OPTIONS preflight to api.circleci.com returned 403 from edge; no Access-Control-Allow-Origin header reached the browser (ADVERSARIAL: looks like a CORS/gateway bug, but origin returns correct headers — the 403 is injected at the edge)."
+        },
+        {
+          "type": "Normal",
+          "reason": "IncidentResolved",
+          "object": "incident/workflow-start-delays",
+          "namespace": "circleci-prod",
+          "count": 1,
+          "first_seen": "2026-06-20T00:10:00Z",
+          "last_seen": "2026-06-20T00:10:00Z",
+          "message": "Unrelated prior incident 'delays in starting workflows' marked RESOLVED at 00:10Z (ADVERSARIAL: this CORS incident starting ~6 min later is NOT an aftereffect of it; sharing a timeline is coincidental)."
+        },
+        {
+          "type": "Normal",
+          "reason": "NoDeploy",
+          "object": "deployment/circleci-frontend",
+          "namespace": "circleci-prod",
+          "count": 1,
+          "first_seen": "2026-06-20T00:16:00Z",
+          "last_seen": "2026-06-20T00:16:00Z",
+          "message": "No deployment of circleci-frontend or api-gateway in the 24h before onset; last rollout 3 days prior (ADVERSARIAL: rules out a recent-deploy regression)."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "edge-gateway-cloudfront-sync-7f9b6c5d4a-zp6lk",
+      "container": "cloudfront-sync",
+      "namespace": "circleci-edge",
+      "lines": [
+        "2026-06-20T01:35:00Z INFO  reconcile: fetching LIVE WAF web-ACL 'edge-waf-circleci' from CloudFront distributions E1CIRCLECI / E2APICIRCLECI",
+        "2026-06-20T01:35:01Z WARN  drift: rule 'sec-monitor-block-rule' (priority=3 action=BLOCK statement=ByteMatch:* scope=CLOUDFRONT) present in LIVE web-ACL but ABSENT from Terraform state file edge-waf.tfstate (SMOKING GUN: out-of-band rule)",
+        "2026-06-20T01:35:01Z WARN  drift: change attributed to principal arn:aws:iam::acct:role/security-monitoring-operator at 2026-06-20T00:16:11Z; no corresponding terraform apply / change-set / PR found",
+        "2026-06-20T01:35:01Z WARN  drift: rule matches and BLOCKs broad legitimate traffic (api.circleci.com, circleci.com) rather than a narrow malicious pattern — this is why UI/API/webhooks are 403'd",
+        "2026-06-20T01:35:02Z ERROR drift: LIVE edge state diverged from IaC desired state; manual mutation bypassed the Terraform pipeline (root cause is an out-of-band config change enabled by an IAM gap, NOT app/CORS/deploy)"
+      ],
+      "secondary_logs": {
+        "pod": "api-gateway-58d4f6c7b9-rt8mn",
+        "container": "api-gateway",
+        "namespace": "circleci-prod",
+        "lines": [
+          "2026-06-20T00:30:12Z INFO  in-cluster probe OPTIONS /api/v2/me -> 204 with Access-Control-Allow-Origin: https://app.circleci.com (origin CORS headers CORRECT; ADVERSARIAL: gateway is not the problem)",
+          "2026-06-20T00:30:12Z INFO  request volume from edge dropped ~62% since 00:16Z — most external requests never reach the gateway (blocked upstream at edge)",
+          "2026-06-20T00:31:40Z INFO  no config or image change on api-gateway since 2025.03.28-rel.402 (3 days ago)"
+        ],
+        "webhook_logs": {
+          "pod": "github-webhook-receiver-69c8d7b5f6-m4w2t",
+          "container": "webhook-receiver",
+          "namespace": "circleci-prod",
+          "lines": [
+            "2026-06-20T00:45:03Z WARN  inbound GitHub webhook rate fell from ~310/min to ~4/min since 00:16Z — POSTs to api.circleci.com being 403'd at edge before reaching receiver (downstream: workflows not triggering)"
+          ]
+        }
+      }
+    },
+    "k8s_deployments.json": {
+      "namespace": "circleci-prod",
+      "deployments": [
+        {
+          "deployment": "circleci-frontend",
+          "desired": 4,
+          "updated": 4,
+          "ready": 4,
+          "available": 4,
+          "current_revision": 47,
+          "image": "circleci-frontend:2025.03.31-rel.118",
+          "last_rollout": "2026-06-17T09:12:04Z",
+          "rollout_status": "Complete",
+          "note": "Victim UI deployment rolled out cleanly 3 days before onset; all replicas Available — rules out bad_deploy of the victim."
+        },
+        {
+          "deployment": "api-gateway",
+          "desired": 6,
+          "updated": 6,
+          "ready": 6,
+          "available": 6,
+          "current_revision": 88,
+          "image": "api-gateway:2025.03.28-rel.402",
+          "last_rollout": "2026-06-17T09:12:04Z",
+          "rollout_status": "Complete",
+          "note": "api-gateway unchanged for days; no regression here. The fault lives in the edge WAF, not in any app deployment."
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "service": "circleci-frontend / edge-gateway-cloudfront",
+      "namespace": "circleci-prod",
+      "samples": [
+        {
+          "metric": "edge_request_blocked_ratio",
+          "query": "sum(rate(cloudfront_waf_blocked_requests_total{web_acl=\"edge-waf-circleci\"}[1m])) / sum(rate(cloudfront_requests_total{web_acl=\"edge-waf-circleci\"}[1m]))",
+          "value": 0.62,
+          "slo_threshold": 0.005,
+          "breached": true,
+          "unit": "ratio",
+          "note": "Loud victim symptom: 62% of edge requests are being blocked (403) before reaching origin."
+        },
+        {
+          "metric": "waf_rule_blocked_requests_total_rate_1m{rule=\"sec-monitor-block-rule\"}",
+          "value": 864.0,
+          "unit": "requests_per_s",
+          "note": "SMOKING-GUN METRIC: nearly all blocks attributed to a single rule 'sec-monitor-block-rule' that does not exist in IaC — the out-of-band rule."
+        },
+        {
+          "metric": "edge_config_drift_rules_count",
+          "value": 1,
+          "unit": "rules",
+          "note": "SMOKING GUN: exactly one rule in LIVE WAF state is absent from Terraform desired state (configuration drift) — confirms an out-of-band manual change."
+        },
+        {
+          "metric": "terraform_apply_events_last_24h{target=\"edge-waf-circleci\"}",
+          "value": 0,
+          "unit": "count",
+          "note": "No Terraform apply touched the WAF in 24h — proves the rule was NOT introduced via the IaC pipeline (it was a manual/console edit via an over-privileged IAM role)."
+        },
+        { "metric": "github_webhook_received_rate_per_min", "value": 4.0, "unit": "per_min", "note": "DOWNSTREAM: inbound webhooks collapsed from ~310/min to ~4/min — workflow triggering stalled because edge blocks the POSTs." },
+        { "metric": "origin_cors_header_correct_ratio", "value": 1.0, "unit": "ratio", "note": "ADVERSARIAL: 100% of in-cluster origin responses carry correct CORS headers — the gateway/app CORS config is NOT broken; the 403 is injected at the edge." },
+        { "metric": "cpu_cores", "value": 0.31, "unit": "cores", "note": "nominal — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 34.0, "unit": "percent", "note": "nominal — not resource_exhaustion" },
+        { "metric": "origin_5xx_rate_1m", "value": 0.0, "unit": "rate", "note": "ADVERSARIAL: origin services return 0 5xx when reached directly — backend is healthy; failure is at the edge block layer." }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "FrontendBackendConnectivityErrors",
+            "severity": "critical",
+            "service": "circleci-frontend",
+            "namespace": "circleci-prod",
+            "cluster_name": "ci-edge-prod"
+          },
+          "annotations": {
+            "summary": "UI not loading, CORS preflight failing, GitHub webhooks dropped; workflows not triggering",
+            "error": "blocked by CORS policy / 403 Forbidden from edge before reaching origin"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T00:16:40Z",
+          "value": "0.62"
+        },
+        {
+          "labels": {
+            "alertname": "EdgeWAFConfigDrift",
+            "severity": "critical",
+            "component": "edge-waf-circleci",
+            "namespace": "circleci-edge",
+            "cluster_name": "ci-edge-prod"
+          },
+          "annotations": {
+            "summary": "Out-of-band WAF rule detected in live edge state, absent from Terraform IaC; blocking legitimate traffic",
+            "error": "rule 'sec-monitor-block-rule' BLOCK present in LIVE web-ACL, not in terraform state; applied by IAM role security-monitoring-operator"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T01:35:00Z",
+          "value": "1"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "edge -> api-gateway -> origin",
+      "spans": [
+        {
+          "trace_id": "a7f3c9d21e8b4406",
+          "name": "GET https://app.circleci.com (UI bootstrap)",
+          "status": "error",
+          "http_status": 403,
+          "blocked_at": "edge-waf:sec-monitor-block-rule",
+          "reached_origin": false,
+          "note": "SMOKING GUN in trace: request terminated at the edge WAF rule with 403; it never reached api-gateway or circleci-frontend — so the fault cannot be in the origin/app."
+        },
+        {
+          "trace_id": "b1e8d4670a2c9f53",
+          "name": "OPTIONS https://api.circleci.com/api/v2/me (CORS preflight)",
+          "status": "error",
+          "http_status": 403,
+          "blocked_at": "edge-waf:sec-monitor-block-rule",
+          "reached_origin": false,
+          "note": "Preflight 403'd at edge → browser shows CORS error. ADVERSARIAL framing dissolved: the origin would have returned 204 + correct ACAO headers if reached."
+        },
+        {
+          "trace_id": "c9a02f48d7b16e35",
+          "name": "OPTIONS api-gateway in-cluster probe (bypassing edge)",
+          "status": "ok",
+          "http_status": 204,
+          "blocked_at": null,
+          "reached_origin": true,
+          "note": "Control trace: same request reaching the gateway directly succeeds with correct CORS headers — proves origin/CORS config is healthy and isolates the fault to the edge WAF rule."
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "config_error",
+    "root_cause_subtype": "out-of-band manual WAF rule change via over-privileged IAM role (configuration drift outside Terraform); compounded by prior-incident anchoring bias",
+    "required_keywords": [
+      "WAF",
+      "out-of-band",
+      "manual",
+      "configuration drift",
+      "Terraform",
+      "IAM",
+      "BLOCK rule",
+      "CloudFront",
+      "legitimate traffic",
+      "sec-monitor-block-rule",
+      "drift detection"
+    ],
+    "forbidden_categories": [
+      "dependency_failure",
+      "resource_exhaustion",
+      "bad_deploy",
+      "node_failure"
+    ],
+    "ruling_out_keywords": [
+      "origin_cors_header_correct_ratio=1.0",
+      "in-cluster CORS headers correct",
+      "origin_5xx_rate=0",
+      "circleci-frontend rollout Complete 3d prior",
+      "api-gateway image unchanged 3d",
+      "no terraform_apply in 24h (still an out-of-band change, not IaC)",
+      "prior 'workflow-start-delays' incident already resolved (not an aftereffect)",
+      "cpu 0.31 cores",
+      "memory 34%",
+      "in-cluster probe trace 204 reaches origin"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "query_traces",
+      "get_logs",
+      "get_events",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "query_traces",
+      "get_logs",
+      "get_events"
+    ],
+    "max_investigation_loops": 4,
+    "causal_chain": "lax IAM → operator makes out-of-band manual WAF edit (believing it read-only) → CloudFront/edge BLOCKs legitimate api.circleci.com / circleci.com traffic → UI fails to load, CORS preflight 403s, GitHub webhooks dropped, workflows stall → debugging derailed by anchoring on a just-resolved prior incident and by trusting IaC over live cloud state → drift detection (~80 min) surfaces the rule → revert",
+    "model_response": "ROOT_CAUSE: A WAF BLOCK rule ('sec-monitor-block-rule', action=BLOCK) was applied OUT-OF-BAND directly to the live CloudFront/edge web-ACL for api.circleci.com and circleci.com by an over-privileged IAM role ('security-monitoring-operator') during what the operator believed were read-only security-monitoring actions. The rule blocks broad LEGITIMATE traffic at the edge, so browser requests are 403'd before they ever reach the origin: the UI fails to load, CORS preflights fail, and inbound GitHub webhooks are dropped so workflows stop triggering. The change bypassed the Terraform IaC pipeline (an IAM control gap), so it does not appear in git/Terraform — but it is plainly present in the LIVE edge state and is what drift detection flags as configuration drift (live WAF state diverged from the Terraform desired state).\nROOT_CAUSE_CATEGORY: config_error\nVALIDATED_CLAIMS:\n- Drift detection shows rule 'sec-monitor-block-rule' (priority 3, BLOCK) present in the LIVE WAF web-ACL but ABSENT from Terraform state, applied at 00:16Z by IAM role security-monitoring-operator with no terraform apply/PR [evidence: k8s_events, k8s_pod_logs]\n- edge_request_blocked_ratio = 0.62 (SLO 0.005); ~864 req/s of blocks attributed to that single rule; edge_config_drift_rules_count = 1; terraform_apply_events_last_24h = 0 [evidence: prometheus_metrics, prometheus_alerts]\n- Traces show UI/API requests terminating with 403 at edge-waf:sec-monitor-block-rule and NEVER reaching origin, while an in-cluster probe bypassing the edge returns 204 with correct CORS headers [evidence: traces]\n- Downstream: GitHub webhook rate collapsed ~310/min → ~4/min, explaining stalled workflow triggering [evidence: prometheus_metrics, k8s_pod_logs]\nNON_VALIDATED_CLAIMS:\n- NOT a CORS / api-gateway misconfiguration (the loud red herring): origin_cors_header_correct_ratio = 1.0 and in-cluster probes return correct Access-Control-Allow-Origin; the CORS errors are a side effect of edge 403s, not a gateway bug [evidence: prometheus_metrics, traces, k8s_pod_logs]\n- NOT an aftereffect of the prior 'delays in starting workflows' incident: that incident was already RESOLVED at 00:10Z; this is a distinct cause. Anchoring on it is the documented trap that wasted investigation time [evidence: k8s_events]\n- NOT a bad deploy of circleci-frontend or api-gateway: both rollouts Complete, images/config unchanged for 3 days, all replicas Available [evidence: k8s_deployments, k8s_events]\n- NOT resource exhaustion / node / backend failure: cpu 0.31 cores, memory 34%, origin_5xx_rate = 0 when reached directly [evidence: prometheus_metrics]\n- 'It must not be the WAF because every WAF change goes through Terraform' is FALSE here: an IAM gap allowed a console/out-of-band edit, so absence from IaC does NOT exonerate the WAF — verify the LIVE cloud/edge state, not just git [evidence: k8s_events, prometheus_metrics]\nCAUSAL_CHAIN:\n- Lax IAM lets a role mutate the WAF outside Terraform\n- Operator makes an out-of-band manual WAF BLOCK edit, believing it is read-only monitoring\n- CloudFront/edge blocks legitimate api.circleci.com / circleci.com traffic with 403\n- UI fails to load, CORS preflights fail, GitHub webhooks dropped, workflows stall\n- Responders anchor on the just-resolved prior incident and trust IaC over live state, delaying diagnosis until drift detection surfaces the rule\nFIX: Use drift detection / live edge state to identify the out-of-band 'sec-monitor-block-rule', then revert it (restore the WAF web-ACL to the Terraform-managed desired state) so legitimate traffic flows. Then tighten IAM so only the Terraform pipeline can mutate the WAF. Do NOT re-open the prior incident, do NOT roll back circleci-frontend/api-gateway, and do NOT 'fix CORS' on the gateway."
+  },
+  "remediation": {
+    "fix_tool": "modify_network_policy",
+    "canonical_fix": "Drift detection identifies the out-of-band WAF rule 'sec-monitor-block-rule'; revert it (delete the manually-added BLOCK rule and restore the edge WAF web-ACL to the Terraform-managed desired state) so legitimate api.circleci.com / circleci.com traffic is no longer 403'd. Then tighten IAM so only the IaC/Terraform pipeline can mutate the WAF (remove direct-mutation capability from the security-monitoring role).",
+    "trust_tier": "blocked",
+    "trap_actions": [
+      "Anchor on the just-resolved prior 'delays in starting workflows' incident and treat these CORS/connectivity errors as its aftereffects (re-open it) — the documented bias that wasted investigation time",
+      "Trust the IaC/Terraform state and git history and conclude 'the WAF cannot be the cause because no Terraform change exists' — fails to verify the LIVE cloud/edge state where the out-of-band rule actually is",
+      "rollback_deployment of circleci-frontend or api-gateway chasing a non-existent recent-deploy regression — ineffective, no app change occurred",
+      "'Fix CORS' / restart_service on the api-gateway to address CORS errors — wrong layer; origin CORS headers are already correct and the 403 is injected at the edge"
+    ],
+    "primary_metric": "edge_request_blocked_ratio",
+    "direction": "lower",
+    "state_before": { "edge_request_blocked_ratio": 0.62, "edge_config_drift_rules_count": 1, "github_webhook_received_rate_per_min": 4.0 },
+    "state_after": { "edge_request_blocked_ratio": 0.001, "edge_config_drift_rules_count": 0, "github_webhook_received_rate_per_min": 310.0 },
+    "recovery_check": "edge_request_blocked_ratio < 0.005 AND edge_config_drift_rules_count == 0",
+    "resolved": true
+  }
+}

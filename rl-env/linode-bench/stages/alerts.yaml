@@ -1,0 +1,136 @@
+# alerts.yaml — one Prometheus alert per RLVR scenario.
+# alertname values are chosen to satisfy each scenario's alert_check in
+# scenarios/registry.json. The `release: kube-prometheus-stack` label makes the
+# bundled Prometheus pick this PrometheusRule up.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: rlvr-bench-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    role: rlvr-bench
+spec:
+  groups:
+    - name: rlvr-bench.rules
+      rules:
+        - alert: OOMKilled
+          expr: max(container_memory_working_set_bytes{namespace="rlvr-target",pod=~"payments-.*"}) > 500000000
+          for: 15s
+          labels:
+            severity: critical
+            scenario: oom_kill
+          annotations:
+            summary: "payments memory working set above OOM threshold"
+        - alert: HighCPUUsage
+          expr: avg(rate(container_cpu_usage_seconds_total{namespace="rlvr-target",pod=~"checkout-.*",container!=""}[1m])) > 0.9
+          for: 30s
+          labels:
+            severity: warning
+            scenario: cpu_saturation
+          annotations:
+            summary: "checkout CPU saturated"
+        - alert: NodeFilesystemAlmostOutOfSpace
+          expr: min(node_filesystem_avail_bytes{mountpoint="/"}) < 1000000000
+          for: 15s
+          labels:
+            severity: warning
+            scenario: disk_pressure
+          annotations:
+            summary: "node root filesystem almost out of space"
+        - alert: CrashLoopBackOff
+          expr: increase(kube_pod_container_status_restarts_total{namespace="rlvr-target",pod=~"auth-.*"}[5m]) > 5
+          for: 0m
+          labels:
+            severity: critical
+            scenario: crashloop
+          annotations:
+            summary: "auth pod restarting too often"
+        - alert: HighLatency
+          expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{app="gateway",namespace="rlvr-target"}[2m])) by (le)) > 0.8
+          for: 15s
+          labels:
+            severity: warning
+            scenario: latency_spike
+          annotations:
+            summary: "gateway p99 latency above 800ms"
+        - alert: DNSFailures
+          expr: sum(rate(app_dns_errors_total{namespace="rlvr-target",app="search"}[1m])) / sum(rate(app_dns_lookups_total{namespace="rlvr-target",app="search"}[1m])) > 0.05
+          for: 15s
+          labels:
+            severity: critical
+            scenario: dns_failure
+          annotations:
+            summary: "search DNS error rate above 5%"
+        - alert: MemoryLeak
+          expr: max(container_memory_working_set_bytes{namespace="rlvr-target",pod=~"user-profile-.*"}) > 1200000000
+          for: 15s
+          labels:
+            severity: warning
+            scenario: memory_leak
+          annotations:
+            summary: "user-profile RSS growing unbounded"
+        - alert: TLSHandshakeFailure
+          expr: sum(rate(app_tls_handshake_success_total{namespace="rlvr-target",app="billing"}[1m])) / sum(rate(app_tls_handshake_total{namespace="rlvr-target",app="billing"}[1m])) < 0.5
+          for: 15s
+          labels:
+            severity: critical
+            scenario: cert_expiry
+          annotations:
+            summary: "billing TLS handshake success below 50%"
+        - alert: CacheStampede
+          expr: sum(rate(app_cache_hits_total{namespace="rlvr-target",app="catalog"}[1m])) / sum(rate(app_cache_requests_total{namespace="rlvr-target",app="catalog"}[1m])) < 0.3
+          for: 15s
+          labels:
+            severity: warning
+            scenario: cache_stampede
+          annotations:
+            summary: "catalog cache hit ratio below 30%"
+        - alert: UpstreamErrors
+          expr: sum(rate(app_upstream_2xx_total{namespace="rlvr-target",app="recommendations"}[1m])) / sum(rate(app_upstream_requests_total{namespace="rlvr-target",app="recommendations"}[1m])) < 0.5
+          for: 15s
+          labels:
+            severity: warning
+            scenario: upstream_5xx
+          annotations:
+            summary: "recommendations upstream success below 50%"
+        - alert: HighErrorRate
+          expr: sum(rate(app_requests_total{namespace="rlvr-target",app="orders",status=~"5.."}[1m])) / sum(rate(app_requests_total{namespace="rlvr-target",app="orders"}[1m])) > 0.05
+          for: 15s
+          labels:
+            severity: critical
+            scenario: bad_deploy_errors
+          annotations:
+            summary: "orders 5xx error rate above 5%"
+        - alert: DBPoolExhausted
+          expr: max(app_db_conn_in_use{namespace="rlvr-target",app="cart"}) > 95
+          for: 15s
+          labels:
+            severity: warning
+            scenario: db_pool_exhaustion
+          annotations:
+            summary: "cart db connection pool exhausted"
+        - alert: KubeNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 15s
+          labels:
+            severity: critical
+            scenario: node_not_ready
+          annotations:
+            summary: "a node is not ready"
+        - alert: ConsumerLag
+          expr: max(app_consumer_lag_k{namespace="rlvr-target",app="notifications"}) > 500
+          for: 15s
+          labels:
+            severity: warning
+            scenario: consumer_lag
+          annotations:
+            summary: "notifications consumer lag above 500k"
+        - alert: DeploymentReplicasUnavailable
+          expr: max(kube_deployment_status_replicas_unavailable{namespace="rlvr-target",deployment="shipping"}) > 0
+          for: 15s
+          labels:
+            severity: warning
+            scenario: stuck_rollout
+          annotations:
+            summary: "shipping rollout has unavailable replicas"

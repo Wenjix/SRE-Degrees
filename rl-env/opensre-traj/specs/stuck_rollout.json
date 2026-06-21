@@ -1,0 +1,413 @@
+{
+  "incident": "stuck_rollout",
+  "provider": "k8s",
+  "failure_mode": "stuck_rollout",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "shipping",
+    "NS": "rlvr-target",
+    "WORKLOAD": "shipping",
+    "POD": "shipping-7d9c4b6f88-q2m7x",
+    "POD2": "shipping-7d9c4b6f88-vk5tn",
+    "POD3": "shipping-6b8a5d7c43-h4lpz",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9wrl",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-pk7c",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] Deployment rollout not progressing — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "StuckRollout",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "shipping rollout wedged: new revision has unavailable replicas past its progress deadline",
+      "description": "The shipping deployment in {{NS}} started rolling revision 8 at 19:34, which set the container image to rlvr/shipping:v99-nonexistent. The new ReplicaSet shipping-7d9c4b6f88 cannot pull that image (ErrImagePull/ImagePullBackOff), so its pods {{POD}} and {{POD2}} are stuck Pending at 0/1 Ready. The Deployment Progressing condition flipped to False with reason ProgressDeadlineExceeded after the 30s progressDeadlineSeconds elapsed. max(kube_deployment_status_replicas_unavailable{deployment=\"shipping\"}) = 2 against an SLO of 0. The old revision pod {{POD3}} (rlvr/shipping:v1.7.2) is still Running and serving, so capacity is reduced but not fully down.",
+      "error": "StuckRollout: shipping new revision not progressing",
+      "suspected_symptom": "deployment has unavailable replicas and a new revision that is not progressing past its deadline",
+      "k8s_failure_mode": "stuck_rollout",
+      "context_sources": "prometheus,kube-state-metrics,kubernetes-events,application-logs"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The old-revision pod {{POD3}} (rlvr/shipping:v1.7.2) is Running, 1/1 Ready, restartCount 0 with memory_util_pct at 38% and CPU at 0.19 cores — well under its 512Mi / 500m limits, so this is not resource exhaustion or a runtime fault on the workload that is still serving.",
+      "The new-revision pods {{POD}} and {{POD2}} show restartCount 0 and have never run a container — this is NOT a CrashLoopBackOff; the containers are stuck in Waiting=ImagePullBackOff, so do not be misled into treating it as a crashing app.",
+      "{{NODE}} reported a kubelet heartbeat gap 16m ago but is Ready=True now and has ample allocatable memory; the new pods are unschedulable-to-run because of the image pull, not because the node is unhealthy or out of capacity.",
+      "A networkpolicy/shipping-egress was updated 22m ago, which looks like it could block the registry, but the kubelet event explicitly reports the registry returned 'manifest unknown' (the tag does not exist), not a timeout or connection refused — so egress/DNS to the registry is fine.",
+      "A HorizontalPodAutoscaler evaluated shipping during the window (desired 2, current 2, no change); replica count was never altered by autoscaling and the HPA is not implicated in the stuck rollout."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "k8s_node_health",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Pending",
+          "ready": "0/1",
+          "restarts": 0,
+          "age": "6m",
+          "replicaset": "shipping-7d9c4b6f88",
+          "revision": 8,
+          "containers": [
+            {
+              "name": "shipping",
+              "image": "rlvr/shipping:v99-nonexistent",
+              "ready": false,
+              "started": false,
+              "restartCount": 0,
+              "state": {
+                "waiting": {
+                  "reason": "ImagePullBackOff",
+                  "message": "Back-off pulling image \"rlvr/shipping:v99-nonexistent\": manifest for rlvr/shipping:v99-nonexistent not found: manifest unknown"
+                }
+              },
+              "resources": {
+                "limits": { "memory": "512Mi", "cpu": "500m" },
+                "requests": { "memory": "256Mi", "cpu": "250m" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Pending",
+          "ready": "0/1",
+          "restarts": 0,
+          "age": "6m",
+          "replicaset": "shipping-7d9c4b6f88",
+          "revision": 8,
+          "containers": [
+            {
+              "name": "shipping",
+              "image": "rlvr/shipping:v99-nonexistent",
+              "ready": false,
+              "started": false,
+              "restartCount": 0,
+              "state": {
+                "waiting": {
+                  "reason": "ErrImagePull",
+                  "message": "rpc error: code = NotFound desc = failed to pull and unpack image \"rlvr/shipping:v99-nonexistent\": manifest unknown"
+                }
+              },
+              "resources": {
+                "limits": { "memory": "512Mi", "cpu": "500m" },
+                "requests": { "memory": "256Mi", "cpu": "250m" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "3h12m",
+          "replicaset": "shipping-6b8a5d7c43",
+          "revision": 7,
+          "containers": [
+            {
+              "name": "shipping",
+              "image": "rlvr/shipping:v1.7.2",
+              "ready": true,
+              "started": true,
+              "restartCount": 0,
+              "state": {
+                "running": {
+                  "startedAt": "2026-06-20T16:22:41Z"
+                }
+              },
+              "resources": {
+                "limits": { "memory": "512Mi", "cpu": "500m" },
+                "requests": { "memory": "256Mi", "cpu": "250m" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "lastTimestamp": "2026-06-20T19:34:02Z",
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "involvedObject": "deployment/{{WORKLOAD}}",
+          "count": 1,
+          "message": "Scaled up replica set shipping-7d9c4b6f88 to 2 (image set to rlvr/shipping:v99-nonexistent, revision 8)"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:34:08Z",
+          "type": "Warning",
+          "reason": "Failed",
+          "involvedObject": "pod/{{POD}}",
+          "count": 7,
+          "message": "Failed to pull image \"rlvr/shipping:v99-nonexistent\": manifest unknown: tag does not exist in registry"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:39:51Z",
+          "type": "Warning",
+          "reason": "Failed",
+          "involvedObject": "pod/{{POD2}}",
+          "count": 7,
+          "message": "Error: ErrImagePull for container shipping (rlvr/shipping:v99-nonexistent): manifest unknown"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:40:14Z",
+          "type": "Warning",
+          "reason": "BackOff",
+          "involvedObject": "pod/{{POD}}",
+          "count": 9,
+          "message": "Back-off pulling image \"rlvr/shipping:v99-nonexistent\" (ImagePullBackOff)"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:34:34Z",
+          "type": "Warning",
+          "reason": "ProgressDeadlineExceeded",
+          "involvedObject": "deployment/{{WORKLOAD}}",
+          "count": 1,
+          "message": "ReplicaSet shipping-7d9c4b6f88 has timed out progressing (exceeded progressDeadlineSeconds 30s); rollout of revision 8 is stuck"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:18:30Z",
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "involvedObject": "horizontalpodautoscaler/shipping",
+          "count": 1,
+          "message": "HPA evaluated shipping: desired 2, current 2 (no change) — red herring"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{POD3}}",
+      "container": "shipping",
+      "lines": [
+        "2026-06-20T16:22:41.118Z INFO  shipping starting rlvr/shipping:v1.7.2 build 4a1cf02 (revision 7)",
+        "2026-06-20T16:22:41.244Z INFO  config loaded; db reachable (postgres.rlvr-target:5432 ok); dns ok; registry creds present",
+        "2026-06-20T16:22:41.501Z INFO  http server listening :8080; readiness OK",
+        "2026-06-20T19:34:36.020Z WARN  serving on a single replica: 2 of 3 desired replicas unavailable (new revision 8 not progressing)",
+        "2026-06-20T19:36:02.778Z ERROR StuckRollout: shipping new revision not progressing",
+        "2026-06-20T19:36:02.781Z ERROR new ReplicaSet shipping-7d9c4b6f88 image rlvr/shipping:v99-nonexistent cannot be pulled (manifest unknown); rollout wedged at revision 8"
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "desired": 3,
+      "updated": 2,
+      "ready": 1,
+      "available": 1,
+      "unavailable": 2,
+      "image": "rlvr/shipping:v99-nonexistent",
+      "previous_image": "rlvr/shipping:v1.7.2",
+      "current_revision": 8,
+      "previous_revision": 7,
+      "progress_deadline_seconds": 30,
+      "last_revision_change": "2026-06-20T19:34:02Z",
+      "minutes_since_last_rollout": 6,
+      "new_replicaset": "shipping-7d9c4b6f88",
+      "old_replicaset": "shipping-6b8a5d7c43",
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "False",
+          "reason": "MinimumReplicasUnavailable",
+          "message": "Deployment does not have minimum availability: 1/3 replicas available."
+        },
+        {
+          "type": "Progressing",
+          "status": "False",
+          "reason": "ProgressDeadlineExceeded",
+          "message": "ReplicaSet shipping-7d9c4b6f88 (image rlvr/shipping:v99-nonexistent) has timed out progressing past progressDeadlineSeconds 30s; revision 8 stuck."
+        }
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "Ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "allocatable_memory": "7.5Gi",
+          "note": "brief kubelet heartbeat gap 16m ago; recovered, Ready=True now (red herring); hosts {{POD}} which is stuck in ImagePullBackOff — node has capacity, the image just does not exist"
+        },
+        {
+          "name": "{{NODE2}}",
+          "Ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "allocatable_memory": "7.5Gi",
+          "note": "healthy; hosts {{POD2}} which also fails the same image pull — fault is not node-local"
+        },
+        {
+          "name": "{{NODE3}}",
+          "Ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "allocatable_memory": "7.5Gi",
+          "note": "healthy; hosts old-revision {{POD3}} (rlvr/shipping:v1.7.2) which is Running and serving normally"
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "queries": [
+        {
+          "metric": "replicas_unavailable",
+          "query": "max(kube_deployment_status_replicas_unavailable{namespace=\"rlvr-target\",deployment=\"shipping\"})",
+          "value": 2,
+          "slo_threshold": 0,
+          "direction": "lower",
+          "breached": true,
+          "unit": "replicas",
+          "note": "2 of 3 desired replicas unavailable — the new revision 8 pods can never become Ready"
+        },
+        {
+          "metric": "ready_replicas_pct",
+          "query": "100 * kube_deployment_status_replicas_ready{deployment=\"shipping\"} / kube_deployment_spec_replicas{deployment=\"shipping\"}",
+          "value": 33,
+          "unit": "percent",
+          "note": "only the old-revision pod {{POD3}} is Ready (1/3); the rollout is wedged, not crashing"
+        },
+        {
+          "metric": "deployment_progressing",
+          "query": "kube_deployment_status_condition{deployment=\"shipping\",condition=\"Progressing\",status=\"true\"}",
+          "value": 0,
+          "unit": "bool",
+          "note": "Progressing=False (ProgressDeadlineExceeded) — confirms the rollout is stuck"
+        },
+        {
+          "metric": "memory_util_pct",
+          "query": "100 * max(container_memory_working_set_bytes{pod=\"{{POD3}}\"}) / 536870912",
+          "value": 38,
+          "unit": "percent",
+          "note": "old-revision pod is well under its 512Mi limit — not resource exhaustion (red herring)"
+        },
+        {
+          "metric": "cpu_cores",
+          "query": "avg(rate(container_cpu_usage_seconds_total{namespace=\"rlvr-target\",pod=\"{{POD3}}\",container!=\"\"}[1m]))",
+          "value": 0.19,
+          "unit": "cores",
+          "note": "old-revision pod under the 500m limit — not CPU throttling (red herring)"
+        },
+        {
+          "metric": "image_pull_errors_total",
+          "query": "sum(increase(kubelet_image_pull_errors_total{namespace=\"rlvr-target\",pod=~\"shipping-7d9c4b6f88-.*\"}[5m]))",
+          "value": 14,
+          "unit": "count",
+          "note": "image pull errors are isolated to the new ReplicaSet shipping-7d9c4b6f88 (v99-nonexistent)"
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "StuckRollout",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "pod": "{{POD}}"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:34:34Z",
+          "annotations": {
+            "summary": "shipping deployment has 2 unavailable replicas; revision 8 (rlvr/shipping:v99-nonexistent) timed out past progressDeadlineSeconds 30s"
+          }
+        },
+        {
+          "labels": {
+            "alertname": "DeploymentReplicasUnavailable",
+            "severity": "warning",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "pod": "{{POD2}}"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:35:10Z",
+          "annotations": {
+            "summary": "shipping new ReplicaSet pods stuck in ImagePullBackOff — manifest unknown"
+          }
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "bad_deploy",
+    "required_keywords": [
+      "rollout",
+      "revision 8",
+      "rlvr/shipping:v99-nonexistent",
+      "ImagePullBackOff",
+      "manifest unknown",
+      "ProgressDeadlineExceeded",
+      "replicas unavailable",
+      "rollback"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "node_failure",
+      "network_fault",
+      "config_error",
+      "dependency_failure"
+    ],
+    "ruling_out_keywords": [
+      "new pods restartCount 0 ImagePullBackOff not a crashloop",
+      "old-revision pod {{POD3}} Running 1/1 Ready serving normally",
+      "memory 38% under 512Mi limit not resource exhaustion",
+      "cpu 0.19 cores under 500m limit not throttling",
+      "all three nodes Ready=True with capacity not node-local",
+      "registry returned manifest unknown not connection refused so egress/dns ok"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_deployment_status",
+      "describe_pod",
+      "get_events",
+      "get_metrics"
+    ],
+    "required_queries": [
+      "get_deployment_status",
+      "describe_pod"
+    ],
+    "max_investigation_loops": 4,
+    "model_response": "ROOT_CAUSE: The shipping deployment shipped a bad image revision that cannot be pulled, so its rollout is wedged. Revision 8 set the container image to rlvr/shipping:v99-nonexistent at 19:34:02, creating ReplicaSet shipping-7d9c4b6f88. That tag does not exist in the registry (manifest unknown), so the new pods {{POD}} and {{POD2}} are stuck Pending at 0/1 with container state Waiting=ImagePullBackOff/ErrImagePull and restartCount 0 (they never started). After the 30s progressDeadlineSeconds elapsed, the Deployment Progressing condition flipped to False with reason ProgressDeadlineExceeded and Available flipped to False (MinimumReplicasUnavailable, 1/3 available). max(kube_deployment_status_replicas_unavailable{deployment=\"shipping\"}) = 2 against an SLO of 0. The old-revision pod {{POD3}} (rlvr/shipping:v1.7.2, revision 7) is still Running and serving, so capacity is reduced but not fully down. Rolling the deployment back (rollback) to the previous good revision (revision 7, rlvr/shipping:v1.7.2) discards the unpullable ReplicaSet and drives replicas unavailable (kube_deployment_status_replicas_unavailable) to 0.\nROOT_CAUSE_CATEGORY: bad_deploy\nVALIDATED_CLAIMS:\n- Deployment is at current_revision 8 with image rlvr/shipping:v99-nonexistent, previous_image rlvr/shipping:v1.7.2 (revision 7); updated 2, ready 1, available 1, unavailable 2 [evidence: k8s_deployments]\n- Progressing condition is False with reason ProgressDeadlineExceeded (progressDeadlineSeconds 30s); Available is False (MinimumReplicasUnavailable) [evidence: k8s_deployments]\n- New-revision pods {{POD}} and {{POD2}} are Pending 0/1 with state Waiting reason ImagePullBackOff/ErrImagePull 'manifest unknown', restartCount 0 [evidence: k8s_pods]\n- Events show ScalingReplicaSet for shipping-7d9c4b6f88 (v99-nonexistent), repeated Failed 'manifest unknown', and ProgressDeadlineExceeded on the deployment [evidence: k8s_events]\n- max(kube_deployment_status_replicas_unavailable{deployment=\"shipping\"}) = 2 breaches the SLO of 0 [evidence: prometheus_metrics]\nNON_VALIDATED_CLAIMS:\n- Not a crashloop: the new pods have restartCount 0 and are stuck in ImagePullBackOff (the container never ran), unlike a CrashLoopBackOff which shows repeated restarts and terminated lastState [evidence: k8s_pods]\n- Not resource exhaustion: the serving old-revision pod {{POD3}} runs at memory_util_pct 38% and cpu 0.19 cores, well under its 512Mi/500m limits [evidence: prometheus_metrics]\n- Not node failure: all three nodes are Ready=True with ample allocatable memory; both stuck pods fail the same image pull regardless of node [evidence: k8s_node_health]\n- Not a network/registry-connectivity fault: the kubelet reports 'manifest unknown' (the tag does not exist), not a timeout or connection refused; the networkpolicy/shipping-egress change is a red herring [evidence: k8s_events]\n- Not a dependency failure: the old-revision pod's logs show db and dns healthy; the issue is purely the unpullable new image [evidence: k8s_pod_logs]\nCAUSAL_CHAIN:\n- Revision 8 rolls the shipping image to rlvr/shipping:v99-nonexistent at 19:34, creating ReplicaSet shipping-7d9c4b6f88\n- The kubelet cannot pull that tag (manifest unknown); the new pods {{POD}}/{{POD2}} stay Pending in ImagePullBackOff and never become Ready\n- After 30s the progress deadline is exceeded; Progressing flips to False (ProgressDeadlineExceeded) and Available flips to False (MinimumReplicasUnavailable)\n- kube_deployment_status_replicas_unavailable climbs to 2, breaching the SLO of 0; StuckRollout/DeploymentReplicasUnavailable alerts fire\n- The old-revision pod {{POD3}} keeps serving at reduced capacity (1/3)\n- Rolling the deployment back to revision 7 (rlvr/shipping:v1.7.2) removes the unpullable ReplicaSet and drives replicas_unavailable back to 0"
+  },
+  "remediation": {
+    "fix_tool": "rollback_deployment",
+    "canonical_fix": "kubectl rollout undo deployment/shipping -n rlvr-target",
+    "trust_tier": "approval",
+    "primary_metric": "kube_deployment_status_replicas_unavailable",
+    "direction": "lower",
+    "state_before": { "kube_deployment_status_replicas_unavailable": 2 },
+    "state_after": { "kube_deployment_status_replicas_unavailable": 0 },
+    "recovery_check": "kube_deployment_status_replicas_unavailable <= 0",
+    "resolved": true
+  }
+}

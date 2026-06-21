@@ -1,0 +1,427 @@
+{
+  "incident": "launchdarkly_legacy_routing_cold_cache",
+  "provider": "k8s",
+  "source_company": "LaunchDarkly",
+  "source_url": "https://launchdarkly.com/blog/what-happened-what-we-learned-and-how-were-improving/",
+  "failure_mode": "legacy_routing_cold_cache_retry_amplification",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] Streaming service + load balancer unresponsive — SDK connection errors ~99% — fdn-streaming",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "StreamingServiceUnresponsive",
+      "severity": "critical",
+      "service": "fdn-streaming",
+      "namespace": "flag-delivery",
+      "workload_type": "deployment",
+      "workload_name": "fdn-streaming",
+      "cluster_name": "ld-prod-use1"
+    },
+    "commonAnnotations": {
+      "summary": "Flag Delivery Network streaming service and its load balancer are unresponsive; server-side SDK connection errors climbing toward ~99% globally",
+      "description": "The fdn-streaming service and its load balancer (fdn-streaming-lb) stopped responding at 11:48 during an active AWS us-east-1 outage. Server-side SDK stream connection errors are climbing toward ~99% globally and inbound connection-attempt rate to fdn-streaming is ~14x baseline. AWS us-east-1 (EC2, Lambda, DynamoDB, Route53 control plane) has been degraded since the night before, and the cluster cannot autoscale out (EC2 RunInstances is throttling). From the streaming tier's vantage point this looks like the AWS outage finally taking down flag delivery, or the streaming Deployment / its load balancer simply being undersized for the load.",
+      "error": "StreamingServiceUnresponsive: fdn-streaming-lb 5xx/timeout, sdk_stream_connect_error_ratio=0.99, connect_attempt_rate=14x baseline, HPA cannot add replicas (FailedCreate: EC2 RunInstances throttled)",
+      "suspected_symptom": "aws_outage_takes_down_streaming_or_undersized_lb",
+      "k8s_failure_mode": "legacy_routing_cold_cache_retry_amplification",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,k8s_deployments,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The LOUD symptom is the AWS us-east-1 outage itself: EC2/Lambda/DynamoDB/Route53-control-plane have been degraded since 23:50 the night before, so it is tempting to call this pure external fallout from the provider outage. But Phase 1 (the direct AWS impact) had ALREADY largely recovered by ~11:40; the streaming collapse began at 11:48 AFTER an internal change, so the proximate cause is self-inflicted, not the cloud outage.",
+      "fdn-streaming and its load balancer are unresponsive and connect-attempt rate is ~14x baseline, which looks like the streaming Deployment / its load balancer is simply undersized — tempting an immediate scale_deployment / scale-out-the-LB reaction. But the load is amplified SDK RETRIES against cold caches on a legacy path, not organic demand, and the cluster cannot scale out anyway because EC2 RunInstances is throttled.",
+      "The fdn-streaming pods themselves are Running with 0 restarts and 0 OOMKills, and the Deployment image/revision is unchanged for 11 days — there was no bad_deploy to the streaming tier and no crash of the streaming process; it is saturated by inbound retry storms, not broken.",
+      "The HPA shows desired=40 but available=12 with FailedCreate events from EC2 RunInstances throttling — this looks like a node_failure / capacity problem to be solved by adding nodes. It is a CONSTRAINT that prevents the trap's scale-out from working, not the root cause; even unlimited capacity would not stop the retry amplification on the cold legacy path.",
+      "DynamoDB and Route53 control-plane errors are still present in dependency checks and look like they could be the live root cause — but the new fault-tolerant routing path was tolerating them fine until 11:48; the regression is the deliberate cutover to the legacy path, not a fresh DynamoDB/Route53 failure.",
+      "Server-side SDK error ratio ~99% looks like total flag-delivery failure / the customers' integrations being broken, but the SDKs are healthy clients doing exactly what they are designed to do — aggressively reconnecting on stream errors; the error ratio is a downstream effect of the cold-cache retry storm."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "flag-delivery",
+      "pods": [
+        {
+          "name": "fdn-streaming-7c8f9b6d54-2xk7p",
+          "node": "ip-10-12-4-31.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "fdn-streaming",
+            "image": "launchdarkly/fdn-streaming:2025.10.7",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2",
+            "cpu_limit": "4",
+            "memory_request": "4Gi",
+            "memory_limit": "8Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "victim: serving SDK streams but pegged — CPU saturated by ~14x connect-attempt storm. Pod itself is healthy (0 restarts, 11d uptime); the overload is inbound retry traffic, not a streaming-process fault."
+        },
+        {
+          "name": "fdn-streaming-7c8f9b6d54-9q4mt",
+          "node": "ip-10-12-5-88.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "fdn-streaming",
+            "image": "launchdarkly/fdn-streaming:2025.10.7",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2",
+            "cpu_limit": "4",
+            "memory_request": "4Gi",
+            "memory_limit": "8Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: streaming pod Running, 0 OOM, 0 restarts. No crash and no bad deploy — it is the load balancer + these pods being swamped by amplified SDK reconnects on the cold legacy path."
+        },
+        {
+          "name": "fdn-router-legacy-5d7b94c8f9-tt6vn",
+          "node": "ip-10-12-6-19.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "6m",
+          "container": {
+            "name": "fdn-router-legacy",
+            "image": "launchdarkly/fdn-router:legacy-1.9.4",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1",
+            "cpu_limit": "2",
+            "memory_request": "2Gi",
+            "memory_limit": "4Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING GUN: the LEGACY routing path was switched on 6m ago (at 11:48) 'to reduce load on the web application'. Its per-flag cache started COLD — every SDK stream read is a cache MISS that falls through to DynamoDB, so each connection is slow/fails and the SDK reconnects, amplifying load."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "flag-delivery",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "UpstreamDependencyDegraded",
+          "object": "deployment/fdn-streaming",
+          "source": "dependency-probe",
+          "count": 31,
+          "first_seen": "2025-10-19T23:50:00Z",
+          "last_seen": "2025-10-20T11:40:00Z",
+          "message": "PHASE 1 (external): AWS us-east-1 EC2/Lambda/DynamoDB/Route53-control-plane degraded since 23:50. Flag delivery updates delayed; client-side streaming SDKs in US could not receive updates. NOTE last_seen 11:40 — direct AWS impact had largely recovered just before the streaming collapse."
+        },
+        {
+          "type": "Normal",
+          "reason": "LegacyRoutingCutover",
+          "object": "configmap/fdn-routing-mode",
+          "source": "operator-runbook",
+          "count": 1,
+          "first_seen": "2025-10-20T11:48:00Z",
+          "last_seen": "2025-10-20T11:48:00Z",
+          "message": "ROOT CAUSE / TRAP: at 11:48, while stabilizing, an internal change reverted flag delivery from the new fault-tolerant path to the LEGACY routing path 'to reduce load on the web application'. The legacy path's caches were COLD."
+        },
+        {
+          "type": "Warning",
+          "reason": "ColdCacheMissStorm",
+          "object": "deployment/fdn-router-legacy",
+          "source": "fdn-router-legacy",
+          "count": 188,
+          "first_seen": "2025-10-20T11:48:20Z",
+          "last_seen": "2025-10-20T12:55:00Z",
+          "message": "SMOKING GUN: legacy router cache hit rate is ~0.06 (cold). Each SDK stream initialization is a cache MISS that falls through to DynamoDB (itself still rate-limited from the AWS event), so connections are slow or error out."
+        },
+        {
+          "type": "Warning",
+          "reason": "SDKReconnectStorm",
+          "object": "service/fdn-streaming",
+          "source": "fdn-streaming-lb",
+          "count": 240,
+          "first_seen": "2025-10-20T11:48:40Z",
+          "last_seen": "2025-10-20T12:58:00Z",
+          "message": "SMOKING GUN: server-side + client-side SDKs retry aggressively on every stream error/miss; connect-attempt rate to fdn-streaming jumped to ~14x baseline. Retries amplify on every cold-cache miss — a positive feedback loop, NOT organic traffic."
+        },
+        {
+          "type": "Warning",
+          "reason": "LoadBalancerUnresponsive",
+          "object": "service/fdn-streaming-lb",
+          "source": "aws-load-balancer-controller",
+          "count": 64,
+          "first_seen": "2025-10-20T11:50:10Z",
+          "last_seen": "2025-10-20T12:58:30Z",
+          "message": "fdn-streaming-lb saturated by the reconnect storm and became unresponsive (5xx/timeout); this is the LOUD victim symptom that fired the alert."
+        },
+        {
+          "type": "Warning",
+          "reason": "FailedCreate",
+          "object": "horizontalpodautoscaler/fdn-streaming",
+          "source": "horizontal-pod-autoscaler",
+          "count": 27,
+          "first_seen": "2025-10-20T11:52:00Z",
+          "last_seen": "2025-10-20T12:57:00Z",
+          "message": "ADVERSARIAL/CONSTRAINT: HPA wants 40 replicas but cluster-autoscaler cannot add nodes — EC2 RunInstances is throttled by the ongoing us-east-1 event. Scaling out is BLOCKED; even if it weren't, more replicas hitting cold caches would just take more reconnect traffic."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "flag-delivery",
+      "pod": "fdn-router-legacy-5d7b94c8f9-tt6vn",
+      "container": "fdn-router-legacy",
+      "lines": [
+        "2025-10-20T11:48:02Z INFO  routing_mode switched new_fault_tolerant -> LEGACY (reason=reduce_web_app_load) — initializing cold per-flag cache",
+        "2025-10-20T11:48:21Z WARN  cache MISS flag=release-checkout proj=default env=production — falling through to DynamoDB (us-east-1) read",
+        "2025-10-20T11:48:21Z WARN  DynamoDB GetItem throttled (ProvisionedThroughputExceeded / region degraded) — flag fetch slow, returning stream init error to SDK",
+        "2025-10-20T11:48:40Z WARN  legacy cache hit_rate=0.06 (cold); 9,300 distinct flags requested, 8,740 misses in 20s",
+        "2025-10-20T11:49:05Z ERROR fdn-streaming stream_init failed: backing legacy router cold-miss timed out — SDK will reconnect",
+        "2025-10-20T11:49:06Z WARN  sdk_connect_attempt_rate=14.2x baseline; same SDK keys reconnecting 5-8x/min (retry storm)",
+        "2025-10-20T11:50:12Z ERROR fdn-streaming-lb upstream saturated: 5xx/timeout to SDK stream clients; sdk_stream_connect_error_ratio=0.99",
+        "2025-10-20T11:52:30Z WARN  HPA scale-out blocked: nodes not added (EC2 RunInstances throttled) — cannot scale streaming out of the retry storm",
+        "2025-10-20T23:50:00Z INFO  reverted routing_mode LEGACY -> new_fault_tolerant; caches re-warmed; sdk_connect_attempt_rate falling 14.2x -> 1.3x; lb recovering"
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "flag-delivery",
+      "deployment": "fdn-streaming",
+      "replicas": { "desired": 40, "ready": 12, "available": 12, "updated": 12 },
+      "current_revision": 23,
+      "image": "launchdarkly/fdn-streaming:2025.10.7",
+      "last_rollout": "11d ago",
+      "rollout_status": "progressing (FailedCreate: cannot schedule new pods, no nodes available)",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "False", "reason": "ProgressDeadlineExceeded" }
+      ],
+      "note": "ADVERSARIAL: fdn-streaming image 2025.10.7 / revision 23 unchanged for 11d — NO bad_deploy to the streaming tier. desired=40 vs available=12 is the HPA trying and failing to scale out (EC2 RunInstances throttled), not a rollout regression. The change that triggered the collapse was a routing-mode CONFIG flip (legacy path), not a Deployment update."
+    },
+    "prometheus_metrics.json": {
+      "service": "fdn-streaming",
+      "namespace": "flag-delivery",
+      "window": "5m",
+      "metrics": {
+        "fdn_legacy_router_cache_hit_ratio": 0.06,
+        "sdk_stream_connect_attempt_rate_ratio_vs_baseline": 14.2,
+        "sdk_stream_connect_error_ratio": 0.99,
+        "fdn_streaming_lb_5xx_ratio": 0.91,
+        "fdn_streaming_cpu_util_pct": 98,
+        "fdn_streaming_oomkill_total": 0,
+        "fdn_streaming_restart_count": 0,
+        "dynamodb_getitem_throttle_rate_per_s": 410.0,
+        "ec2_runinstances_throttle_ratio": 0.97,
+        "hpa_desired_replicas": 40,
+        "hpa_available_replicas": 12,
+        "flag_eval_request_rate_ratio_vs_baseline": 1.1
+      },
+      "baseline": {
+        "fdn_legacy_router_cache_hit_ratio": 0.0,
+        "sdk_stream_connect_attempt_rate_ratio_vs_baseline": 1.0,
+        "sdk_stream_connect_error_ratio": 0.002,
+        "fdn_streaming_lb_5xx_ratio": 0.001,
+        "fdn_streaming_cpu_util_pct": 44,
+        "dynamodb_getitem_throttle_rate_per_s": 0.0,
+        "ec2_runinstances_throttle_ratio": 0.0,
+        "flag_eval_request_rate_ratio_vs_baseline": 1.0
+      },
+      "samples": [
+        {
+          "metric": "fdn_legacy_router_cache_hit_ratio",
+          "query": "sum(rate(fdn_router_cache_hits{path=\"legacy\"}[1m])) / sum(rate(fdn_router_cache_lookups{path=\"legacy\"}[1m]))",
+          "value": 0.06,
+          "slo_threshold": 0.9,
+          "breached": true,
+          "unit": "ratio",
+          "note": "SMOKING GUN: the legacy routing path's cache is COLD (hit ratio 0.06). Every miss falls through to DynamoDB, making each SDK stream init slow/error, which triggers a reconnect."
+        },
+        {
+          "metric": "sdk_stream_connect_attempt_rate_ratio_vs_baseline",
+          "query": "sum(rate(sdk_stream_connect_attempts_total[1m])) / 1.0",
+          "value": 14.2,
+          "slo_threshold": 2.0,
+          "breached": true,
+          "unit": "ratio",
+          "note": "SMOKING GUN: connect-attempt rate is 14.2x baseline while flag_eval_request_rate is only 1.1x — the load is SDK RETRY amplification on cold-cache misses, not organic demand."
+        }
+      ],
+      "note": "fdn_legacy_router_cache_hit_ratio=0.06 (cold) drives sdk_stream_connect_attempt_rate to 14.2x baseline and sdk_stream_connect_error_ratio to 0.99, saturating fdn-streaming (CPU 98%, 0 OOM, 0 restarts) and fdn-streaming-lb (5xx 0.91). flag_eval_request_rate is only 1.1x — NOT organic traffic. EC2 RunInstances is 97% throttled so HPA is stuck at 12/40 replicas (a constraint, not the cause). The driver is the cold legacy routing path + SDK retry storm, not the AWS outage directly nor an undersized streaming tier."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "StreamingServiceUnresponsive",
+            "severity": "critical",
+            "service": "fdn-streaming",
+            "namespace": "flag-delivery",
+            "cluster_name": "ld-prod-use1"
+          },
+          "annotations": {
+            "summary": "fdn-streaming + fdn-streaming-lb unresponsive; SDK connection errors ~99% globally",
+            "error": "StreamingServiceUnresponsive: lb 5xx 0.91, sdk_stream_connect_error_ratio=0.99, connect_attempt_rate=14.2x"
+          },
+          "state": "firing",
+          "activeAt": "2025-10-20T11:50:20Z",
+          "value": "0.99"
+        },
+        {
+          "labels": {
+            "alertname": "LegacyRouterCacheCold",
+            "severity": "warning",
+            "service": "fdn-router-legacy",
+            "namespace": "flag-delivery",
+            "cluster_name": "ld-prod-use1"
+          },
+          "annotations": {
+            "summary": "fdn-router-legacy cache hit ratio 0.06 (SLO 0.9) after routing cutover at 11:48",
+            "error": "LegacyRouterCacheCold: cold cache forcing DynamoDB fall-through on every SDK stream init"
+          },
+          "state": "firing",
+          "activeAt": "2025-10-20T11:48:30Z",
+          "value": "0.06"
+        },
+        {
+          "labels": {
+            "alertname": "HPAScaleOutBlocked",
+            "severity": "warning",
+            "service": "fdn-streaming",
+            "namespace": "flag-delivery",
+            "cluster_name": "ld-prod-use1"
+          },
+          "annotations": {
+            "summary": "fdn-streaming HPA desired=40 available=12; nodes not added (EC2 RunInstances throttled)",
+            "error": "HPAScaleOutBlocked: FailedCreate, cluster-autoscaler cannot provision EC2 during us-east-1 event"
+          },
+          "state": "firing",
+          "activeAt": "2025-10-20T11:52:10Z",
+          "value": "12"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "fdn-streaming",
+      "sampled_spans": 3,
+      "summary": "Slow/failing SDK stream-init requests spend nearly all their time waiting on the legacy router's cold cache, which misses and falls through to a throttled DynamoDB read in us-east-1. The init errors out, the SDK reconnects, and the loop repeats — amplifying load on fdn-streaming and its load balancer. The streaming tier is slow only because it is being hammered by reconnects on the cold legacy path; the upstream cause is the 11:48 cutover to legacy routing with cold caches, not the AWS outage directly nor an undersized LB.",
+      "spans": [
+        {
+          "trace_id": "4e1a...c7",
+          "root": "sdk:/stream/connect",
+          "total_ms": 9980,
+          "breakdown": [
+            { "span": "fdn-streaming-lb.accept", "ms": 5, "note": "LB queueing under 14x connect-attempt storm" },
+            { "span": "fdn-router-legacy.cache_get flag-set", "ms": 3, "note": "MISS — legacy path cache is cold (hit ratio 0.06)" },
+            { "span": "dynamodb.GetItem flag-config (us-east-1)", "ms": 9960, "note": "SMOKING GUN: cold-cache fall-through to DynamoDB, which is still throttled from the AWS event; GetItem times out at 10s" },
+            { "span": "sdk.reconnect_scheduled", "ms": 0, "note": "stream init failed -> SDK schedules an immediate reconnect, feeding the retry storm" }
+          ]
+        },
+        {
+          "trace_id": "9b77...20",
+          "root": "sdk:/stream/connect",
+          "total_ms": 9120,
+          "breakdown": [
+            { "span": "fdn-router-legacy.cache_get flag-set", "ms": 2, "note": "MISS (same cold legacy cache, different flag set)" },
+            { "span": "dynamodb.GetItem flag-config (us-east-1)", "ms": 9100, "note": "duplicate cold-miss fall-through — connect-attempt load superlinear in the cold-miss rate" }
+          ]
+        },
+        {
+          "trace_id": "c305...f1",
+          "root": "sdk:/stream/connect",
+          "total_ms": 40,
+          "breakdown": [
+            { "span": "fdn-router-new.cache_get flag-set", "ms": 2, "note": "CONTRAST: a request that hit the NEW fault-tolerant path before cutover — warm cache HIT, served from local replica, no DynamoDB dependency, 40ms total. The new path was tolerating the AWS outage fine." }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "dependency_failure",
+    "root_cause_subtype": "self-inflicted cutover to legacy routing path with cold caches during a provider outage -> SDK retry amplification (streaming + LB collapse)",
+    "required_keywords": [
+      "legacy routing path",
+      "cold cache",
+      "cache hit ratio 0.06",
+      "11:48",
+      "reduce load on the web application",
+      "SDK retries",
+      "retry amplification",
+      "connect-attempt rate 14x",
+      "fdn-streaming",
+      "load balancer unresponsive",
+      "DynamoDB fall-through",
+      "EC2 RunInstances throttled",
+      "cannot autoscale",
+      "self-inflicted regression"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "saturation",
+      "node_failure",
+      "config_error",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "fdn-streaming image 2025.10.7 unchanged 11d",
+      "fdn-streaming 0 restarts 0 OOM",
+      "no streaming-tier deploy",
+      "flag_eval_request_rate only 1.1x",
+      "connect-attempt 14.2x driven by retries not traffic",
+      "AWS direct impact recovered by 11:40",
+      "new fault-tolerant path tolerated DynamoDB/Route53 fine",
+      "HPA blocked by EC2 throttle is a constraint not the cause",
+      "scale-out cannot help and is blocked anyway"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs",
+      "describe_pod",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "AWS us-east-1 outage -> LD web app/API unstable, cannot autoscale -> operator cuts over flag delivery to LEGACY routing path 'to reduce web app load' at 11:48 -> legacy caches are cold (hit 0.06) -> every SDK stream init misses and falls through to throttled DynamoDB -> stream inits error -> SDKs retry aggressively (connect attempts 14x) -> retry storm overwhelms fdn-streaming + fdn-streaming-lb (unresponsive) -> cannot scale out (EC2 RunInstances throttled) -> extended self-inflicted outage",
+    "model_response": "ROOT_CAUSE: The streaming collapse is a SELF-INFLICTED regression, not direct AWS fallout. During the AWS us-east-1 outage the new fault-tolerant flag-delivery path was tolerating the degraded EC2/DynamoDB/Route53-control-plane fine. At 11:48 (after the direct AWS impact had largely recovered, ~11:40) an internal change reverted flag delivery to the LEGACY routing path 'to reduce load on the web application'. The legacy path started with COLD caches (hit ratio 0.06), so every SDK stream initialization missed and fell through to a still-throttled DynamoDB read in us-east-1, making each connection slow or error. Server-side and client-side SDKs reconnect aggressively on stream errors, so connect-attempt rate to fdn-streaming jumped to ~14x baseline while actual flag-eval demand was only ~1.1x — a retry-amplification feedback loop on every cold-cache miss. That storm saturated fdn-streaming (CPU 98%) and made fdn-streaming-lb unresponsive (the loud victim symptom), driving SDK stream connection errors toward ~99% globally. The cluster could not scale out of it because EC2 RunInstances was throttled by the ongoing AWS event. The true root cause is the cutover to the cold legacy routing path mid-incident; the AWS outage is the backdrop, the undersized-LB / scale-out story is the trap.\nROOT_CAUSE_CATEGORY: dependency_failure\nVALIDATED_CLAIMS:\n- At 11:48 a routing-mode config flip reverted flag delivery from the new fault-tolerant path to the LEGACY routing path 'to reduce load on the web application' [evidence: k8s_events, k8s_pod_logs, k8s_pods]\n- The legacy router cache is COLD: hit ratio 0.06 (SLO 0.9), forcing DynamoDB fall-through on every SDK stream init [evidence: prometheus_metrics, prometheus_alerts, k8s_pod_logs]\n- SDK connect-attempt rate is 14.2x baseline while flag_eval_request_rate is only 1.1x — the load is SDK retry amplification on cold misses, not organic traffic [evidence: prometheus_metrics, k8s_events]\n- fdn-streaming-lb became unresponsive (5xx 0.91) and sdk_stream_connect_error_ratio reached 0.99 as a downstream effect of the reconnect storm [evidence: prometheus_metrics, prometheus_alerts, k8s_events]\n- Traces show cold-path stream inits spending ~10s in a throttled DynamoDB GetItem then scheduling an SDK reconnect; a pre-cutover request on the NEW path was a 40ms warm-cache hit with no DynamoDB dependency [evidence: traces]\n- Reverting routing_mode back to the new fault-tolerant path re-warmed caches and dropped connect-attempt rate 14.2x -> 1.3x [evidence: k8s_pod_logs]\nNON_VALIDATED_CLAIMS:\n- 'The AWS us-east-1 outage is directly taking down streaming' (the LOUD symptom): WRONG as the proximate cause. The direct AWS impact had largely recovered by ~11:40 and the new fault-tolerant path was tolerating the degraded DynamoDB/Route53 fine; the collapse began at 11:48 only after the internal legacy cutover [evidence: k8s_events, traces]\n- 'fdn-streaming / its load balancer is undersized — scale it out' (the TRAP): WRONG and impossible. The load is amplified SDK retries on cold caches, not organic demand (connect attempts 14.2x vs flag-eval 1.1x); and the cluster cannot add capacity because EC2 RunInstances is 97% throttled (HPA stuck 12/40). More replicas would just absorb more reconnects against the same cold caches [evidence: prometheus_metrics, k8s_events, k8s_deployments]\n- 'bad deploy to the streaming tier': WRONG. fdn-streaming image 2025.10.7 / revision 23 is unchanged for 11d with 0 restarts and 0 OOM; the trigger was a routing-mode CONFIG flip, not a Deployment update [evidence: k8s_deployments, k8s_pods]\n- 'node_failure / need more nodes': WRONG framing. The EC2 RunInstances throttle is a CONSTRAINT that blocks the scale-out trap, not the root cause; even unlimited capacity would not stop the cold-cache retry loop [evidence: k8s_events, prometheus_metrics]\n- TRAP — cutting over to the cold legacy path 'to relieve load': WRONG / this IS the worsening. It is exactly the move that converted a recovering provider outage into a streaming-tier collapse via cold-cache-driven SDK retry amplification [evidence: k8s_events, k8s_pod_logs]\nCAUSAL_CHAIN:\n- AWS us-east-1 outage degrades EC2/Lambda/DynamoDB/Route53-control-plane; LD web app/API is unstable and cannot autoscale (Phase 1)\n- Direct AWS impact largely recovers by ~11:40; the new fault-tolerant routing path had been tolerating it\n- At 11:48 an operator reverts flag delivery to the LEGACY routing path 'to reduce load on the web application'\n- The legacy path's caches are COLD (hit 0.06), so every SDK stream init misses and falls through to a still-throttled DynamoDB read\n- Stream inits are slow/error -> server-side + client-side SDKs reconnect aggressively (connect attempts ~14x baseline) -> retry storm\n- The storm saturates fdn-streaming and makes fdn-streaming-lb unresponsive; SDK connection errors reach ~99% globally\n- The cluster cannot scale out because EC2 RunInstances is throttled -> the failure is pinned until the legacy cutover is reverted / caches warm / AWS EC2 recovers\n- Fix: keep / revert back to the new fault-tolerant routing path (do NOT stay on the cold legacy path); if a cutover is ever required, pre-warm the caches first; add SDK automatic failover from streaming to polling and scale out the LB across regions so a single tier cannot be retry-stormed\nFIX: Revert the 11:48 cutover and put flag delivery back on the new fault-tolerant routing path (rather than scaling the streaming tier, which is both ineffective against retry amplification and blocked by the EC2 throttle); pre-warm caches before any future legacy cutover; add SDK auto-failover from streaming to polling and decouple the Flag Delivery Network from the feature-management web app."
+  },
+  "remediation": {
+    "fix_tool": "rollback_deployment",
+    "canonical_fix": "Revert the 11:48 internal change and put flag delivery back on the new fault-tolerant routing path instead of staying on the cold legacy path; pre-warm caches before any future cutover; decouple the Flag Delivery Network from the feature-management web application, add SDK automatic failover from streaming to polling, and scale out load balancers across all regions so the streaming tier cannot be retry-stormed.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "Cut over flag delivery to the cold/legacy routing path 'to reduce load on the web application' — this is the self-inflicted regression: cold caches force DynamoDB fall-through, SDKs retry excessively (connect attempts 14x), and the storm makes the streaming service and its load balancer unresponsive (the documented worsening)",
+      "Scale out the fdn-streaming Deployment / its load balancer to absorb the connect storm — the load is amplified SDK retries on cold caches, not organic demand, so more replicas just take more reconnects; and the scale-out is blocked anyway because EC2 RunInstances is throttled by the AWS event",
+      "Treat it as direct AWS-outage fallout and only wait for the cloud provider — wrong: the new fault-tolerant path was tolerating the AWS degradation; the proximate cause is the internal legacy cutover at 11:48 and must be reverted"
+    ],
+    "resolved": true
+  }
+}

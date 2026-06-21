@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-008
+  severity: 0
+  title: "Certificate Expired — billing"
+  category: security-problems
+  author: rlvr-bench
+  description: |
+    - billing TLS handshakes failing with x509 expiry errors
+    - Handshake success ratio collapsed
+  cause: |
+    - Serving certificate expired (rotation missed)
+  impact: |
+    - Clients cannot establish TLS, billing calls rejected
+  mitigation: |
+    - Restore a valid cert OR rotate/renew OR restart with good material
+  references:
+    - https://kubernetes.io/docs/concepts/configuration/secret/
+  tags:
+    - cre-2025-rlvr-008
+    - rlvr
+    - cert
+    - tls
+metadata:
+  kind: prequel
+  id: 3f20e6f0-cert-4283-8f56-billing000008
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "x509: certificate has expired or is not yet valid"

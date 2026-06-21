@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-013
+  severity: 0
+  title: "Node NotReady"
+  category: kubernetes-problems
+  author: rlvr-bench
+  description: |
+    - A cluster node dropped to NotReady and stopped scheduling
+    - Ready condition flipped false after cordon/drain
+  cause: |
+    - Node cordoned/drained or kubelet/network loss
+  impact: |
+    - Capacity loss, pods evicted/rescheduled, possible pending pods
+  mitigation: |
+    - Uncordon the node OR replace it OR restore kubelet health
+  references:
+    - https://kubernetes.io/docs/concepts/architecture/nodes/
+  tags:
+    - cre-2025-rlvr-013
+    - rlvr
+    - node
+    - notready
+metadata:
+  kind: prequel
+  id: 9e75fb40-node-44d8-94a5-cluster00013
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "NodeNotReady: node lost scheduling \\+ ready"

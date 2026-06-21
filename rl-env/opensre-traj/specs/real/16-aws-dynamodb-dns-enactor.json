@@ -1,0 +1,463 @@
+{
+  "incident": "aws_dynamodb_dns_enactor",
+  "provider": "k8s",
+  "source_company": "AWS",
+  "source_url": "https://aws.amazon.com/message/12721/",
+  "failure_mode": "dns_enactor_race_empty_record_auto_failover_trap",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] DynamoDB regional endpoint API errors — us-east-1 client error storm",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "DynamoDBRegionalEndpointErrors",
+      "severity": "critical",
+      "service": "dynamodb-gateway",
+      "namespace": "aws-dynamodb",
+      "workload_type": "deployment",
+      "workload_name": "dynamodb-request-router",
+      "cluster_name": "aws-use1-prod"
+    },
+    "commonAnnotations": {
+      "summary": "DynamoDB regional endpoint (dynamodb.us-east-1.amazonaws.com) failing for all callers; API error rate spiking across every internal and external client",
+      "description": "ddb_api_error_rate has gone from ~0% to 100% for the regional DynamoDB endpoint and p99 control-path latency is unbounded. Every service that talks to DynamoDB in us-east-1 is erroring at once. From the gateway's vantage point this looks like a DynamoDB control-plane / request-router outage — the request-router pods are the loudest thing on fire and the error fan-out makes DynamoDB itself look unavailable. Within ~30-90 min, NLB connection errors and EC2 'insufficient capacity' launch failures also start firing and initially look like two separate, unrelated incidents.",
+      "error": "DynamoDBRegionalEndpointErrors: 100% API error rate on dynamodb.us-east-1.amazonaws.com, callers cannot resolve/connect to the regional endpoint",
+      "suspected_symptom": "dynamodb_control_plane_outage",
+      "k8s_failure_mode": "dns_enactor_race_empty_record_auto_failover_trap",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,query_traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The LOUD symptom is on the victim DynamoDB request-router: ddb_api_error_rate=100% on the regional endpoint makes it look like a DynamoDB control-plane / request-router outage. It is a downstream effect of name resolution failing for the endpoint, not a fault in DynamoDB's request handling.",
+      "The dynamodb-request-router pods are healthy at the pod lifecycle level: Running, 0 restarts, deployment revision unchanged for 23 days, image stable — there was NO bad_deploy to DynamoDB and no code change before the incident. The pods are serving fine; clients just cannot resolve the endpoint name to reach them.",
+      "The EC2 'insufficient capacity' / launch-failure errors look like a SEPARATE capacity-exhaustion incident, but EC2 DWFM (the instance lease manager) depends on DynamoDB; it is a knock-on of the same DNS failure, not a real shortage of physical capacity.",
+      "The NLB connection errors and health-check flapping look like a SEPARATE load-balancer / network incident, but they are a knock-on of EC2 hosts coming up impaired (no DynamoDB) and failing health checks — a third face of the same root cause.",
+      "DNS itself (the resolver fleet and the authoritative DNS service) is UP and answering queries; this tempts a 'DNS infrastructure is healthy, must be the app' conclusion. The record content is wrong (empty), not the DNS service — the authoritative answer for the regional endpoint is an EMPTY record set.",
+      "NLB automatic AZ DNS failover is doing exactly what it was designed to do (pull unhealthy targets out of DNS), so it 'looks healthy' and even looks like self-healing. Its very correctness is what removes healthy capacity during the recovery and prolongs the EC2 phase (the auto-mitigation trap)."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "aws-dynamodb",
+      "pods": [
+        {
+          "name": "dynamodb-request-router-7c9b4d-abc12",
+          "node": "ip-10-0-12-31.ec2.internal",
+          "phase": "Running",
+          "ready": "2/2",
+          "restarts": 0,
+          "age": "23d",
+          "container": {
+            "name": "request-router",
+            "image": "dynamodb/request-router:2025.10.01",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "4",
+            "cpu_limit": "8",
+            "memory_request": "16Gi",
+            "memory_limit": "32Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "VICTIM: this pod is the loud symptom (clients see 100% errors hitting dynamodb.us-east-1.amazonaws.com) but the pod is healthy — Running, 0 restarts, 23d uptime. It is not erroring; callers simply cannot RESOLVE the regional endpoint to reach it."
+        },
+        {
+          "name": "dns-enactor-use1-2",
+          "node": "ip-10-0-20-7.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "dns-enactor",
+            "image": "route53-internal/dns-enactor:2025.09.18",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1",
+            "cpu_limit": "2",
+            "memory_request": "2Gi",
+            "memory_limit": "4Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING GUN (locus): the DNS Enactor that applies DynamoDB endpoint DNS plans. A delayed enactor run and a concurrent faster enactor (with cleanup of stale plans) RACED and left an EMPTY DNS record for the regional endpoint, then the system was stuck inconsistent. The pod is 'healthy' — the bug is a race in the enactment logic, not a pod fault."
+        },
+        {
+          "name": "ec2-dwfm-lease-manager-0",
+          "node": "ip-10-0-31-44.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "9d",
+          "container": {
+            "name": "dwfm",
+            "image": "ec2/dwfm:2025.10.05",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2",
+            "cpu_limit": "4",
+            "memory_request": "8Gi",
+            "memory_limit": "16Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "KNOCK-ON: EC2 Droplet Workflow Manager (DWFM) maintains instance leases and depends on DynamoDB. When DDB resolution failed, DWFM could not refresh leases -> lease backlog -> new launches return 'insufficient capacity'. Looks like a separate EC2 capacity incident but is a downstream effect of the DNS failure."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "aws-dynamodb",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "DnsEnactorRace",
+          "object": "deployment/dns-enactor-use1",
+          "source": "dns-enactor",
+          "count": 1,
+          "first_seen": "2025-10-19T07:48:12Z",
+          "last_seen": "2025-10-19T07:48:12Z",
+          "message": "ROOT CAUSE: two DNS Enactor runs raced applying plans for dynamodb.us-east-1.amazonaws.com — a DELAYED enactor was still applying an OLD plan while a concurrent FASTER enactor applied a newer plan AND ran cleanup of stale plans. The cleanup deleted the record set the delayed enactor was mid-applying, leaving an EMPTY DNS record for the regional endpoint. System left in an inconsistent state that automation could not self-correct."
+        },
+        {
+          "type": "Warning",
+          "reason": "EmptyDnsRecordSet",
+          "object": "service/dynamodb-regional-endpoint",
+          "source": "route53-internal",
+          "count": 1,
+          "first_seen": "2025-10-19T07:48:20Z",
+          "last_seen": "2025-10-19T11:25:00Z",
+          "message": "SMOKING GUN: authoritative record for dynamodb.us-east-1.amazonaws.com resolved to an EMPTY answer (no A/AAAA targets). DNS service is UP and answering — the ANSWER is empty. Every DynamoDB caller in the region fails name resolution at once."
+        },
+        {
+          "type": "Warning",
+          "reason": "DependencyResolutionFailed",
+          "object": "deployment/dynamodb-request-router",
+          "source": "kube-dns",
+          "count": 412,
+          "first_seen": "2025-10-19T07:49:02Z",
+          "last_seen": "2025-10-19T11:30:10Z",
+          "message": "Internal DynamoDB-dependent services (and external callers) cannot resolve the regional endpoint; request-router pods themselves are Running and healthy. The 100% API error rate is a resolution failure, not a request-router fault."
+        },
+        {
+          "type": "Warning",
+          "reason": "Ec2LeaseBacklog",
+          "object": "deployment/ec2-dwfm-lease-manager",
+          "source": "ec2-dwfm",
+          "count": 1,
+          "first_seen": "2025-10-19T08:35:40Z",
+          "last_seen": "2025-10-19T13:10:00Z",
+          "message": "KNOCK-ON: DWFM (depends on DynamoDB) built a lease backlog once DDB became unreachable; new EC2 launches return 'insufficient capacity'. Correct mitigation here is to THROTTLE new launches and let DWFM drain the lease backlog — NOT to treat it as a real capacity shortage."
+        },
+        {
+          "type": "Warning",
+          "reason": "NlbHealthCheckFlap",
+          "object": "service/nlb-fleet",
+          "source": "nlb-controller",
+          "count": 1,
+          "first_seen": "2025-10-19T09:05:11Z",
+          "last_seen": "2025-10-19T14:40:00Z",
+          "message": "KNOCK-ON + TRAP MECHANISM: EC2 hosts came up impaired (no DynamoDB), so NLB health checks flapped. NLB AUTOMATIC AZ DNS FAILOVER fired and pulled whole AZs out of DNS — removing otherwise-healthy serving capacity. While capacity was recovering this auto-mitigation kept firing and made it WORSE."
+        },
+        {
+          "type": "Normal",
+          "reason": "ManualDnsRestore",
+          "object": "service/dynamodb-regional-endpoint",
+          "source": "operator",
+          "count": 1,
+          "first_seen": "2025-10-19T11:25:00Z",
+          "last_seen": "2025-10-19T11:25:00Z",
+          "message": "FIX (phase 1): operators manually restored the correct DNS record set for the regional endpoint AND paused/disabled DNS Planner/Enactor automation so it would not re-introduce the empty record before the race fix shipped."
+        },
+        {
+          "type": "Normal",
+          "reason": "NlbAutoFailoverDisabled",
+          "object": "service/nlb-fleet",
+          "source": "operator",
+          "count": 1,
+          "first_seen": "2025-10-19T14:40:00Z",
+          "last_seen": "2025-10-19T14:40:00Z",
+          "message": "FIX (phase 3): operators DISABLED NLB automatic AZ DNS health-check failover during the storm to stop it removing recovering capacity, and re-enabled it only AFTER EC2 had recovered. Velocity control added on automated capacity removal."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "aws-dynamodb",
+      "pod": "dns-enactor-use1-2",
+      "container": "dns-enactor",
+      "lines": [
+        "2025-10-19T07:47:55Z INFO  enactor run=A picked plan=plan-8841 for dynamodb.us-east-1.amazonaws.com; applying record set (run is DELAYED, started behind schedule)",
+        "2025-10-19T07:48:01Z INFO  enactor run=B picked plan=plan-8842 (newer) for dynamodb.us-east-1.amazonaws.com; applying then running stale-plan CLEANUP",
+        "2025-10-19T07:48:12Z WARN  RACE: run=B cleanup deleted record set still being applied by delayed run=A; resulting record set for dynamodb.us-east-1.amazonaws.com is EMPTY",
+        "2025-10-19T07:48:20Z ERROR regional endpoint dynamodb.us-east-1.amazonaws.com now resolves to EMPTY answer (0 targets); enactor cannot self-correct, inconsistent state latched",
+        "2025-10-19T07:49:05Z ERROR downstream: dynamodb-request-router reachable=FALSE for callers — name resolution returns NXANSWER; request-router pods themselves are healthy",
+        "2025-10-19T08:35:40Z ERROR knock-on: ec2-dwfm lease refresh FAILED (DynamoDB unreachable) — lease backlog growing; launches returning insufficient-capacity",
+        "2025-10-19T09:05:11Z WARN  knock-on: NLB health checks failing on impaired EC2 hosts; NLB automatic AZ DNS failover firing, pulling AZ targets from DNS (removing healthy capacity)",
+        "2025-10-19T11:25:00Z INFO  MITIGATION: DNS Planner/Enactor automation DISABLED; correct record set for regional endpoint restored MANUALLY; DDB resolution recovering",
+        "2025-10-19T13:10:00Z INFO  MITIGATION: throttling new EC2 launches to let DWFM drain lease backlog (do NOT treat as a real capacity shortage)",
+        "2025-10-19T14:40:00Z INFO  MITIGATION: NLB automatic AZ DNS failover DISABLED during storm; will re-enable only after EC2 healthy"
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "aws-dynamodb",
+      "deployment": "dynamodb-request-router",
+      "replicas": { "desired": 240, "ready": 240, "available": 240, "updated": 240 },
+      "current_revision": 14,
+      "image": "dynamodb/request-router:2025.10.01",
+      "last_rollout": "23d ago",
+      "rollout_status": "complete",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "ADVERSARIAL: request-router revision 14 unchanged for 23d, all 240 replicas Available, image 2025.10.01 stable. No bad_deploy and no code change to DynamoDB before the incident. The 100% API error rate is purely a name-resolution failure for the regional endpoint — the serving fleet is intact."
+    },
+    "prometheus_metrics.json": {
+      "service": "dynamodb-gateway",
+      "namespace": "aws-dynamodb",
+      "window": "5m",
+      "metrics": {
+        "ddb_regional_endpoint_dns_record_count": 0,
+        "ddb_regional_endpoint_dns_resolution_success_ratio": 0.0,
+        "dns_service_query_success_ratio": 1.0,
+        "ddb_api_error_rate_pct": 100,
+        "ddb_request_router_cpu_util_pct": 9,
+        "ddb_request_router_restart_count": 0,
+        "ddb_request_router_replicas_available_ratio": 1.0,
+        "ec2_dwfm_lease_backlog": 18400,
+        "ec2_run_instances_insufficient_capacity_rate_pct": 71,
+        "nlb_auto_az_dns_failover_events_total": 26,
+        "nlb_healthy_target_ratio": 0.42
+      },
+      "baseline": {
+        "ddb_regional_endpoint_dns_record_count": 8,
+        "ddb_regional_endpoint_dns_resolution_success_ratio": 1.0,
+        "dns_service_query_success_ratio": 1.0,
+        "ddb_api_error_rate_pct": 0,
+        "ddb_request_router_cpu_util_pct": 47,
+        "ddb_request_router_replicas_available_ratio": 1.0,
+        "ec2_dwfm_lease_backlog": 0,
+        "ec2_run_instances_insufficient_capacity_rate_pct": 0,
+        "nlb_auto_az_dns_failover_events_total": 0,
+        "nlb_healthy_target_ratio": 1.0
+      },
+      "samples": [
+        {
+          "metric": "ddb_regional_endpoint_dns_record_count",
+          "query": "dns_record_set_size{name=\"dynamodb.us-east-1.amazonaws.com\",type=\"A\"}",
+          "value": 0,
+          "slo_threshold": 1,
+          "breached": true,
+          "unit": "records",
+          "note": "SMOKING GUN: the authoritative record set for the regional endpoint has ZERO targets — an EMPTY record left by the DNS Enactor race. This, not any DynamoDB fault, is why every caller fails."
+        },
+        {
+          "metric": "dns_service_query_success_ratio",
+          "query": "sum(rate(dns_queries_answered_total[1m])) / sum(rate(dns_queries_total[1m]))",
+          "value": 1.0,
+          "slo_threshold": 0.99,
+          "breached": false,
+          "unit": "ratio",
+          "note": "ADVERSARIAL: the DNS SERVICE is healthy and answering 100% of queries — it is the record CONTENT that is empty. Rules out a DNS resolver/infrastructure outage."
+        },
+        {
+          "metric": "ddb_request_router_cpu_util_pct",
+          "query": "avg(container_cpu_util{deployment=\"dynamodb-request-router\"})",
+          "value": 9,
+          "slo_threshold": 85,
+          "breached": false,
+          "unit": "pct",
+          "note": "ADVERSARIAL: request-router CPU is only 9% (below 47% baseline) with 0 restarts and all replicas Available — the fleet is idle and healthy because no traffic is reaching it, NOT overloaded. Rules out a DynamoDB control-plane/request-router fault."
+        }
+      ],
+      "note": "ddb_regional_endpoint_dns_record_count=0 (empty record) and resolution_success=0.0 drive ddb_api_error_rate to 100%, while dns_service_query_success stays 1.0 (the DNS service is fine, the record is empty). request-router CPU 9% with 0 restarts and all 240 replicas Available proves DynamoDB itself is not at fault. ec2_dwfm_lease_backlog=18400 and run-instances insufficient-capacity 71% are knock-ons of DWFM's DynamoDB dependency. nlb_auto_az_dns_failover_events_total=26 with nlb_healthy_target_ratio=0.42 shows automatic AZ DNS failover REMOVING capacity — the auto-mitigation trap."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "DynamoDBRegionalEndpointErrors",
+            "severity": "critical",
+            "service": "dynamodb-gateway",
+            "namespace": "aws-dynamodb",
+            "cluster_name": "aws-use1-prod"
+          },
+          "annotations": {
+            "summary": "DynamoDB regional endpoint 100% API error rate; all callers failing",
+            "error": "DynamoDBRegionalEndpointErrors: dynamodb.us-east-1.amazonaws.com unreachable for all clients"
+          },
+          "state": "firing",
+          "activeAt": "2025-10-19T07:49:10Z",
+          "value": "100"
+        },
+        {
+          "labels": {
+            "alertname": "DnsRecordSetEmpty",
+            "severity": "critical",
+            "service": "dynamodb-regional-endpoint",
+            "namespace": "aws-dynamodb",
+            "cluster_name": "aws-use1-prod"
+          },
+          "annotations": {
+            "summary": "Authoritative record set for dynamodb.us-east-1.amazonaws.com is EMPTY (0 targets)",
+            "error": "DnsRecordSetEmpty: DNS Enactor race left an empty record; DNS service itself healthy"
+          },
+          "state": "firing",
+          "activeAt": "2025-10-19T07:48:25Z",
+          "value": "0"
+        },
+        {
+          "labels": {
+            "alertname": "Ec2InsufficientCapacity",
+            "severity": "warning",
+            "service": "ec2-dwfm",
+            "namespace": "aws-ec2",
+            "cluster_name": "aws-use1-prod"
+          },
+          "annotations": {
+            "summary": "EC2 RunInstances returning insufficient-capacity at 71%; DWFM lease backlog 18400",
+            "error": "Ec2InsufficientCapacity: knock-on of DynamoDB dependency, not a real capacity shortage"
+          },
+          "state": "firing",
+          "activeAt": "2025-10-19T08:36:00Z",
+          "value": "71"
+        },
+        {
+          "labels": {
+            "alertname": "NlbAutoFailoverRemovingCapacity",
+            "severity": "warning",
+            "service": "nlb-fleet",
+            "namespace": "aws-elb",
+            "cluster_name": "aws-use1-prod"
+          },
+          "annotations": {
+            "summary": "NLB automatic AZ DNS failover removing AZs from DNS; healthy target ratio 0.42",
+            "error": "NlbAutoFailoverRemovingCapacity: auto-mitigation pulling healthy capacity during recovery (TRAP)"
+          },
+          "state": "firing",
+          "activeAt": "2025-10-19T09:06:00Z",
+          "value": "0.42"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "dynamodb-gateway",
+      "sampled_spans": 3,
+      "summary": "Slow/failing client requests die at the very first hop — DNS resolution of dynamodb.us-east-1.amazonaws.com — which returns an EMPTY answer, so no connection to the healthy request-router is ever attempted. DynamoDB's request-router and storage are never reached; the trace never gets past name resolution. EC2 and NLB traces show the same root resolution failure cascading into lease backlog and auto-failover capacity removal.",
+      "spans": [
+        {
+          "trace_id": "a17f...3c",
+          "root": "internal-client:/PutItem",
+          "total_ms": 5005,
+          "breakdown": [
+            { "span": "sdk.resolve dynamodb.us-east-1.amazonaws.com", "ms": 5000, "note": "SMOKING GUN: DNS returns an EMPTY record set (0 targets); SDK retries resolution until deadline. The DNS service answered — the answer was empty." },
+            { "span": "tcp.connect request-router", "ms": 0, "note": "never attempted — no target to connect to; request-router pods are healthy but unreachable by name" },
+            { "span": "ddb.PutItem", "ms": 0, "note": "never reached — DynamoDB request handling is not at fault" }
+          ]
+        },
+        {
+          "trace_id": "c92a...7b",
+          "root": "ec2-dwfm:/RefreshLease",
+          "total_ms": 5002,
+          "breakdown": [
+            { "span": "dwfm.read lease (DynamoDB)", "ms": 5000, "note": "KNOCK-ON: DWFM lease read to DynamoDB fails at resolution -> lease backlog -> RunInstances insufficient-capacity" },
+            { "span": "ec2.RunInstances", "ms": 2, "note": "returns insufficient-capacity; looks like a capacity incident but is downstream of the DNS failure" }
+          ]
+        },
+        {
+          "trace_id": "e44d...1f",
+          "root": "nlb-controller:/HealthCheck",
+          "total_ms": 30,
+          "breakdown": [
+            { "span": "nlb.healthcheck impaired-ec2-host", "ms": 28, "note": "host impaired (no DynamoDB) -> health check fails" },
+            { "span": "nlb.auto_az_dns_failover", "ms": 2, "note": "TRAP: automatic AZ DNS failover fires and removes the AZ from DNS — pulling otherwise-healthy capacity while EC2 is still recovering" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "dependency_failure",
+    "root_cause_subtype": "DynamoDB DNS Enactor race left an empty regional-endpoint record (delayed enactor + concurrent fast enactor with cleanup); NLB automatic AZ DNS failover auto-mitigation trap",
+    "required_keywords": [
+      "DNS Enactor",
+      "race",
+      "delayed enactor",
+      "concurrent enactor",
+      "cleanup",
+      "empty DNS record",
+      "dynamodb.us-east-1.amazonaws.com",
+      "regional endpoint",
+      "name resolution",
+      "DWFM",
+      "lease backlog",
+      "NLB automatic AZ DNS failover",
+      "removes healthy capacity"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "saturation",
+      "node_failure",
+      "config_error",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "request-router revision 14 unchanged 23d",
+      "all 240 replicas Available",
+      "request-router 0 restarts",
+      "request-router cpu 9%",
+      "dns_service_query_success 1.0",
+      "DNS service healthy, record empty",
+      "EC2 insufficient-capacity is a DWFM/DynamoDB knock-on not a real shortage",
+      "NLB flap is a knock-on of impaired EC2 hosts"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs",
+      "describe_pod",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "DNS Enactor race -> empty DNS record for DynamoDB regional endpoint -> name resolution fails for all callers -> internal DynamoDB-dependent services fail -> EC2 DWFM lease churn (uses DynamoDB) -> 'insufficient capacity' -> NLB nodes flap -> NLB automatic AZ DNS failover removes capacity -> multi-AZ apps lose serving capacity",
+    "model_response": "ROOT_CAUSE: A race between two DynamoDB DNS Enactor runs left an EMPTY DNS record for the regional endpoint dynamodb.us-east-1.amazonaws.com. A DELAYED enactor was still applying an older DNS plan when a concurrent enactor (the faster of the two) applied a newer plan and ran its stale-plan CLEANUP; the cleanup deleted the record set the delayed enactor was mid-applying, producing a record set with zero targets, and the system latched in an inconsistent state that automation could not self-correct. Because the regional endpoint then resolved to an empty answer, every internal and external DynamoDB caller failed at the name-resolution hop — so the 100% DynamoDB API error rate is a resolution failure, not a DynamoDB control-plane/request-router fault (the request-router fleet is Running, 0 restarts, 9% CPU, all 240 replicas Available, revision unchanged for 23d). The later EC2 'insufficient capacity' errors are a knock-on: EC2's DWFM lease manager depends on DynamoDB, so the DNS failure produced a lease backlog that surfaced as launch failures. The NLB connection errors are a third face of the same cause: EC2 hosts came up impaired (no DynamoDB), failed NLB health checks, and NLB AUTOMATIC AZ DNS FAILOVER then pulled whole AZs out of DNS — an auto-mitigation that removes healthy capacity during recovery.\nROOT_CAUSE_CATEGORY: dependency_failure\nVALIDATED_CLAIMS:\n- Two DNS Enactor runs raced: a delayed run applying an old plan while a concurrent faster run applied a newer plan and ran stale-plan cleanup that deleted the in-flight record set [evidence: k8s_events, k8s_pod_logs]\n- The authoritative record set for dynamodb.us-east-1.amazonaws.com is EMPTY (ddb_regional_endpoint_dns_record_count=0), while the DNS service itself answers 100% of queries (dns_service_query_success_ratio=1.0) [evidence: prometheus_metrics, prometheus_alerts, k8s_events]\n- Traces die at the first hop: SDK resolve of the regional endpoint returns an empty answer and tcp.connect to request-router is never attempted; DynamoDB request handling is never reached [evidence: traces]\n- request-router is healthy: 0 restarts, 9% CPU (below 47% baseline), 240/240 replicas Available, revision 14 unchanged for 23d [evidence: k8s_pods, k8s_deployments, prometheus_metrics]\n- EC2 DWFM lease backlog (18400) and 71% insufficient-capacity are a knock-on of DWFM's DynamoDB dependency, not a real capacity shortage [evidence: k8s_events, traces, prometheus_metrics]\n- NLB automatic AZ DNS failover fired 26 times and dropped healthy-target ratio to 0.42 — auto-mitigation removing capacity during recovery [evidence: k8s_events, prometheus_metrics, traces]\nNON_VALIDATED_CLAIMS:\n- DynamoDB control-plane / request-router outage (the LOUD symptom): WRONG. The request-router fleet is Running, 0 restarts, 9% CPU, all 240 replicas Available, revision unchanged 23d. The 100% error rate is a name-resolution failure for the regional endpoint, not a DynamoDB fault [evidence: k8s_pods, k8s_deployments, prometheus_metrics, traces]\n- DNS resolver / DNS infrastructure outage: WRONG. The DNS service answers 100% of queries (dns_service_query_success_ratio=1.0); the record CONTENT is empty, not the service down [evidence: prometheus_metrics, k8s_events]\n- Separate EC2 capacity-exhaustion incident: WRONG. EC2 DWFM depends on DynamoDB; the lease backlog and insufficient-capacity are downstream of the DNS failure. Correct action is to throttle launches and let DWFM drain, not to chase a phantom capacity shortage [evidence: k8s_events, traces]\n- Separate NLB / load-balancer incident: WRONG. NLB health-check flap is a knock-on of impaired EC2 hosts; it shares the one root cause [evidence: k8s_events, traces]\n- TRAP — letting NLB automatic AZ DNS health-check failover keep firing while capacity recovers: WRONG / it WORSENED the incident. With EC2 hosts impaired, automatic AZ DNS failover pulled healthy AZs out of DNS (26 events, healthy-target ratio fell to 0.42), removing capacity during recovery. It had to be DISABLED during the storm and re-enabled only after EC2 was healthy, with velocity control on capacity removal [evidence: k8s_events, prometheus_metrics, traces]\n- TRAP — re-enabling/trusting DNS Planner-Enactor automation before the race is fixed: WRONG. The automation re-introduces the empty record; it must be disabled while DNS is manually restored and only re-enabled after the race fix ships [evidence: k8s_events, k8s_pod_logs]\nCAUSAL_CHAIN:\n- A delayed DNS Enactor run and a concurrent faster enactor run (which also runs stale-plan cleanup) race on the DynamoDB regional-endpoint DNS plan\n- The cleanup deletes the record set the delayed run is mid-applying -> empty DNS record for dynamodb.us-east-1.amazonaws.com; state latched inconsistent\n- All DynamoDB callers fail at name resolution -> 100% API error rate (request-router fleet healthy but unreachable by name)\n- EC2 DWFM (depends on DynamoDB) cannot refresh leases -> lease backlog -> RunInstances 'insufficient capacity'\n- Impaired EC2 hosts fail NLB health checks -> NLB automatic AZ DNS failover removes healthy AZ capacity during recovery (auto-mitigation trap)\n- Fix: manually restore the correct DNS record set AND disable DNS Planner/Enactor automation until the race is fixed; throttle EC2 launches to let DWFM drain the lease backlog; DISABLE NLB automatic AZ DNS failover during the storm and re-enable it only after EC2 has recovered, with velocity control on capacity removal\nFIX: Manually restore the DynamoDB regional-endpoint DNS record and pause DNS Planner/Enactor automation until the race is fixed; throttle EC2 launches so DWFM drains its lease backlog; disable NLB automatic AZ DNS failover during the storm and re-enable only after EC2 is healthy."
+  },
+  "remediation": {
+    "fix_tool": "modify_network_policy",
+    "canonical_fix": "Manually restore the correct DNS record set for the DynamoDB regional endpoint and pause/disable the DNS Planner and Enactor automation until the enactor-race defect is fixed; throttle new EC2 launches so DWFM can drain its lease backlog; disable NLB automatic AZ DNS health-check failover during the storm and re-enable it only after EC2 has recovered, adding velocity control on automated capacity removal.",
+    "trust_tier": "blocked",
+    "trap_actions": [
+      "Let NLB automatic AZ DNS health-check failover keep firing while capacity recovers — with EC2 hosts impaired it pulled healthy AZs out of DNS (26 failover events, healthy-target ratio fell to 0.42), removing capacity and prolonging the EC2 phase (the documented auto-mitigation worsening); it had to be DISABLED during the storm",
+      "Re-enable or trust the DNS Planner/Enactor automation before the race is fixed — it re-introduces the empty regional-endpoint record",
+      "Treat EC2 'insufficient capacity' as a real capacity shortage and aggressively add/launch instances — DWFM is backlogged on its DynamoDB dependency, so naive launches deepen the lease backlog instead of throttling to let it drain",
+      "Roll back / restart the DynamoDB request-router as if it were a control-plane outage — the fleet is healthy (0 restarts, 9% CPU, 240/240 Available, 23d revision); the failure is name resolution, not the request-router"
+    ],
+    "resolved": true
+  }
+}

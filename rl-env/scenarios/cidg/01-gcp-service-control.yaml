@@ -1,0 +1,122 @@
+# CIDG scenario — reconstruction of a real post-mortem as an emergent-cascade topology.
+#
+# Incident #1: Google Cloud Service Control quota-policy crash loop (Jun 12 2025).
+# A globally-replicated quota-policy metadata change with blank fields hit a missing
+# null-check in Service Control -> global crash loop -> API auth/quota fails -> 503s
+# across many products. The naive fix (aggressively restart/scale Service Control)
+# overloaded Spanner during recovery (herd effect) and PROLONGED the outage.
+#
+# Maps onto the 4-criteria pattern:
+#   cascade            -> required + discovery edges fan the failure out to products
+#   misleading symptom -> loudest alerts are 503s on product VICTIMS, not service-control
+#   multi-step diag    -> the null-policy smoking gun is buried in service-control logs;
+#                         monitoring (cloud-service-health) is itself degraded
+#   naive fix worsens  -> restart/scale service-control -> Spanner pool herd -> worse
+
+meta:
+  id: gcp-service-control
+  title: "Google Cloud Service Control quota-policy crash loop"
+  source: "Google Cloud status incident ow5i3PPK96RduMcb1SsW (Jun 12 2025)"
+  urls:
+    - https://status.cloud.google.com/incidents/ow5i3PPK96RduMcb1SsW
+  failure_class: config-propagation + control-plane-crashloop + herd-recovery
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: service-control          # the quota/policy enforcement control plane
+      kind: control_plane
+      resources: { replicas: 3 }
+      limits: { null_policy_crash: true }
+    - name: spanner                  # global metadata store; herd-effect choke point
+      kind: datastore
+      resources: { pool_size: 100 }
+    - name: api-gateway              # every product call passes auth/quota here
+      kind: lb
+      resources: { replicas: 4 }
+    - name: workspace                # product victim
+      kind: service
+      resources: { replicas: 3 }
+    - name: compute-api              # product victim
+      kind: service
+      resources: { replicas: 3 }
+    - name: bigquery-api             # product victim
+      kind: service
+      resources: { replicas: 3 }
+    - name: cloud-service-health     # status/monitoring; itself in the blast radius
+      kind: monitoring
+      resources: { replicas: 2 }
+  edges:
+    - { from: api-gateway, to: service-control, type: discovery, weight: 1.0 }
+    - { from: service-control, to: spanner, type: pool, weight: 1.0 }
+    - { from: workspace,   to: api-gateway, type: required, latency_add_ms: 5, retry: 0.4 }
+    - { from: compute-api, to: api-gateway, type: required, latency_add_ms: 5, retry: 0.4 }
+    - { from: bigquery-api, to: api-gateway, type: required, latency_add_ms: 5, retry: 0.4 }
+    - { from: cloud-service-health, to: service-control, type: observes }
+    - { from: cloud-service-health, to: spanner, type: observes }
+
+root_cause:
+  location: service-control
+  kind: config_bloat               # blank fields in replicated policy -> null-pointer crash loop
+  severity: 0.9
+  hidden: true
+  persistent: true                 # crash loop persists; needs path-disable + restart to reset
+  reset_by: [modify_network_policy, restart_service]
+  rate_law:
+    var: policy_propagation_pct    # the bad policy replicates globally
+    per_tick: 50
+    cap: 100                       # at 100% propagation, all replicas crash-loop
+    worsened_by: [restart_service, scale_deployment]   # herd onto spanner during recovery
+  params:
+    spanner_demand_per_restart: 40 # each aggressive restart adds this much pool demand
+
+fault:
+  chaos_kind: exec
+  exec_cmd: "inject blank quota-policy metadata to service-control (global replicate)"
+  sim: { set: { service_control_crashloop: true } }
+  duration_s: 120
+
+observation:
+  alerting: uniform                # loudness is emergent from where the breach surfaces
+  monitoring_degrades: true        # cloud-service-health delayed (observes service-control)
+  smoking_guns:
+    - tool: get_logs
+      node: service-control
+      signature: "NullPointer: quota policy field empty"
+      buried_under: 50
+
+slo:
+  - { metric: error_rate_pct, node: api-gateway, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: workspace,   direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: compute-api, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+
+# The DERIVED trap set is computed by the engine ({a : ΔSLO(a) < 0}); these are the
+# INTENDED traps, asserted at author time so the engine must reproduce them as worsening.
+trap_actions:
+  - { tool: restart_service, args: { target: service-control } }   # herd -> spanner pool
+  - { tool: scale_deployment, args: { target: service-control, replicas: 8 } }
+
+canonical_fix:
+  ordering_notes: >
+    Disable the bad serving path BEFORE restarting; throttle task creation BEFORE any
+    scale-up, or Spanner herds during recovery and prolongs the outage.
+  steps:
+    - { tool: modify_network_policy, args: { target: service-control, action: disable_bad_path } }
+    - { tool: scale_deployment, args: { target: service-control, replicas: 1 } }   # throttle restarts
+    - { tool: restart_service, args: { target: service-control } }                 # reset after path off
+
+paired_positive: leaf-cpu-saturation-positive   # a sibling where scale/restart IS the right fix
+
+assertions:
+  cascades: true
+  loudest_alert_not_cause: true
+  fix_resolves: true
+  buried_gun_exists: true
+  hysteresis: true
+  monitoring_degrades: true
+
+chance:
+  flap_prob: 0.1            # service-control flaps as the bad policy partially rolls
+  jitter: 0.05
+
+seed: 612

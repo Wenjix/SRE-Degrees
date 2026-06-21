@@ -1,0 +1,513 @@
+{
+  "incident": "github_proxysql_fd_limit",
+  "provider": "k8s",
+  "source_company": "GitHub",
+  "source_url": "https://github.blog/2020-03-26-february-service-disruptions-post-incident-analysis/",
+  "failure_mode": "silent_fd_ceiling_clamp",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] writes stalling on mysql1 + dependent services failing — proxysql-mysql1",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "Mysql1WriteStallDependentsFailing",
+      "severity": "critical",
+      "service": "proxysql-mysql1",
+      "namespace": "github-data",
+      "workload_type": "statefulset",
+      "workload_name": "proxysql-mysql1",
+      "cluster_name": "github-prod-iad"
+    },
+    "commonAnnotations": {
+      "summary": "Writes to the mysql1 primary are stalling and every service that depends on mysql1 is erroring; ProxySQL in front of mysql1 cannot consistently complete queries.",
+      "description": "For the fourth time in nine days, queries against the mysql1 relational cluster started stalling under load. Writes to the mysql1 primary back up, ProxySQL (the connection pooler that fronts mysql1) reports it can no longer accept or complete connections, and a fan-out of dependent services (web, api, authorizations) begin failing. The loud, repeated symptom looks like the mysql1 PRIMARY is out of database capacity / connection-pool headroom — each prior occurrence was treated as a DB capacity or a bad-query problem, and one was blamed on a planned primary promotion. Application query rate to mysql1 rose ~1.4x after a recent app change, and a planned mysql1 primary promotion was performed nine days ago. The loud symptom points squarely at the mysql1 primary running out of database capacity / connection-pool headroom under load.",
+      "error": "Mysql1WriteStallDependentsFailing: ProxySQL cannot complete queries to mysql1 primary; dependents erroring",
+      "suspected_symptom": "mysql1_primary_db_capacity_connection_pool_exhaustion",
+      "k8s_failure_mode": "silent_fd_ceiling_clamp",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,k8s_node_health,query_traces,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The mysql1 PRIMARY shows backed-up writes and a high active-connection count, which looks like the database has run out of capacity / connection-pool headroom — the obvious read each of the four times this fired. But the mysql1 engine is healthy: query execution latency is normal once a connection lands, InnoDB has no long-running locks, CPU/mem/disk on the primary are well within limits. The primary is the VICTIM (writes stall because ProxySQL in front of it can no longer hand connections through), not the cause.",
+      "A resource-intensive query / bad query pattern from a recent application change is the first suspect (and was suspected in the postmortem). Query rate did rise, but raising query rate only matters because it pushed ProxySQL's live connection count across a hidden file-descriptor ceiling; the same queries run fine below that ceiling. The query authors are a red herring — blaming them does not explain why the failure recurs at an exact, repeatable connection threshold.",
+      "A planned mysql1 PRIMARY PROMOTION had just been performed, and the failure recurred right after it — so the promotion looks guilty (it was suspected in the postmortem). The promotion is unrelated: it merely changed which backend ProxySQL fronts and briefly bumped connection churn; the failure is keyed to ProxySQL's FD count, which the promotion incidentally nudged over the ceiling.",
+      "ProxySQL's own configured mysql-max_connections and the unit file's LimitNOFILE=1073741824 both look enormous, so on paper ProxySQL has effectively unlimited file descriptors and the FD angle looks impossible / already handled — this is exactly why the clamp went unnoticed. The EFFECTIVE limit in /proc/<pid>/limits is 65,536, not the requested 1B, because the process manager silently reduced it to the host fs.nr_open ceiling. There is no alert on the gap between requested and effective FDs.",
+      "All ProxySQL and mysql1 nodes report Ready with no MemoryPressure / DiskPressure / PIDPressure and normal CPU; there is no node_failure and no host-level resource_exhaustion. The exhaustion is a per-process file-descriptor count inside the ProxySQL container, invisible at the node level.",
+      "Dependent services (web, api, authorizations) are throwing connection errors to mysql1, which looks like a dependency_failure originating in those services or in the network. They are healthy downstream victims: their errors are 'connection refused / could not acquire connection from pool', all pointing back at ProxySQL refusing new sockets once its FD table is full."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "github-data",
+      "pods": [
+        {
+          "name": "proxysql-mysql1-0",
+          "node": "node-iad-data-3",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "23d",
+          "container": {
+            "name": "proxysql",
+            "image": "registry.github/proxysql:2.0.10",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2000m",
+            "cpu_limit": "8000m",
+            "memory_request": "4Gi",
+            "memory_limit": "16Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ProxySQL is Running with 0 restarts and CPU/mem far below limits, yet it is REFUSING new connections. The container is healthy at the resource level; the exhausted resource is per-process file descriptors. The unit file requested LimitNOFILE=1073741824 but /proc/<pid>/limits shows Max open files = 65536 (silently clamped to the host fs.nr_open). This pod, not the mysql1 primary, is where the failure originates."
+        },
+        {
+          "name": "mysql1-primary-0",
+          "node": "node-iad-data-7",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "8d",
+          "container": {
+            "name": "mysqld",
+            "image": "registry.github/mysql:5.7-gh",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "8000m",
+            "cpu_limit": "16000m",
+            "memory_request": "32Gi",
+            "memory_limit": "64Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "mysql1 PRIMARY (loud victim). Writes back up because ProxySQL in front of it cannot hand connections through. Age 8d reflects the recent planned promotion (adversarial: looks guilty). The engine is healthy — see prometheus_metrics: query exec p99 normal once a connection lands, no long InnoDB locks, CPU/mem/disk in band. Raising DB capacity or restarting this primary fixes nothing."
+        },
+        {
+          "name": "web-7d9c8b6f5-q4r2n",
+          "node": "node-iad-web-11",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 0,
+          "age": "5d",
+          "container": {
+            "name": "web",
+            "image": "registry.github/web:gh-2020.02",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1000m",
+            "cpu_limit": "4000m",
+            "memory_request": "2Gi",
+            "memory_limit": "6Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "False", "reason": "ProbeFailed" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "Downstream victim. NotReady because it cannot acquire a mysql1 connection through ProxySQL ('connection refused'). Not a code or dependency bug in web itself."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "github-data",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "ProxySQLConnectionRefused",
+          "object": "pod/proxysql-mysql1-0",
+          "source": "proxysql",
+          "count": 4193,
+          "first_seen": "2020-02-27T14:48:02Z",
+          "last_seen": "2020-02-27T15:09:41Z",
+          "message": "ProxySQL refusing new backend/frontend connections: 'Error: too many open files'. Active connections crossed 65,536 — the EFFECTIVE open-file ceiling on this process (not the 1,073,741,824 the unit requested)."
+        },
+        {
+          "type": "Warning",
+          "reason": "Mysql1WriteStall",
+          "object": "pod/mysql1-primary-0",
+          "source": "mysql-monitor",
+          "count": 311,
+          "first_seen": "2020-02-27T14:49:10Z",
+          "last_seen": "2020-02-27T15:09:30Z",
+          "message": "Writes to mysql1 primary stalling: new write sessions cannot be established because ProxySQL in front of the primary stopped accepting connections. Engine itself idle-healthy."
+        },
+        {
+          "type": "Normal",
+          "reason": "PrimaryPromotionCompleted",
+          "object": "statefulset/mysql1-primary",
+          "source": "orchestrator",
+          "count": 1,
+          "first_seen": "2020-02-19T03:12:00Z",
+          "last_seen": "2020-02-19T03:12:00Z",
+          "message": "Planned mysql1 primary promotion completed 8 days ago (adversarial: a later recurrence was blamed on this promotion). Promotion only changed which backend ProxySQL fronts; the failure recurs at the same ProxySQL FD threshold regardless of which node is primary."
+        },
+        {
+          "type": "Warning",
+          "reason": "QueryRateIncrease",
+          "object": "service/proxysql-mysql1",
+          "source": "query-analyzer",
+          "count": 1,
+          "first_seen": "2020-02-27T14:44:30Z",
+          "last_seen": "2020-02-27T14:44:30Z",
+          "message": "Application query rate to mysql1 rose ~1.4x after a recent app change (adversarial: tempts blaming the query authors). Higher query rate only matters because it pushed live ProxySQL connections past the hidden 65,536 FD ceiling; the same queries run cleanly below it."
+        },
+        {
+          "type": "Warning",
+          "reason": "RecurringIncident",
+          "object": "service/proxysql-mysql1",
+          "source": "incident-tracker",
+          "count": 4,
+          "first_seen": "2020-02-19T00:00:00Z",
+          "last_seen": "2020-02-27T15:09:41Z",
+          "message": "4th occurrence in 9 days. Each prior time it was triaged as DB capacity / connection-pool exhaustion / a bad query / the promotion — none of which explain why the failure recurs at the exact, repeatable connection count of ~65,536."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pods": [
+        {
+          "pod": "proxysql-mysql1-0",
+          "container": "proxysql",
+          "lines": [
+            "2020-02-27T14:44:31Z INFO  ProxySQL serving mysql1: frontend_conns=61020 backend_conns=4180 query_p99=7ms — nominal",
+            "2020-02-27T14:48:02Z WARN  approaching open file descriptor table limit: open_fds=65510 max_open_fds=65536",
+            "2020-02-27T14:48:05Z ERROR accept() failed: Too many open files (errno 24) — cannot open new client/backend socket",
+            "2020-02-27T14:48:05Z ERROR cannot establish new backend connection to mysql1-primary: Too many open files (errno 24)",
+            "2020-02-27T14:49:12Z ERROR sustained 'Too many open files'; ProxySQL configured mysql-max_connections is huge and CPU/mem are fine — the wall is the PROCESS file-descriptor limit, not DB capacity",
+            "2020-02-27T14:50:40Z INFO  /proc/self/limits -> 'Max open files  65536  65536' — but systemd unit requested LimitNOFILE=1073741824; effective limit was SILENTLY clamped to host fs.nr_open (65536)"
+          ]
+        },
+        {
+          "pod": "mysql1-primary-0",
+          "container": "mysqld",
+          "lines": [
+            "2020-02-27T14:49:10Z WARN  write sessions not arriving from ProxySQL; threads_connected flat, not climbing",
+            "2020-02-27T14:49:30Z INFO  InnoDB: no long-running transactions, no lock waits; buffer pool healthy; query exec p99=6ms for the few sessions that exist",
+            "2020-02-27T14:51:02Z INFO  primary engine is idle-healthy; stalled writes are because the pooler upstream stopped accepting connections, not because the primary is overloaded"
+          ]
+        },
+        {
+          "pod": "web-7d9c8b6f5-q4r2n",
+          "container": "web",
+          "lines": [
+            "2020-02-27T14:48:40Z ERROR could not acquire mysql1 connection: dial proxysql-mysql1:6033: connection refused",
+            "2020-02-27T14:49:01Z ERROR request failed: mysql1 pool empty — upstream ProxySQL refusing connections (Too many open files)",
+            "2020-02-27T14:52:18Z WARN  web is healthy; failing purely because ProxySQL cannot hand it a mysql1 connection"
+          ]
+        }
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "node-iad-data-3",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 34,
+          "memory_util_pct": 38,
+          "fs_nr_open": 65536,
+          "note": "Hosts proxysql-mysql1-0. Node is healthy and NOT under resource pressure. CRITICAL detail: host fs.nr_open is 65536 — this is the value the process manager silently clamped ProxySQL's LimitNOFILE down to. The exhaustion is a per-PROCESS FD count, not node-level resource_exhaustion."
+        },
+        {
+          "name": "node-iad-data-7",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 41,
+          "memory_util_pct": 47,
+          "note": "Hosts mysql1-primary-0. Healthy, no pressure. The primary is not resource-starved; it is starved of incoming connections from ProxySQL."
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "github-data",
+      "deployments": [
+        {
+          "deployment": "proxysql-mysql1",
+          "kind": "statefulset",
+          "replicas": { "desired": 2, "ready": 1, "available": 1, "updated": 2 },
+          "current_revision": 7,
+          "image": "registry.github/proxysql:2.0.10",
+          "last_rollout": "23d ago",
+          "rollout_status": "complete",
+          "conditions": [
+            { "type": "Available", "status": "False", "reason": "MinimumReplicasUnavailable" }
+          ],
+          "unit_file": {
+            "LimitNOFILE_requested": 1073741824,
+            "LimitNOFILE_effective": 65536,
+            "proc_limits_max_open_files": 65536,
+            "note": "The systemd unit requests LimitNOFILE=1073741824, but because that exceeds the kernel/process-manager system max, the process manager SILENTLY reduced it to the host fs.nr_open ceiling of 65536. There is NO alert on this gap. This is the root-cause artifact."
+          },
+          "note": "Unchanged for 23d. The image/config did not regress today; the FD ceiling was always 65,536. The incident fires whenever live connections cross that hidden ceiling. NOTE: restarting/redeploying ProxySQL RE-APPLIES the same clamp (the trap), and there is a documented race between the process manager and the service config that slows even the correct ulimit fix."
+        },
+        {
+          "deployment": "mysql1-primary",
+          "kind": "statefulset",
+          "replicas": { "desired": 1, "ready": 1, "available": 1, "updated": 1 },
+          "current_revision": 19,
+          "image": "registry.github/mysql:5.7-gh",
+          "last_rollout": "8d ago (planned primary promotion)",
+          "rollout_status": "complete",
+          "conditions": [
+            { "type": "Available", "status": "True" }
+          ],
+          "note": "mysql1 primary is Available and healthy; promoted 8d ago. Adding DB capacity / rolling back the promotion does not address the ProxySQL FD ceiling."
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "service": "proxysql-mysql1",
+      "namespace": "github-data",
+      "window": "5m",
+      "metrics": {
+        "proxysql_open_fds": 65536,
+        "proxysql_max_fds_effective": 65536,
+        "proxysql_max_fds_requested": 1073741824,
+        "proxysql_accept_errno24_per_s": 540,
+        "proxysql_frontend_conns": 61020,
+        "proxysql_backend_conns": 4180,
+        "proxysql_configured_max_connections": 100000000,
+        "proxysql_query_p99_ms": 7,
+        "proxysql_cpu_util_pct": 34,
+        "proxysql_mem_util_pct": 38,
+        "mysql1_primary_query_exec_p99_ms": 6,
+        "mysql1_primary_threads_connected": 4180,
+        "mysql1_primary_innodb_lock_waits": 0,
+        "mysql1_primary_cpu_util_pct": 41,
+        "mysql1_primary_disk_util_pct": 39,
+        "mysql1_write_stall_per_s": 96,
+        "dependent_service_conn_refused_per_s": 612,
+        "query_rate_rps": 84000,
+        "restart_count": 0
+      },
+      "baseline": {
+        "proxysql_open_fds": 41200,
+        "proxysql_max_fds_effective": 65536,
+        "proxysql_max_fds_requested": 1073741824,
+        "proxysql_accept_errno24_per_s": 0,
+        "proxysql_frontend_conns": 38900,
+        "proxysql_backend_conns": 2300,
+        "proxysql_query_p99_ms": 6,
+        "proxysql_cpu_util_pct": 31,
+        "proxysql_mem_util_pct": 36,
+        "mysql1_primary_query_exec_p99_ms": 6,
+        "mysql1_primary_innodb_lock_waits": 0,
+        "mysql1_primary_cpu_util_pct": 38,
+        "mysql1_write_stall_per_s": 0,
+        "dependent_service_conn_refused_per_s": 0,
+        "query_rate_rps": 60000
+      },
+      "samples": [
+        {
+          "metric": "proxysql_open_fds",
+          "query": "max(proxysql_open_file_descriptors{pod=\"proxysql-mysql1-0\"})",
+          "value": 65536,
+          "slo_threshold": 65536,
+          "breached": true,
+          "unit": "count",
+          "note": "SMOKING GUN: open file descriptors pinned at exactly 65,536, the EFFECTIVE ceiling. The unit requested 1,073,741,824 (proxysql_max_fds_requested) but the process manager silently clamped the effective value to 65,536 (proxysql_max_fds_effective == host fs.nr_open). accept() returns errno 24 ('Too many open files') the instant connections hit this number."
+        },
+        {
+          "metric": "proxysql_max_fds_effective_vs_requested_gap",
+          "query": "proxysql_max_fds_requested - proxysql_max_fds_effective",
+          "value": 1073676288,
+          "slo_threshold": 0,
+          "breached": true,
+          "unit": "count",
+          "note": "The 1.07-billion gap between requested (1,073,741,824) and effective (65,536) FD limits is the silent clamp itself. Nothing alerts on this gap — exactly why it took four incidents to find."
+        },
+        {
+          "metric": "mysql1_primary_query_exec_p99_ms",
+          "query": "histogram_quantile(0.99, mysql1_primary_query_exec_seconds)",
+          "value": 6,
+          "slo_threshold": 50,
+          "breached": false,
+          "unit": "ms",
+          "note": "Rules out DB capacity: for the connections that DO land, the mysql1 primary executes queries in 6ms (normal), with zero InnoDB lock waits. The primary is not overloaded — it is starved of connections."
+        }
+      ],
+      "note": "ProxySQL CPU 34% and mem 38% (both near baseline) while it refuses connections — the wall is the per-process FD count, not host resources. proxysql_open_fds is pinned at the effective ceiling 65,536 even though configured max_connections is 100,000,000 and the unit requested LimitNOFILE=1,073,741,824. mysql1 primary exec p99 is 6ms with 0 lock waits, so the primary is healthy. Query rate rose 60k->84k rps, which only pushed live connections over the hidden ceiling."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "Mysql1WriteStallDependentsFailing",
+            "severity": "critical",
+            "service": "proxysql-mysql1",
+            "namespace": "github-data",
+            "cluster_name": "github-prod-iad"
+          },
+          "annotations": {
+            "summary": "Writes to mysql1 primary stalling; ProxySQL cannot complete queries; dependents failing",
+            "error": "Mysql1WriteStallDependentsFailing: ProxySQL cannot complete queries to mysql1 primary"
+          },
+          "state": "firing",
+          "activeAt": "2020-02-27T14:49:10Z",
+          "value": "96"
+        },
+        {
+          "labels": {
+            "alertname": "ProxySQLTooManyOpenFiles",
+            "severity": "critical",
+            "service": "proxysql-mysql1",
+            "pod": "proxysql-mysql1-0",
+            "cluster_name": "github-prod-iad"
+          },
+          "annotations": {
+            "summary": "ProxySQL open file descriptors pinned at effective ceiling 65,536 (unit requested 1,073,741,824); accept() returning errno 24",
+            "error": "ProxySQLTooManyOpenFiles: open_fds=65536 max_open_fds_effective=65536"
+          },
+          "state": "firing",
+          "activeAt": "2020-02-27T14:48:02Z",
+          "value": "65536",
+          "note": "Fired FIRST (14:48:02), one minute before the write-stall alert (14:49:10) and before the dependent-service failures. This is the leading indicator of the true root cause: the FD ceiling, not DB capacity."
+        },
+        {
+          "labels": {
+            "alertname": "DependentServicesMysql1ConnRefused",
+            "severity": "warning",
+            "service": "web",
+            "namespace": "github-prod",
+            "cluster_name": "github-prod-iad"
+          },
+          "annotations": {
+            "summary": "web/api/authorizations cannot acquire mysql1 connections: connection refused via ProxySQL",
+            "error": "DependentServicesMysql1ConnRefused: pool empty, upstream refusing connections"
+          },
+          "state": "firing",
+          "activeAt": "2020-02-27T14:49:40Z",
+          "value": "612"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "proxysql-mysql1",
+      "sampled_spans": 3,
+      "summary": "Failed requests die at the ProxySQL frontend: the connect to ProxySQL is refused (errno 24, too many open files) before any query reaches the mysql1 primary. The few requests that DO get a connection complete normally — the mysql1 primary executes in ~6ms. The bottleneck is the ProxySQL file-descriptor table, not the database engine.",
+      "spans": [
+        {
+          "trace_id": "a71c...09",
+          "root": "web:/repos.read",
+          "total_ms": 5,
+          "error": "connection refused",
+          "breakdown": [
+            { "span": "web.handler", "ms": 2 },
+            { "span": "web.connect_proxysql[proxysql-mysql1:6033]", "ms": 3, "error": "accept() errno 24 too many open files", "note": "request never reaches mysql1 — refused at ProxySQL because its FD table is full at 65,536" }
+          ]
+        },
+        {
+          "trace_id": "b40e...77",
+          "root": "api:/issues.write",
+          "total_ms": 4,
+          "error": "pool empty",
+          "breakdown": [
+            { "span": "api.handler", "ms": 1 },
+            { "span": "api.acquire_mysql1_conn", "ms": 3, "error": "ProxySQL pool returned no connection (Too many open files)", "note": "write path stalls here; the mysql1 primary never sees the write" }
+          ]
+        },
+        {
+          "trace_id": "c9a2...51",
+          "root": "web:/repos.read (lucky connection)",
+          "total_ms": 12,
+          "breakdown": [
+            { "span": "web.connect_proxysql", "ms": 2, "note": "reused an existing FD, so it got through" },
+            { "span": "proxysql.route_to_mysql1", "ms": 3 },
+            { "span": "mysql1.exec_query", "ms": 6, "note": "PROOF the primary is healthy: query executes in 6ms once a connection lands — DB capacity is fine" },
+            { "span": "web.serialize", "ms": 1 }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "config_error",
+    "root_cause_subtype": "systemd LimitNOFILE silently clamped (process manager reduced requested 1,073,741,824 to host fs.nr_open 65,536); ProxySQL hits a hidden file-descriptor ceiling with no alert on the gap",
+    "required_keywords": [
+      "LimitNOFILE",
+      "silently clamped",
+      "file descriptor limit",
+      "65536",
+      "1073741824",
+      "process manager reduced",
+      "effective limit not requested",
+      "ProxySQL too many open files",
+      "errno 24",
+      "no alert on the gap",
+      "fs.nr_open"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "dependency_failure",
+      "network_fault",
+      "bad_deploy",
+      "node_failure"
+    ],
+    "ruling_out_keywords": [
+      "mysql1 primary query exec p99 6ms",
+      "InnoDB lock waits 0",
+      "primary CPU/mem/disk in band",
+      "ProxySQL CPU 34% mem 38%",
+      "configured max_connections 100000000",
+      "nodes Ready no MemoryPressure no PIDPressure",
+      "query rate rise only crossed the hidden ceiling",
+      "promotion only changed which backend ProxySQL fronts",
+      "failure recurs at exact 65536 connection count",
+      "dependents conn refused upstream of mysql1"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "describe_pod",
+      "get_events",
+      "get_node_status",
+      "query_traces",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "describe_pod"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "A rise in application query rate pushed ProxySQL's live connection count up; ProxySQL hit its EFFECTIVE open-file ceiling of 65,536 — not the LimitNOFILE=1,073,741,824 its systemd unit requested, because the process manager silently reduced the value to the host fs.nr_open max; with the FD table full, ProxySQL's accept() returns errno 24 and it can no longer open new frontend/backend sockets; connection saturation in the pooler stalls writes to the mysql1 primary (which is itself healthy); every service that depends on mysql1 then fails; because no alert watches the gap between requested and effective FDs, each of the four occurrences in nine days was misdiagnosed as DB capacity, a bad query, or the promotion; and the fix is race-prone (a race between the process manager and the service config slows applying the corrected ulimit), leading to a deploy freeze.",
+    "model_response": "ROOT_CAUSE: ProxySQL fronting the mysql1 cluster hit a HIDDEN per-process file-descriptor ceiling. Its systemd unit requested LimitNOFILE=1,073,741,824, but the process manager SILENTLY clamped the effective limit down to the host's fs.nr_open value of 65,536. Once live connections crossed 65,536, ProxySQL's accept() began returning errno 24 ('Too many open files') and it could no longer open new sockets — so writes to the mysql1 primary stalled and every mysql1-dependent service failed. This is a config_error (a silent file descriptor limit clamp with no alert on the gap between requested and effective FDs), not DB capacity exhaustion.\nROOT_CAUSE_CATEGORY: config_error\nVALIDATED_CLAIMS:\n- ProxySQL open file descriptors are pinned at exactly 65,536 (the effective ceiling) while the unit requested 1,073,741,824 (raw value 1073741824); /proc/self/limits shows 'Max open files 65536' — the effective limit not requested is what governs [evidence: prometheus_metrics, k8s_pod_logs, k8s_deployments]\n- ProxySQL too many open files: accept() returns errno 24 'Too many open files' and refuses new frontend/backend connections; the ProxySQLTooManyOpenFiles alert fired FIRST at 14:48:02, before the write-stall alert at 14:49:10 [evidence: k8s_events, k8s_pod_logs, prometheus_alerts]\n- The host fs.nr_open is 65,536, the exact value the effective LimitNOFILE was clamped to — confirming the process manager reduced the requested 1B to the system max [evidence: k8s_node_health, k8s_deployments]\n- The mysql1 primary is healthy: query exec p99 is 6ms with 0 InnoDB lock waits and CPU/mem/disk in band; the few connections that land complete in ~6ms [evidence: prometheus_metrics, traces, k8s_pod_logs]\n- ProxySQL CPU is 34% and mem 38% (near baseline) and configured mysql-max_connections is 100,000,000 — the wall is the FD count, not host resources or pool config [evidence: prometheus_metrics, k8s_pods]\nNON_VALIDATED_CLAIMS:\n- DB capacity / connection-pool exhaustion on the mysql1 PRIMARY (loud red herring): the primary executes in 6ms with 0 lock waits and is resource-healthy; it stalls only because the pooler upstream stopped accepting connections [evidence: prometheus_metrics, traces, k8s_pod_logs]\n- resource-intensive query / bad query authors: query rate rose 60k->84k rps but the same queries run fine below the ceiling; rate only matters because it crossed the hidden 65,536 FD limit [evidence: k8s_events, prometheus_metrics]\n- the planned primary promotion: it only changed which backend ProxySQL fronts; the failure recurs at the same FD threshold regardless of which node is primary [evidence: k8s_events, k8s_deployments]\n- node/host resource_exhaustion: nodes are Ready with no MemoryPressure/DiskPressure/PIDPressure; the exhaustion is a per-process FD count inside the ProxySQL container [evidence: k8s_node_health, k8s_pods]\n- dependency_failure in web/api: those services are healthy victims throwing 'connection refused' because ProxySQL refuses new sockets [evidence: k8s_pod_logs, traces]\nTRAP (must reject): RESTARTING / redeploying ProxySQL does NOT fix it — the process manager RE-APPLIES the same silent LimitNOFILE clamp on restart, so the 65,536 ceiling returns; blaming the query authors and rolling back the primary promotion are also wrong. Note there is a documented race between the process manager and the service config that slows even the correct ulimit fix.\nCAUSAL_CHAIN:\n- Application query rate rose, pushing ProxySQL live connections upward\n- ProxySQL hit its EFFECTIVE FD ceiling of 65,536 (process manager silently clamped requested LimitNOFILE=1,073,741,824 down to host fs.nr_open)\n- accept() returns errno 24; ProxySQL cannot open new frontend/backend sockets\n- Connection saturation in the pooler stalls writes to the (healthy) mysql1 primary\n- All mysql1-dependent services fail with 'connection refused'\n- No alert watches the requested-vs-effective FD gap, so it was misdiagnosed for 4 incidents over 9 days; the fix is race-prone, prompting a deploy freeze\nFIX: Correct the file-descriptor limit through the proper systemd unit / process-manager configuration (set LimitNOFILE to a real, supported value such as 1,048,576 and raise fs.nr_open accordingly) and VERIFY the effective limit in /proc/<pid>/limits after applying — do not trust the requested value. Add an alert on the gap between requested and effective FDs. Then partition the mysql1 data to reduce load on the cluster and audit reads still hitting the primary. Do NOT just restart ProxySQL (it re-clamps)."
+  },
+  "remediation": {
+    "fix_tool": "increase_memory_limit",
+    "canonical_fix": "Fix the file-descriptor ceiling via the correct systemd/process-manager unit configuration: set LimitNOFILE to a real supported value (e.g. 1,048,576) and raise the host fs.nr_open to match, then VERIFY the effective limit in /proc/<pid>/limits rather than trusting the requested LimitNOFILE. Add monitoring/alerting on the gap between requested and effective FDs so the silent clamp can never recur unnoticed. Then partition the mysql1 data to reduce cluster load and audit reads still served by the primary. Note: applying the ulimit fix is itself race-prone (a race between the process manager and the service config), so apply it deliberately and confirm.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "restart_service: restart / redeploy ProxySQL — this RE-APPLIES the same silent LimitNOFILE clamp on startup, so the effective ceiling returns to 65,536 and the failure recurs; restarting does not change the requested-vs-effective FD gap",
+      "restart_pod: restart the proxysql-mysql1 pod for the same reason — the process manager clamps LimitNOFILE down to host fs.nr_open again on every start",
+      "rollback_deployment: roll back the planned mysql1 primary promotion — the promotion is unrelated; the failure recurs at the same 65,536 FD threshold regardless of which node is primary",
+      "scale_deployment: add mysql1 DB capacity / treat it as connection-pool exhaustion on the primary — the primary is healthy (6ms exec, 0 lock waits); more capacity does not move the ProxySQL FD ceiling"
+    ],
+    "resolved": true
+  }
+}

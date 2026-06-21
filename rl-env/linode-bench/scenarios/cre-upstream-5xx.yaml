@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-010
+  severity: 1
+  title: "Upstream 5xx — recommendations"
+  category: network-problems
+  author: rlvr-bench
+  description: |
+    - recommendations upstream returning 503s
+    - Upstream success ratio fell below SLO
+  cause: |
+    - Failing/overloaded upstream dependency
+  impact: |
+    - recommendations degraded, fallback paths exercised
+  mitigation: |
+    - Restore the upstream OR fail over OR open a circuit breaker
+  references:
+    - https://kubernetes.io/docs/concepts/services-networking/service/
+  tags:
+    - cre-2025-rlvr-010
+    - rlvr
+    - upstream
+    - http-5xx
+metadata:
+  kind: prequel
+  id: 4b42e810-upst-44a5-8172-recommend00010
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "UpstreamError: recommendations upstream returned 503"

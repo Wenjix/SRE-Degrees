@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-009
+  severity: 1
+  title: "Cache Stampede — catalog"
+  category: performance-problems
+  author: rlvr-bench
+  description: |
+    - catalog cache hit ratio collapsed after a flush
+    - Thundering herd of misses hitting the backing store
+  cause: |
+    - Cold cache (FLUSHALL) under concurrent load, no request coalescing
+  impact: |
+    - Backend overload, catalog latency and error rate climb
+  mitigation: |
+    - Warm the cache OR add request coalescing OR rate-limit misses
+  references:
+    - https://redis.io/docs/manual/client-side-caching/
+  tags:
+    - cre-2025-rlvr-009
+    - rlvr
+    - cache
+    - stampede
+metadata:
+  kind: prequel
+  id: 6a31f700-cach-4394-9061-catalog000009
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "CacheStampede: hit ratio dropped to 12% after FLUSHALL"

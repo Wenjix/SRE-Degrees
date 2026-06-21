@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-007
+  severity: 1
+  title: "Memory Leak — user-profile"
+  category: resource-problems
+  author: rlvr-bench
+  description: |
+    - user-profile RSS growing without bound
+    - Working set crossed 1.2GiB and keeps climbing
+  cause: |
+    - Leaked allocations not released across requests
+  impact: |
+    - Eventual OOM kill, rising GC pressure and latency
+  mitigation: |
+    - Restart the deployment OR ship a fix OR raise limits as a stopgap
+  references:
+    - https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  tags:
+    - cre-2025-rlvr-007
+    - rlvr
+    - memory-leak
+    - memory
+metadata:
+  kind: prequel
+  id: 8c19d5e0-leak-4172-9e45-userprofil0007
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "MemoryLeak: user-profile rss crossed 1.2GiB"

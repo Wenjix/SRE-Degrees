@@ -1,0 +1,92 @@
+# CIDG paired-positive LEAF scenario — the tempting tool IS the correct fix.
+#
+# Purpose: teach the harness the CONDITION, not the tool-name. In the cascade
+# scenarios (e.g. 01-gcp-service-control) scale_deployment is a TRAP that herds a
+# shared datastore and prolongs the outage. Here the very same tool is the CORRECT
+# fix, because the topology is a DEGENERATE isolated leaf with no downstream victim
+# and no shared finite resource to herd.
+#
+# Isolated leaf service `thumbnailer` is genuinely CPU-bound: traffic grew past the
+# replica count's aggregate CPU quota, so every replica pins at its cpu_quota and
+# request latency climbs. There is no hidden latent counter, no cascade, no buried
+# gun — the loudest alert (high CPU + latency on thumbnailer) IS the root cause.
+# Correct response: add replicas (scale_deployment) to spread the CPU demand.
+
+meta:
+  id: leaf-cpu-saturation-positive
+  title: "Isolated leaf service CPU saturation (scale-up is correct)"
+  source: "Synthetic paired-positive for scale_deployment (condition-learning leaf)"
+  urls: []
+  failure_class: leaf-cpu-saturation
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: thumbnailer            # isolated, stateless, CPU-bound leaf; no dependents
+      kind: service
+      resources: { replicas: 2, cpu_quota: 1.0 }
+      limits: { cpu_saturation: true }
+  edges: []                        # degenerate single-node topology: NO cascade path
+
+root_cause:
+  location: thumbnailer
+  kind: cpu_starve
+  severity: 0.7
+  hidden: false                    # NOT hidden — the alert IS the cause
+  persistent: false                # no latent damage; scaling alone restores SLO
+  reset_by: []
+  rate_law:
+    var: cpu_utilization_pct       # observable, not a hidden counter
+    per_tick: 0
+    driver: request_rate           # CPU pressure tracks live demand, not an integration
+    driver_gain: 1.0
+    cap: 100
+    worsened_by: []                # scaling does not push any counter the wrong way
+  params:
+    cpu_per_replica_cores: 1.0
+
+fault:
+  chaos_kind: stresschaos
+  exec_cmd: "stress-ng --cpu 2 on thumbnailer replicas (sustained traffic ramp)"
+  sim: { set: { cpu_starve: true, request_rate_multiplier: 2.5 } }
+  duration_s: 90
+
+observation:
+  alerting: uniform                # only one node can alert — loudness trivially = cause
+  monitoring_degrades: false
+  smoking_guns: []                 # nothing buried; evidence is on the surface
+
+slo:
+  - { metric: latency_p99_ms, node: thumbnailer, direction: higher_bad, threshold: 300, sustain_ticks: 3 }
+  - { metric: cpu_utilization_pct, node: thumbnailer, direction: higher_bad, threshold: 85, sustain_ticks: 3 }
+
+# Tempting wrong moves on a CPU-bound leaf: restart_pod just re-pins the same load;
+# clear_cache does nothing for a compute bottleneck. Neither restores SLO.
+trap_actions:
+  - { tool: restart_pod, args: { target: thumbnailer } }
+  - { tool: clear_cache, args: { target: thumbnailer } }
+
+canonical_fix:
+  ordering_notes: >
+    No ordering subtlety: this is an isolated leaf, so adding replicas directly
+    spreads the CPU demand below cpu_quota and latency recovers. scale_deployment —
+    the TRAP in the cascade scenarios — is exactly the right tool here.
+  steps:
+    - { tool: scale_deployment, args: { target: thumbnailer, replicas: 6 } }
+
+paired_positive: gcp-service-control   # sibling where scale_deployment is the TRAP
+
+assertions:
+  cascades: false
+  loudest_alert_not_cause: false       # the alert IS the cause
+  fix_resolves: true
+  buried_gun_exists: false
+  hysteresis: false
+  monitoring_degrades: false
+
+chance:
+  flap_prob: 0.0
+  jitter: 0.02
+  partial_recovery_prob: 0.0
+
+seed: 2001

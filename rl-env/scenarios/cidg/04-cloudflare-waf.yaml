@@ -1,0 +1,148 @@
+# CIDG scenario — reconstruction of a real post-mortem as an emergent-cascade topology.
+#
+# Incident #4: Cloudflare WAF mitigation/code-path outage (Dec 5 2025).
+# A long-latent coding error in the Cloudflare WAF was TRIGGERED by a WAF rule change
+# pushed while responding to a security vulnerability. The new rule activated a broken
+# code path in the edge WAF -> HTTP 500s on requests proxied through the edge ->
+# many customer sites (LinkedIn / Zoom / Canva / GitLab / ...) appeared down.
+#
+# Maps onto the 4-criteria pattern:
+#   cascade            -> required edges fan 500s from edge-waf out to every customer site
+#   misleading symptom -> loudest alerts are 5xx on the customer-site VICTIMS, and it
+#                         LOOKS like customer-origin failure; the fault is at the edge/WAF
+#   multi-step diag    -> the bad-rule code-path log is buried under 500-spam on edge-waf;
+#                         status/downdetector (observes edge-waf) is itself degraded
+#   naive fix worsens  -> restart/scale customer ORIGIN -> origin is healthy; wastes time,
+#                         adds connection churn through the still-broken edge, prolongs outage
+
+meta:
+  id: cloudflare-waf
+  title: "Cloudflare WAF bad-rule code-path outage"
+  source: "Cloudflare WAF mitigation outage (Dec 5 2025) — latent WAF coding error triggered by a security-response rule change"
+  urls:
+    - https://www.cloudflarestatus.com/
+  failure_class: bad-revision + edge-code-path-crash + misattributed-origin-failure
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: edge-waf                 # the edge WAF proxy fleet; the bad rule trips a broken code path here
+      kind: control_plane
+      resources: { replicas: 6 }
+      limits: { bad_rule_code_path_500: true }
+    - name: edge-config              # rule/config distribution control plane (where the change is pushed)
+      kind: control_plane
+      resources: { replicas: 3 }
+    - name: origin                   # customer origin servers; HEALTHY — the misleading suspect
+      kind: external
+      resources: { replicas: 4 }
+    - name: linkedin-site            # customer site victim (traffic proxied through edge-waf)
+      kind: service
+      resources: { replicas: 3 }
+    - name: zoom-site                # customer site victim
+      kind: service
+      resources: { replicas: 3 }
+    - name: canva-site               # customer site victim
+      kind: service
+      resources: { replicas: 3 }
+    - name: gitlab-site              # customer site victim
+      kind: service
+      resources: { replicas: 3 }
+    - name: status-page             # status / downdetector; itself proxied through the edge -> degraded
+      kind: monitoring
+      resources: { replicas: 2 }
+  edges:
+    # Every customer site is served THROUGH the edge WAF: hard error-multiply cascade.
+    - { from: linkedin-site, to: edge-waf, type: required, latency_add_ms: 4, retry: 0.5 }
+    - { from: zoom-site,     to: edge-waf, type: required, latency_add_ms: 4, retry: 0.5 }
+    - { from: canva-site,    to: edge-waf, type: required, latency_add_ms: 4, retry: 0.5 }
+    - { from: gitlab-site,   to: edge-waf, type: required, latency_add_ms: 4, retry: 0.5 }
+    # Origin is the FALLBACK path behind the WAF: optional. When the WAF code path is
+    # broken the request 500s before origin is reached, so the fallback never engages
+    # (fallback_quality 0) — origin metrics stay green, reinforcing the misdirection.
+    - { from: edge-waf, to: origin, type: optional, fallback_quality: 0.0, latency_add_ms: 6 }
+    # The bad rule is pushed from the config control plane to the edge fleet.
+    - { from: edge-waf, to: edge-config, type: discovery, weight: 1.0 }
+    # Status/downdetector is served through the same edge -> monitoring in the blast radius.
+    - { from: status-page, to: edge-waf, type: observes }
+    - { from: status-page, to: origin,   type: observes }
+
+root_cause:
+  location: edge-waf
+  kind: bad_revision               # security-response rule change activates a latent broken WAF code path
+  severity: 0.9
+  hidden: true
+  persistent: true                 # the bad rule propagates to the edge fleet; rollback alone does not
+  reset_by: [modify_network_policy, restart_service]   # disable rule path + reload proxy fleet to clear
+  rate_law:
+    var: rule_propagation_pct      # the bad rule rolls out across the edge fleet
+    per_tick: 50
+    cap: 100                       # at 100% propagation every edge node serves the broken code path -> 500s
+    worsened_by: [restart_service, scale_deployment, restart_pod]  # churn through the broken edge / origin thrash
+  params:
+    healthy_node: origin           # the misleading suspect — origin error_rate stays low
+    edge_reload_required: true     # proxies must reload config to drop the bad rule (hysteresis)
+
+fault:
+  chaos_kind: exec
+  exec_cmd: "push security-response WAF rule that activates the latent bad code path on edge-waf (fleet replicate)"
+  sim: { set: { edge_waf_bad_rule_500: true } }
+  duration_s: 120
+
+observation:
+  alerting: uniform                # loudness is emergent: 5xx surfaces loudest on the customer-site victims
+  monitoring_degrades: true        # status-page is proxied through edge-waf (observes) -> delayed/incomplete
+  smoking_guns:
+    - tool: get_logs
+      node: edge-waf
+      signature: "panic: WAF rule eval hit unreachable code path (rule security-resp-0x5)"
+      buried_under: 60             # buried under HTTP 500 access-log spam
+    - tool: get_events
+      node: edge-config
+      signature: "config push: ruleset security-resp rolled to edge fleet"
+      buried_under: 20
+
+slo:
+  # The breach lands hardest on the downstream VICTIMS, not on the edge-waf root cause.
+  - { metric: error_rate_pct, node: linkedin-site, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: zoom-site,     direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: canva-site,    direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: gitlab-site,   direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+
+# The DERIVED trap set is computed by the engine ({a : ΔSLO(a) < 0}); these are the
+# INTENDED traps, asserted at author time. The 5xx LOOK like origin failures, so the
+# tempting wrong move is to restart / scale the (healthy) customer origin — it does
+# nothing for the edge code path and churns connections through the still-broken WAF.
+trap_actions:
+  - { tool: restart_service, args: { target: origin } }            # origin is healthy; no effect on edge 500s
+  - { tool: scale_deployment, args: { target: origin, replicas: 12 } }  # scale healthy origin -> wasted, churn
+  - { tool: restart_pod, args: { target: linkedin-site } }         # restarting the victim, not the cause
+
+canonical_fix:
+  ordering_notes: >
+    The fault is the WAF rule revision on edge-waf, NOT the customer origin. Disable the
+    bad rule path (network policy) and roll the WAF deployment back to the pre-change
+    revision BEFORE touching anything downstream. Because the bad rule propagated across
+    the edge fleet, the proxies must reload — restart the edge-waf service AFTER the
+    rollback so it drops the broken code path (hysteresis). Never restart/scale origin:
+    it is healthy and doing so only churns traffic through the still-broken edge.
+  steps:
+    - { tool: modify_network_policy, args: { target: edge-waf, action: disable_bad_rule_path } }
+    - { tool: rollback_deployment, args: { target: edge-waf, to: previous_revision } }
+    - { tool: restart_service, args: { target: edge-waf } }        # reload fleet after rollback to clear
+
+paired_positive: origin-overload-positive   # a sibling where restarting/scaling origin IS the right fix
+
+assertions:
+  cascades: true
+  loudest_alert_not_cause: true
+  fix_resolves: true
+  buried_gun_exists: true
+  hysteresis: true
+  monitoring_degrades: true
+
+chance:
+  flap_prob: 0.1            # edge nodes flap as the bad rule partially rolls across the fleet
+  jitter: 0.05
+
+seed: 1205

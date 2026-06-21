@@ -1,0 +1,486 @@
+{
+  "incident": "github_mysql_semaphore_rename",
+  "provider": "k8s",
+  "source_company": "GitHub",
+  "source_url": "https://github.blog/2021-12-01-github-availability-report-november-2021",
+  "failure_mode": "innodb_semaphore_deadlock_rename",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "SVC": "mysql-read",
+    "NS": "data-mysql1",
+    "WORKLOAD": "mysql-read-replica",
+    "POD_PRIMARY": "mysql1-primary-0",
+    "POD_REPLICA_A": "mysql1-read-replica-a-0",
+    "POD_REPLICA_B": "mysql1-read-replica-b-0",
+    "POD_REPLICA_ANALYTICS": "mysql1-analytics-replica-0",
+    "POD_MIGRATION": "schema-migration-ghost-2vk9q",
+    "NODE_A": "gke-rlvr-bench-data-pool-aa11bb22-dr4k",
+    "NODE_B": "gke-rlvr-bench-data-pool-cc33dd44-p9wm",
+    "CLUSTER": "rlvr-bench",
+    "TABLE": "repository_events"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] MySQL read replicas crashlooping + query latency spike — mysql-read",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "MySQLReadReplicaCapacityLoss",
+      "severity": "critical",
+      "service": "mysql-read",
+      "namespace": "data-mysql1",
+      "workload_type": "statefulset",
+      "workload_name": "mysql-read-replica",
+      "cluster_name": "rlvr-bench"
+    },
+    "commonAnnotations": {
+      "summary": "Half of the mysql1 read replica fleet is crashing and read latency is spiking on the survivors",
+      "description": "mysql_read_replicas_available dropped from 6 to 3, p99 read latency on the surviving replicas jumped to 8800ms, and read query error_rate is at 0.41. The surviving replicas are absorbing all read traffic and CPU is climbing toward saturation. Looks like a classic read-capacity shortage — the read tier cannot keep up with load and needs more replicas.",
+      "error": "mysql read replica pool degraded: 3/6 replicas Running, surviving replicas saturating",
+      "suspected_symptom": "read_replica_capacity_shortage",
+      "k8s_failure_mode": "replica_crashloop_capacity_loss",
+      "context_sources": "prometheus_alerts,prometheus_metrics,k8s_pod_logs,k8s_events,k8s_pods,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The alert and the surviving replicas paint a textbook capacity-shortage shape: replicas down 6->3, p99 read latency 8800ms, CPU on survivors climbing — it screams 'add more read replicas' (this naive add-capacity reflex IS the trap)",
+      "The surviving read replicas (mysql1-read-replica-a, -b) show high CPU and rising connection counts, making THEM look like the guilty overloaded component, when in fact they are healthy victims absorbing the load of the crashed replicas",
+      "The primary (mysql1-primary-0) is fully healthy: writes succeed, write error_rate is 0, replication from primary is fine — there is no primary failure to chase",
+      "An internal analytics replica (mysql1-analytics-replica-0) sits idle with spare capacity, tempting an operator to promote it into the prod read path to 'add capacity quickly' — doing so feeds it into the same crash-recovery loop",
+      "Pods are Running with nominal images and the StatefulSet revision is unchanged for days — no bad deploy / image regression to blame",
+      "Node health is green (Ready, no MemoryPressure/DiskPressure) — this is not a node failure or infra outage; the replicas are crashing on a software deadlock, not being evicted"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "data-mysql1",
+      "pods": [
+        {
+          "name": "mysql1-primary-0",
+          "node": "gke-rlvr-bench-data-pool-aa11bb22-dr4k",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "mysql:8.0.28",
+          "started": "2026-06-14T08:00:00Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Primary is fully HEALTHY — accepting writes with 0 errors. The RENAME ran against the primary fine; the deadlock manifests on REPLICAS applying the same RENAME (adversarial: rules out a primary/write failure)"
+        },
+        {
+          "name": "mysql1-read-replica-a-0",
+          "node": "gke-rlvr-bench-data-pool-aa11bb22-dr4k",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "mysql:8.0.28",
+          "started": "2026-06-14T08:00:01Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SURVIVING replica — high CPU and rising conns because it is absorbing the traffic of the crashed replicas. Looks like the overloaded culprit but is a healthy VICTIM (adversarial: high CPU here is a symptom, not the cause)"
+        },
+        {
+          "name": "mysql1-read-replica-b-0",
+          "node": "gke-rlvr-bench-data-pool-cc33dd44-p9wm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "mysql:8.0.28",
+          "started": "2026-06-14T08:00:01Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SURVIVING replica, also CPU-saturating from redirected load — healthy victim"
+        },
+        {
+          "name": "mysql1-read-replica-c-0",
+          "node": "gke-rlvr-bench-data-pool-cc33dd44-p9wm",
+          "phase": "CrashLoopBackOff",
+          "ready": "0/1",
+          "restarts": 7,
+          "image": "mysql:8.0.28",
+          "started": "2026-06-20T22:51:30Z",
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "last_state": {
+            "terminated": {
+              "reason": "Error",
+              "exit_code": 1,
+              "message": "InnoDB: Long semaphore wait detected; mysqld got signal 6 during crash recovery while applying RENAME on repository_events"
+            }
+          },
+          "note": "SMOKING-GUN replica — recovers from crash-recovery, replays relay log, hits the RENAME on repository_events, semaphore-deadlocks and aborts again. Classic crash-recovery LOOP, not OOM/eviction"
+        },
+        {
+          "name": "mysql1-read-replica-d-0",
+          "node": "gke-rlvr-bench-data-pool-aa11bb22-dr4k",
+          "phase": "CrashLoopBackOff",
+          "ready": "0/1",
+          "restarts": 6,
+          "image": "mysql:8.0.28",
+          "started": "2026-06-20T22:52:10Z",
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "last_state": {
+            "terminated": {
+              "reason": "Error",
+              "exit_code": 1,
+              "message": "InnoDB: Long semaphore wait detected; semaphore deadlock applying ALTER/RENAME TABLE repository_events; aborting"
+            }
+          },
+          "note": "Second replica stuck in the same RENAME crash-recovery loop"
+        },
+        {
+          "name": "mysql1-analytics-replica-0",
+          "node": "gke-rlvr-bench-data-pool-cc33dd44-p9wm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "mysql:8.0.28",
+          "started": "2026-06-13T09:00:00Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Internal/analytics replica with SPARE capacity, currently OUT of the prod read path. TRAP: promoting it into prod read traffic will make it replay the same RENAME from its relay log and crash-recover into the same loop — adding capacity does NOT help"
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "data-mysql1",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "SchemaMigrationCutover",
+          "object": "pod/schema-migration-ghost-2vk9q",
+          "count": 1,
+          "first_seen": "2026-06-20T22:51:05Z",
+          "last_seen": "2026-06-20T22:51:05Z",
+          "message": "online schema migration on repository_events reached final cutover: executing RENAME TABLE _repository_events_gho -> repository_events (large table, ~1.2B rows)"
+        },
+        {
+          "type": "Warning",
+          "reason": "InnoDBSemaphoreWait",
+          "object": "pod/mysql1-read-replica-c-0",
+          "count": 7,
+          "first_seen": "2026-06-20T22:51:18Z",
+          "last_seen": "2026-06-20T23:05:40Z",
+          "message": "InnoDB: Long semaphore wait (>600s) while applying RENAME on repository_events from relay log; server forcing crash recovery"
+        },
+        {
+          "type": "Warning",
+          "reason": "BackOff",
+          "object": "pod/mysql1-read-replica-c-0",
+          "count": 7,
+          "first_seen": "2026-06-20T22:52:00Z",
+          "last_seen": "2026-06-20T23:06:00Z",
+          "message": "Back-off restarting failed container mysqld: returns to service, replays relay log, hits RENAME, semaphore-deadlocks, aborts (crash-recovery loop)"
+        },
+        {
+          "type": "Warning",
+          "reason": "InnoDBSemaphoreWait",
+          "object": "pod/mysql1-read-replica-d-0",
+          "count": 6,
+          "first_seen": "2026-06-20T22:52:05Z",
+          "last_seen": "2026-06-20T23:05:10Z",
+          "message": "InnoDB: semaphore deadlock applying ALTER/RENAME TABLE repository_events; mysqld aborting during crash recovery"
+        },
+        {
+          "type": "Warning",
+          "reason": "ReadCapacityDegraded",
+          "object": "service/mysql-read",
+          "count": 1,
+          "first_seen": "2026-06-20T22:52:30Z",
+          "last_seen": "2026-06-20T23:06:00Z",
+          "message": "read replica pool degraded 6->3 available; surviving replicas now serving all read traffic and approaching CPU saturation"
+        },
+        {
+          "type": "Normal",
+          "reason": "OperatorScaleAttempt",
+          "object": "pod/mysql1-analytics-replica-0",
+          "count": 1,
+          "first_seen": "2026-06-20T22:58:00Z",
+          "last_seen": "2026-06-20T22:58:00Z",
+          "message": "operator considered promoting internal analytics replica into prod read path to add capacity (NOTE: this replica is also behind on the same relay log and will replay the RENAME)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "mysql1-read-replica-c-0",
+      "container": "mysqld",
+      "lines": [
+        "2026-06-20T22:51:10Z [Note] Slave SQL thread: applying relay log events up to schema cutover",
+        "2026-06-20T22:51:12Z [Note] Executing event: RENAME TABLE `_repository_events_gho` TO `repository_events`",
+        "2026-06-20T22:51:18Z [Warning] InnoDB: A long semaphore wait:",
+        "2026-06-20T22:51:18Z [Warning] InnoDB: --Thread 140218 has waited at row0mysql.cc for 241.00 seconds the semaphore: X-lock on dict_sys->mutex",
+        "2026-06-20T22:58:18Z [ERROR] InnoDB: Semaphore wait has lasted > 600 seconds. We intentionally crash the server because it appears to be hung.",
+        "2026-06-20T22:58:18Z [ERROR] [FATAL] mysqld got signal 6 ; InnoDB semaphore deadlock during RENAME apply",
+        "2026-06-20T22:58:30Z [Note] InnoDB: Starting crash recovery from checkpoint ...",
+        "2026-06-20T22:59:05Z [Note] InnoDB: Crash recovery complete; resuming relay log apply",
+        "2026-06-20T22:59:06Z [Note] Executing event: RENAME TABLE `_repository_events_gho` TO `repository_events`  <-- replica re-hits the SAME RENAME",
+        "2026-06-20T23:05:40Z [ERROR] InnoDB: Semaphore wait > 600s again; crashing — replica is stuck in a RENAME crash-recovery LOOP",
+        "2026-06-20T23:05:41Z [Note] Write traffic to PRIMARY is unaffected; this deadlock only occurs on replicas applying the RENAME from the relay log"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "gke-rlvr-bench-data-pool-aa11bb22-dr4k",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "Node healthy — the crashing replica on it is NOT being evicted for memory/disk; it aborts itself on the InnoDB semaphore deadlock (rules out node_failure / OOM-kill by kubelet)"
+        },
+        {
+          "name": "gke-rlvr-bench-data-pool-cc33dd44-p9wm",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "Node healthy — confirms the failure is software-level (semaphore deadlock), not infrastructure"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "data-mysql1",
+      "deployment": "mysql-read-replica",
+      "kind": "statefulset",
+      "desired": 6,
+      "updated": 6,
+      "ready": 3,
+      "available": 3,
+      "current_revision": 9,
+      "image": "mysql:8.0.28",
+      "last_rollout": "2026-06-14T08:00:00Z",
+      "rollout_status": "Complete",
+      "note": "StatefulSet spec/revision unchanged for days — rules out bad_deploy. The 3 unready replicas are crashlooping on the RENAME apply, not on a new image rollout"
+    },
+    "prometheus_metrics.json": {
+      "service": "mysql-read",
+      "namespace": "data-mysql1",
+      "samples": [
+        {
+          "metric": "mysql_read_replicas_available",
+          "query": "count(up{service=\"mysql-read\",namespace=\"data-mysql1\"} == 1)",
+          "value": 3,
+          "slo_threshold": 6,
+          "breached": true,
+          "unit": "count",
+          "note": "loud symptom — half the read fleet is down, screaming 'capacity shortage' (the add-capacity trap)"
+        },
+        {
+          "metric": "mysql_read_p99_latency_ms",
+          "value": 8800,
+          "slo_threshold": 300,
+          "breached": true,
+          "unit": "ms",
+          "note": "read latency spike on survivors — a consequence of redirected load, not the root cause"
+        },
+        {
+          "metric": "mysql_innodb_semaphore_waits_total",
+          "value": 13,
+          "unit": "count",
+          "note": "SMOKING GUN: InnoDB long-semaphore-wait events on the crashing replicas, all timestamped to the RENAME cutover at 22:51 — the deadlock mechanism"
+        },
+        {
+          "metric": "mysql_replica_crash_recovery_total",
+          "value": 13,
+          "unit": "count",
+          "note": "SMOKING GUN: 13 crash-recovery cycles across replicas-c/-d — they recover, re-apply the RENAME, and crash again (the loop)"
+        },
+        {
+          "metric": "mysql_schema_migration_rename_in_progress",
+          "value": 1,
+          "unit": "bool",
+          "note": "SMOKING GUN: final RENAME of repository_events (~1.2B rows) is in progress — the trigger; once it completes, replicas can apply it and stop crashing"
+        },
+        {
+          "metric": "mysql_primary_write_error_rate",
+          "value": 0.0,
+          "unit": "ratio",
+          "note": "writes on the PRIMARY are 100% healthy — rules out a primary/write failure and data corruption"
+        },
+        {
+          "metric": "mysql_replication_lag_primary_seconds",
+          "value": 2,
+          "unit": "seconds",
+          "note": "primary->replica replication stream itself is fine (2s); the replicas are not lagging, they are deadlocking on one specific RENAME event"
+        },
+        {
+          "metric": "cpu_util_pct_surviving_replicas",
+          "value": 91.0,
+          "unit": "percent",
+          "note": "high CPU on the 3 surviving replicas — they look guilty but are healthy victims carrying redirected read load"
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "MySQLReadReplicaCapacityLoss",
+            "severity": "critical",
+            "service": "mysql-read",
+            "namespace": "data-mysql1",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "mysql1 read replica pool degraded 6->3; survivors saturating",
+            "error": "read replica pool degraded: 3/6 Running"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:52:30Z",
+          "value": "3"
+        },
+        {
+          "labels": {
+            "alertname": "MySQLInnoDBSemaphoreDeadlock",
+            "severity": "critical",
+            "service": "mysql-read",
+            "namespace": "data-mysql1",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "InnoDB long semaphore waits + crash-recovery loop on read replicas during RENAME of repository_events",
+            "error": "InnoDB: semaphore wait > 600s applying RENAME TABLE repository_events"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:51:18Z",
+          "value": "13"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "mysql-read",
+      "namespace": "data-mysql1",
+      "spans": [
+        {
+          "trace_id": "c41a9e02",
+          "operation": "replica.apply_relay_event",
+          "target": "mysql1-read-replica-c-0",
+          "status": "error",
+          "duration_ms": 600000,
+          "error": "InnoDB long semaphore wait on dict_sys->mutex applying RENAME TABLE repository_events; mysqld signal 6",
+          "ts": "2026-06-20T22:58:18Z",
+          "note": "the deadlock is on the RENAME relay-log event, not on serving reads"
+        },
+        {
+          "trace_id": "c41a9e02",
+          "operation": "replica.crash_recovery",
+          "target": "mysql1-read-replica-c-0",
+          "status": "ok",
+          "duration_ms": 35000,
+          "note": "crash recovery succeeds, replica returns, then re-hits the SAME RENAME event — the loop",
+          "ts": "2026-06-20T22:59:05Z"
+        },
+        {
+          "trace_id": "d77b1f55",
+          "operation": "app.read_query",
+          "target": "mysql1-read-replica-a-0",
+          "status": "ok",
+          "duration_ms": 8800,
+          "note": "reads on surviving replicas SUCCEED but slow — they are overloaded by redirected traffic, confirming survivors are victims not the cause",
+          "ts": "2026-06-20T23:01:00Z"
+        },
+        {
+          "trace_id": "e0c2aa18",
+          "operation": "app.write_query",
+          "target": "mysql1-primary-0",
+          "status": "ok",
+          "duration_ms": 9,
+          "note": "writes on the primary succeed normally — no write failure, no data corruption",
+          "ts": "2026-06-20T23:01:02Z"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "resource_exhaustion",
+    "root_cause_subtype": "InnoDB semaphore deadlock on read replicas applying the final RENAME of a large-table schema migration, causing a crash-recovery loop (add-capacity is the trap)",
+    "required_keywords": [
+      "RENAME",
+      "schema migration",
+      "InnoDB semaphore",
+      "deadlock",
+      "crash-recovery loop",
+      "read replicas",
+      "repository_events",
+      "remove broken replicas from prod",
+      "integrity over availability"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "network_fault",
+      "node_failure",
+      "config_error",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "primary write_error_rate=0 (no primary/write failure)",
+      "no data corruption (writes healthy)",
+      "nodes Ready, no MemoryPressure/DiskPressure (not node_failure/OOM-eviction)",
+      "StatefulSet revision unchanged (not bad_deploy)",
+      "replication_lag=2s (replication stream fine; deadlock is one RENAME event)",
+      "surviving replicas high CPU are victims of redirected load, not the cause",
+      "promoting analytics replica re-enters the same crash loop (add-capacity is the trap)"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "describe_pod",
+      "get_events",
+      "get_logs",
+      "get_node_status",
+      "query_traces"
+    ],
+    "required_queries": [
+      "describe_pod",
+      "get_events",
+      "get_logs",
+      "get_metrics"
+    ],
+    "max_investigation_loops": 5,
+    "causal_chain": "final RENAME of large repository_events table -> InnoDB semaphore deadlock on read replicas applying the RENAME from the relay log -> many replicas enter crash-recovery simultaneously -> survivors overload -> 'add capacity' (promote internal/analytics replicas) re-introduces replicas that replay the same RENAME and crash-recover again -> loop, deepening the outage",
+    "model_response": "ROOT_CAUSE: The final cutover step of an online schema migration executed a RENAME TABLE on the very large repository_events table (~1.2B rows). When the read replicas replayed that RENAME event from their relay logs, InnoDB hit a long semaphore wait (X-lock on dict_sys->mutex) that exceeded the 600s watchdog, so mysqld intentionally crashed each affected replica. On restart each replica completes crash recovery, resumes relay-log apply, immediately re-hits the SAME RENAME event, and deadlocks/crashes again — a crash-recovery LOOP. This took half the read fleet (6->3) out at once; the surviving replicas then absorbed all read traffic, which is why their CPU is at 91% and read p99 is 8800ms. The 'read capacity shortage' is the LOUD symptom, and the surviving replicas' high CPU is a consequence, not the cause. This is resource_exhaustion via an InnoDB semaphore deadlock on a DDL apply, not a deploy, network, or node fault.\nROOT_CAUSE_CATEGORY: resource_exhaustion\nVALIDATED_CLAIMS:\n- Schema migration reached final cutover and is running RENAME TABLE on repository_events; mysql_schema_migration_rename_in_progress=1 [evidence: k8s_events, prometheus_metrics]\n- Crashing replicas show InnoDB long-semaphore-wait > 600s on dict_sys->mutex while applying the RENAME from the relay log, then mysqld signal 6 [evidence: k8s_pod_logs, k8s_pods, traces]\n- Replicas-c and -d are in CrashLoopBackOff with 6-7 restarts; mysql_replica_crash_recovery_total=13 — they recover, re-apply the RENAME, and crash again (the loop) [evidence: k8s_pods, prometheus_metrics, k8s_events]\n- mysql_read_replicas_available dropped 6->3 and surviving replicas are at 91% CPU with 8800ms p99 — survivors are overloaded victims of redirected read load [evidence: prometheus_metrics, k8s_pods, traces]\nNON_VALIDATED_CLAIMS:\n- NOT a real read-capacity shortage to be solved by adding replicas: any replica added/promoted (e.g. mysql1-analytics-replica-0) is behind on the same relay log and will replay the SAME RENAME, deadlock, and crash-recover into the loop — 'add capacity / promote internal replicas' is the TRAP that worsens availability [evidence: k8s_pods note, k8s_events OperatorScaleAttempt].\n- NOT a primary/write failure or data corruption: mysql_primary_write_error_rate=0, writes succeed in 9ms, replication_lag=2s [evidence: prometheus_metrics, traces].\n- NOT a bad deploy: StatefulSet revision unchanged for days, image steady [evidence: k8s_deployments].\n- NOT node_failure / OOM eviction: both nodes Ready with no MemoryPressure/DiskPressure; the replicas self-abort on the semaphore watchdog [evidence: k8s_node_health, k8s_pods].\n- The surviving replicas' high CPU is a symptom of carrying redirected load, not the cause — restarting or scaling them does not address the RENAME deadlock.\nCAUSAL_CHAIN:\n- Online schema migration of repository_events reaches final cutover and issues RENAME TABLE\n- Read replicas apply the RENAME from the relay log; InnoDB takes a long semaphore wait (dict_sys->mutex) that exceeds the 600s watchdog\n- mysqld intentionally crashes each affected replica; on restart it crash-recovers, re-hits the same RENAME, and crashes again (crash-recovery loop)\n- Half the read fleet drops (6->3); surviving replicas saturate under redirected read load\n- Naive 'add capacity' (promoting internal/analytics replicas) feeds fresh replicas into the same RENAME loop, deepening the outage\nFIX: Choose data integrity over availability. PROACTIVELY REMOVE the broken/crashlooping replicas (and any analytics replica) from the production read path so they are not thrashed; let the RENAME on repository_events complete so the replicas can apply it cleanly and exit crash recovery; then re-add the recovered replicas to restore capacity. Do NOT add or promote replicas during the RENAME. Going forward, run migrations in canary mode on a single functionally-partitioned shard to limit blast radius."
+  },
+  "remediation": {
+    "fix_tool": "failover_service",
+    "canonical_fix": "Pull the broken/crashlooping read replicas (and the analytics replica) out of the production read path; let the RENAME on repository_events complete so replicas can apply it and exit crash-recovery; then re-add the recovered replicas. Canary future migrations on a single shard.",
+    "trust_tier": "approval",
+    "primary_metric": "mysql_replica_crash_recovery_total",
+    "direction": "lower",
+    "state_before": { "mysql_read_replicas_available": 3, "mysql_replica_crash_recovery_total": 13, "mysql_innodb_semaphore_waits_total": 13 },
+    "state_after": { "mysql_read_replicas_available": 6, "mysql_replica_crash_recovery_total": 0, "mysql_innodb_semaphore_waits_total": 0 },
+    "recovery_check": "mysql_read_replicas_available >= 6 and mysql_replica_crash_recovery_total == 0",
+    "trap_actions": [
+      "scale_deployment",
+      "restart_pod"
+    ],
+    "resolved": true
+  }
+}

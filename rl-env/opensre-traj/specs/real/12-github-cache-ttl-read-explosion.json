@@ -1,0 +1,473 @@
+{
+  "incident": "github_cache_ttl_read_explosion",
+  "provider": "k8s",
+  "source_company": "GitHub",
+  "source_url": "https://github.blog/news-insights/company-news/github-availability-report-february-2026/",
+  "failure_mode": "cache_ttl_change_latent_read_regression_proxy_conn_exhaustion",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] Git HTTPS proxy connection exhaustion — git-https-proxy",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "GitHTTPSProxyConnectionExhaustion",
+      "severity": "critical",
+      "service": "git-https-proxy",
+      "namespace": "git-frontend",
+      "workload_type": "deployment",
+      "workload_name": "git-https-proxy",
+      "cluster_name": "github-prod-iad"
+    },
+    "commonAnnotations": {
+      "summary": "Git HTTPS proxy is exhausting its upstream connection pool; widespread Git over HTTPS errors and PR pushes not appearing",
+      "description": "git-https-proxy has saturated its backend connection pool (used_conns 4096/4096, conn_wait_p99 > 9s) and is returning 5xx/timeouts on Git fetch/push, with PR pushes not showing up. Connection-acquire timeouts are climbing and the proxy is not self-recovering. From the proxy's vantage point this looks like a Git-frontend capacity problem or a regression in the proxy itself at peak Monday traffic. The proxy connection exhaustion is the LOUD victim symptom — the actual driver is upstream.",
+      "error": "GitHTTPSProxyConnectionExhaustion: used_conns=4096/4096, conn_acquire_timeout_rate climbing, git_op_error_rate=0.34",
+      "suspected_symptom": "git_https_proxy_connection_pool_exhaustion",
+      "k8s_failure_mode": "cache_ttl_change_latent_read_regression_proxy_conn_exhaustion",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,query_traces,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The LOUD symptom is connection exhaustion on the victim git-https-proxy (used_conns 4096/4096, git_op_error_rate 0.34, PR pushes not appearing). It looks like the proxy itself regressed or is simply under-provisioned at peak Monday, but the proxy is a DOWNSTREAM victim — it cannot acquire upstream connections because the background-work coordinator it depends on is swamped by cache rewrites.",
+      "The git-https-proxy pods are healthy at the pod lifecycle level: Running, 0 restarts, 0 OOMKills, deployment revision unchanged for 23 days, image git-https-proxy:2.41.0 stable — there was NO bad_deploy to the Git frontend and no code change to the proxy before the incident, so 'the proxy regressed' does not hold.",
+      "The most obvious change in the recent change log is the user-settings cache refresh TTL drop 12h -> 2h shipped this morning. Reverting JUST the TTL is the seductive HALF-FIX: it is real and contributory, but on its own it leaves the actual read-volume driver (the latent 10x client read regression) in place, so the cascade re-arms at the next peak.",
+      "user-settings-db (the user-management / user-settings database cluster) shows high read QPS and CPU, which tempts a 'just add database capacity / scale the DB' conclusion. The DB is overloaded because cache misses now stampede it; the read explosion is from a latent client regression, not organic user growth — adding DB capacity does not stop the read amplification.",
+      "It is peak Monday morning traffic, so an organic-traffic-surge / under-provisioning story for the proxy and the DB looks plausible. But authenticated Git request_rate is only ~1.1x baseline while user-settings read QPS is ~10x baseline — the amplification is NOT user traffic.",
+      "The user-settings cache (settings-cache) pods look benign: Running, healthy, hit ratio merely 'lower than usual'. The cache is not crashed; the longer 12h TTL had been MASKING a 10x read regression that two client apps shipped weeks earlier, and the 2h TTL plus peak load simply unmasked it. 'Cache looks fine' hides weeks-old latent demand."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "git-frontend",
+      "pods": [
+        {
+          "name": "git-https-proxy-7c9d8f6b4-q5x2n",
+          "node": "ip-10-12-44-9.iad.github.net",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "23d",
+          "container": {
+            "name": "git-https-proxy",
+            "image": "git-https-proxy:2.41.0",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2",
+            "cpu_limit": "4",
+            "memory_request": "4Gi",
+            "memory_limit": "8Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "VICTIM (loud symptom): upstream connection pool exhausted (4096/4096) and returning 5xx on Git over HTTPS, but the pod itself is healthy (0 restarts, 0 OOM, 23d uptime). The exhaustion is because it cannot get connections to the background-work coordinator, not a proxy fault."
+        },
+        {
+          "name": "background-work-coordinator-0",
+          "node": "ip-10-12-50-31.iad.github.net",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "bg-coordinator",
+            "image": "bg-coordinator:5.3.2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "4",
+            "cpu_limit": "8",
+            "memory_request": "16Gi",
+            "memory_limit": "16Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING GUN (intermediary): the shared infrastructure component that coordinates background work. CPU is pinned at 97% and its work queue is backed up because asynchronous user-settings cache rewrites are flooding it. The Git HTTPS proxy depends on this coordinator and starves for connections behind it."
+        },
+        {
+          "name": "settings-cache-5f7b69c8d-h4t8r",
+          "node": "ip-10-12-41-77.iad.github.net",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "9d",
+          "container": {
+            "name": "settings-cache",
+            "image": "settings-cache:1.18.0",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1",
+            "cpu_limit": "2",
+            "memory_request": "8Gi",
+            "memory_limit": "8Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: the user-settings cache looks fine (Running, 0 OOM, 0 restarts). The 12h->2h TTL change merely shortened entry lifetime; the cache is not broken. Its now-frequent expiries unmask a latent 10x client read regression that the long TTL had been hiding."
+        },
+        {
+          "name": "user-settings-db-primary-0",
+          "node": "ip-10-12-60-5.iad.github.net",
+          "phase": "Running",
+          "ready": "2/2",
+          "restarts": 0,
+          "age": "47d",
+          "container": {
+            "name": "mysql",
+            "image": "github-mysql:8.0.35",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "8",
+            "cpu_limit": "16",
+            "memory_request": "64Gi",
+            "memory_limit": "64Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "DOWNSTREAM victim: user-management / user-settings DB cluster overloaded by the read explosion (read QPS ~10x baseline, CPU 94%). Adding DB capacity is a TRAP — the read load is from the latent client regression amplified by cache misses, not organic growth."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "git-frontend",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "ConfigChangeApplied",
+          "object": "configmap/settings-cache-config",
+          "source": "deploy-pipeline",
+          "count": 1,
+          "first_seen": "2026-02-09T14:05:00Z",
+          "last_seen": "2026-02-09T14:05:00Z",
+          "message": "CONTRIBUTORY change: user-settings cache refresh TTL reduced 12h -> 2h as part of a new model rollout. This is real and contributory, but it is only HALF the story — it unmasked a pre-existing read regression rather than creating new read demand."
+        },
+        {
+          "type": "Warning",
+          "reason": "UserSettingsReadSurge",
+          "object": "service/user-settings-db",
+          "source": "prometheus",
+          "count": 61,
+          "first_seen": "2026-02-09T16:08:30Z",
+          "last_seen": "2026-02-09T17:35:00Z",
+          "message": "SMOKING GUN: user-settings read QPS jumped to ~10x baseline as 2h TTL entries began expiring at peak Monday. Attribution shows ~90% of the excess reads come from two client apps (mobile-app v8.2 and web-prefs-service v3.7) released ~3 weeks ago carrying a 10x read regression that the 12h TTL had been masking."
+        },
+        {
+          "type": "Warning",
+          "reason": "AsyncCacheRewriteFlood",
+          "object": "deployment/background-work-coordinator",
+          "source": "bg-coordinator",
+          "count": 88,
+          "first_seen": "2026-02-09T16:11:10Z",
+          "last_seen": "2026-02-09T17:39:00Z",
+          "message": "SMOKING GUN: a large volume of ASYNCHRONOUS user-settings cache rewrites enqueued simultaneously, overwhelming the shared background-work coordinator (CPU 97%, queue depth backed up). This is the component the Git HTTPS proxy depends on."
+        },
+        {
+          "type": "Warning",
+          "reason": "ConnectionPoolExhausted",
+          "object": "deployment/git-https-proxy",
+          "source": "git-https-proxy",
+          "count": 140,
+          "first_seen": "2026-02-09T16:12:00Z",
+          "last_seen": "2026-02-09T17:39:00Z",
+          "message": "VICTIM symptom: git-https-proxy upstream connection pool exhausted (4096/4096) because the background-work coordinator it calls is saturated; Git over HTTPS fetch/push returns 5xx, PR pushes not appearing. The proxy does not self-recover and required manual restarts."
+        },
+        {
+          "type": "Normal",
+          "reason": "AsyncRewritesDisabled",
+          "object": "configmap/settings-cache-config",
+          "source": "sre-oncall",
+          "count": 1,
+          "first_seen": "2026-02-09T17:30:00Z",
+          "last_seen": "2026-02-09T17:30:00Z",
+          "message": "CORRECT FIX (first incident): disabled asynchronous cache rewrites, then restarted the Git HTTPS proxy across datacenters; coordinator queue drained and proxy connections recovered by 17:39."
+        },
+        {
+          "type": "Warning",
+          "reason": "SyncWriteFloodSecondIncident",
+          "object": "service/user-settings-db",
+          "source": "settings-cache",
+          "count": 53,
+          "first_seen": "2026-02-09T18:53:00Z",
+          "last_seen": "2026-02-09T20:09:00Z",
+          "message": "SECOND incident same day: an ADDITIONAL source of cache updates not covered by the first mitigation introduced a high volume of SYNCHRONOUS writes, causing replication delay and the SAME Git HTTPS proxy connection exhaustion. Fix: restrict that cache write source + restart Git proxy again."
+        },
+        {
+          "type": "Normal",
+          "reason": "DeploymentUnchanged",
+          "object": "deployment/git-https-proxy",
+          "source": "kube-controller",
+          "count": 1,
+          "first_seen": "2026-02-09T16:12:30Z",
+          "last_seen": "2026-02-09T16:12:30Z",
+          "message": "ADVERSARIAL: git-https-proxy deployment revision 31 is unchanged for 23d (image 2.41.0). There is NO recent proxy deploy to roll back; the proxy regression hypothesis is ruled out."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "git-frontend",
+      "pod": "git-https-proxy-7c9d8f6b4-q5x2n",
+      "container": "git-https-proxy",
+      "lines": [
+        "2026-02-09T16:11:40Z INFO  upstream=bg-coordinator pool used=2310/4096 git_op=push status=200 latency=120ms",
+        "2026-02-09T16:12:05Z WARN  upstream=bg-coordinator conn_acquire wait=2100ms pool used=4096/4096 — coordinator slow to accept new connections",
+        "2026-02-09T16:12:30Z ERROR upstream=bg-coordinator conn_acquire TIMEOUT after 9s — pool exhausted; git push for repo octo/api returned 503, PR ref not advertised",
+        "2026-02-09T16:13:02Z WARN  bg-coordinator reports queue_depth=very_high; it is processing a flood of async settings-cache rewrites, not Git work",
+        "2026-02-09T16:20:11Z ERROR sustained conn exhaustion 4096/4096; proxy NOT self-recovering — manual restart required (loud victim symptom, root is upstream)",
+        "2026-02-09T17:31:50Z INFO  async settings-cache rewrites DISABLED upstream; bg-coordinator queue draining, conn pool falling 4096 -> 1180",
+        "2026-02-09T17:39:00Z INFO  pool used=640/4096 git_op error_rate 0.34 -> 0.01; first incident mitigated (revert-TTL alone would NOT have stopped the read flood)",
+        "2026-02-09T18:53:20Z ERROR conn pool exhausted AGAIN 4096/4096 — different cache write source now doing SYNC writes -> replication delay -> same proxy exhaustion (second incident)"
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "git-frontend",
+      "deployment": "git-https-proxy",
+      "replicas": { "desired": 60, "ready": 60, "available": 60, "updated": 60 },
+      "current_revision": 31,
+      "image": "git-https-proxy:2.41.0",
+      "last_rollout": "23d ago",
+      "rollout_status": "complete",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "ADVERSARIAL: git-https-proxy revision 31 unchanged for 23d, all 60 replicas Available, image 2.41.0 stable. No bad_deploy to the Git frontend; the proxy is exhausting connections because its upstream (background-work coordinator) is saturated, not because of a proxy code change. Rolling back the proxy would do nothing."
+    },
+    "prometheus_metrics.json": {
+      "service": "git-https-proxy",
+      "namespace": "git-frontend",
+      "window": "5m",
+      "metrics": {
+        "git_https_proxy_conns_used": 4096,
+        "git_https_proxy_conns_max": 4096,
+        "git_https_proxy_conn_acquire_p99_s": 9.2,
+        "git_op_error_rate": 0.34,
+        "bg_coordinator_cpu_util_pct": 97,
+        "bg_coordinator_queue_depth_ratio_vs_baseline": 22.0,
+        "settings_cache_async_rewrites_per_s": 8400,
+        "settings_cache_ttl_seconds": 7200,
+        "settings_cache_hit_ratio": 0.71,
+        "user_settings_db_read_qps_ratio_vs_baseline": 10.2,
+        "user_settings_db_cpu_util_pct": 94,
+        "authenticated_git_request_rate_ratio_vs_baseline": 1.1,
+        "git_https_proxy_restart_count": 0,
+        "git_https_proxy_oomkill_total": 0
+      },
+      "baseline": {
+        "git_https_proxy_conns_used": 1900,
+        "git_https_proxy_conn_acquire_p99_s": 0.05,
+        "git_op_error_rate": 0.002,
+        "bg_coordinator_cpu_util_pct": 40,
+        "bg_coordinator_queue_depth_ratio_vs_baseline": 1.0,
+        "settings_cache_async_rewrites_per_s": 350,
+        "settings_cache_ttl_seconds": 43200,
+        "settings_cache_hit_ratio": 0.985,
+        "user_settings_db_read_qps_ratio_vs_baseline": 1.0,
+        "user_settings_db_cpu_util_pct": 38,
+        "authenticated_git_request_rate_ratio_vs_baseline": 1.0
+      },
+      "samples": [
+        {
+          "metric": "user_settings_db_read_qps_ratio_vs_baseline",
+          "query": "sum(rate(mysql_queries_total{cluster=\"user-settings-db\",op=\"read\"}[1m])) / 41200",
+          "value": 10.2,
+          "slo_threshold": 2.0,
+          "breached": true,
+          "unit": "ratio",
+          "note": "SMOKING GUN: read QPS is 10.2x baseline while authenticated Git request_rate is only 1.1x — the amplification is from the latent client read regression unmasked by the 2h TTL, NOT user traffic or organic growth."
+        },
+        {
+          "metric": "settings_cache_async_rewrites_per_s",
+          "query": "sum(rate(settings_cache_async_rewrite_total[1m]))",
+          "value": 8400,
+          "slo_threshold": 1000,
+          "breached": true,
+          "unit": "ops_per_s",
+          "note": "SMOKING GUN: async cache rewrites jumped 350 -> 8400/s as 2h-TTL entries expired en masse, flooding the background-work coordinator (CPU 97%, queue 22x)."
+        },
+        {
+          "metric": "git_https_proxy_conn_acquire_p99_s",
+          "query": "histogram_quantile(0.99, rate(git_https_proxy_conn_acquire_seconds_bucket[5m]))",
+          "value": 9.2,
+          "slo_threshold": 0.5,
+          "breached": true,
+          "unit": "s",
+          "note": "VICTIM: proxy cannot acquire upstream connections (coordinator saturated) -> pool exhausted 4096/4096 -> Git over HTTPS errors."
+        }
+      ],
+      "note": "Causal ordering visible in metrics: settings_cache TTL 43200 -> 7200s; async rewrites 350 -> 8400/s; bg_coordinator CPU 40 -> 97% and queue 22x; user_settings_db read QPS 10.2x while authenticated Git request_rate only 1.1x; git-https-proxy conns 1900 -> 4096/4096 and conn_acquire p99 0.05 -> 9.2s with git_op_error_rate 0.34. Proxy has 0 restarts / 0 OOM of its own. The proxy and DB are victims; the driver is the latent 10x client read regression unmasked by the TTL drop, flooding the coordinator via async cache rewrites."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "GitHTTPSProxyConnectionExhaustion",
+            "severity": "critical",
+            "service": "git-https-proxy",
+            "namespace": "git-frontend",
+            "cluster_name": "github-prod-iad"
+          },
+          "annotations": {
+            "summary": "git-https-proxy connection pool exhausted (4096/4096); Git over HTTPS 5xx, PR pushes not appearing",
+            "error": "GitHTTPSProxyConnectionExhaustion: conn_acquire_p99=9.2s, git_op_error_rate=0.34"
+          },
+          "state": "firing",
+          "activeAt": "2026-02-09T16:12:00Z",
+          "value": "0.34"
+        },
+        {
+          "labels": {
+            "alertname": "BackgroundWorkCoordinatorSaturated",
+            "severity": "critical",
+            "service": "background-work-coordinator",
+            "namespace": "git-frontend",
+            "cluster_name": "github-prod-iad"
+          },
+          "annotations": {
+            "summary": "background-work-coordinator CPU 97%, queue depth 22x baseline from async settings-cache rewrite flood",
+            "error": "BackgroundWorkCoordinatorSaturated: async settings-cache rewrites=8400/s"
+          },
+          "state": "firing",
+          "activeAt": "2026-02-09T16:11:20Z",
+          "value": "97"
+        },
+        {
+          "labels": {
+            "alertname": "UserSettingsDBReadOverload",
+            "severity": "warning",
+            "service": "user-settings-db",
+            "namespace": "datastores",
+            "cluster_name": "github-prod-iad"
+          },
+          "annotations": {
+            "summary": "user-settings-db read QPS 10.2x baseline at peak Monday after settings-cache TTL 12h->2h",
+            "error": "UserSettingsDBReadOverload: read_qps_ratio=10.2, cpu=94%"
+          },
+          "state": "firing",
+          "activeAt": "2026-02-09T16:09:00Z",
+          "value": "10.2"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "git-https-proxy",
+      "sampled_spans": 3,
+      "summary": "A Git-over-HTTPS push spends almost all of its time waiting to acquire an upstream connection to the background-work coordinator, which is itself busy draining a flood of asynchronous user-settings cache rewrites rather than serving Git work. Following the cache-rewrite span upstream shows it originates from settings-cache entries expiring under the new 2h TTL, and the read traffic that triggers the rewrites is dominated by two client apps with a 10x read pattern. The proxy connection exhaustion is the victim; the driver is the latent client read regression unmasked by the TTL change, flooding the coordinator.",
+      "spans": [
+        {
+          "trace_id": "a17f...3c",
+          "root": "git-https-proxy:/octo/api.git/git-receive-pack",
+          "total_ms": 9210,
+          "breakdown": [
+            { "span": "git-https-proxy.accept push", "ms": 8, "note": "client push received" },
+            { "span": "git-https-proxy.acquire upstream conn (bg-coordinator)", "ms": 9180, "note": "SMOKING GUN: 9.18s waiting for a connection to the background-work coordinator; pool exhausted 4096/4096 -> TIMEOUT -> 503" },
+            { "span": "bg-coordinator.process git work", "ms": 0, "note": "never reached — coordinator busy with async settings-cache rewrites" }
+          ]
+        },
+        {
+          "trace_id": "c2b9...e1",
+          "root": "background-work-coordinator:/enqueue",
+          "total_ms": 4200,
+          "breakdown": [
+            { "span": "bg-coordinator.recv async cache rewrite batch", "ms": 30, "note": "SMOKING GUN: 8400 async settings-cache rewrites/s arriving as 2h-TTL entries expire at peak Monday" },
+            { "span": "bg-coordinator.queue + flush rewrites", "ms": 4150, "note": "coordinator CPU 97%, queue 22x; this work starves Git operations behind it" }
+          ]
+        },
+        {
+          "trace_id": "d4e0...9a",
+          "root": "settings-cache:/get user_prefs",
+          "total_ms": 215,
+          "breakdown": [
+            { "span": "settings-cache.get", "ms": 3, "note": "MISS — entry expired under 2h TTL (was 12h)" },
+            { "span": "user-settings-db.read user_prefs", "ms": 210, "note": "SMOKING GUN: read attributed to client mobile-app v8.2 / web-prefs-service v3.7 — 10x read pattern shipped ~3 weeks ago, masked by the long TTL until now" },
+            { "span": "settings-cache.async rewrite enqueue", "ms": 2, "note": "each miss enqueues an async rewrite -> feeds the coordinator flood" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "saturation",
+    "root_cause_subtype": "cache TTL reduction (12h->2h) unmasked a latent 10x client read regression -> user-settings DB read explosion + async cache-rewrite flood saturates the shared background-work coordinator -> Git HTTPS proxy connection exhaustion",
+    "required_keywords": [
+      "refresh TTL",
+      "12h",
+      "2h",
+      "user settings",
+      "settings-cache",
+      "10x read regression",
+      "two client apps",
+      "masked by the longer TTL",
+      "peak Monday",
+      "user-settings-db",
+      "async cache rewrites",
+      "background-work coordinator",
+      "git-https-proxy",
+      "connection exhaustion"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "network_fault",
+      "node_failure",
+      "data_quality",
+      "dependency_failure",
+      "healthy"
+    ],
+    "ruling_out_keywords": [
+      "git-https-proxy revision 31 unchanged 23d",
+      "all 60 proxy replicas Available",
+      "image 2.41.0 stable",
+      "git-https-proxy 0 restarts 0 OOM",
+      "authenticated Git request_rate only 1.1x",
+      "read_qps 10.2x driven by client regression not traffic",
+      "settings-cache 0 OOM 0 restarts",
+      "reverting TTL alone is only half the fix"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs",
+      "describe_pod",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "latent client 10x read regression (masked by long TTL) -> TTL change 12h->2h -> peak Monday -> user-settings DB overload -> async cache rewrites swamp background-work coordinator -> Git HTTPS proxy conn exhaustion -> auth-token / Git dependents fail",
+    "model_response": "ROOT_CAUSE: A user settings cache (the user-settings cache) refresh TTL was reduced from 12h to 2h this morning as part of a new model rollout. The shorter TTL did not by itself create new demand — it UNMASKED a latent ~10x read regression that two client apps (mobile-app v8.2 and web-prefs-service v3.7) had shipped about three weeks earlier; the previous 12h TTL had been hiding that regression because entries rarely expired. At peak Monday traffic, 2h-TTL entries expired en masse, driving user-settings-db read QPS to ~10x baseline (while authenticated Git request_rate was only ~1.1x). Each cache miss also enqueued an ASYNCHRONOUS cache rewrite; the volume of simultaneous rewrites (8400/s vs 350/s baseline) overwhelmed the shared background-work coordinator (CPU 97%, queue 22x). The Git HTTPS proxy depends on that coordinator, so it could not acquire upstream connections, exhausted its pool (4096/4096), and returned 5xx with PR pushes not appearing, without self-recovering. The proxy connection exhaustion is the LOUD victim symptom; the user-settings DB overload is a downstream victim; the true driver is the latent client read regression unmasked by the TTL change, amplified through async cache rewrites into the coordinator.\nROOT_CAUSE_CATEGORY: saturation\nVALIDATED_CLAIMS:\n- user-settings cache refresh TTL was changed 12h -> 2h this morning as part of a new model rollout (contributory trigger, not the whole cause) [evidence: k8s_events, prometheus_metrics]\n- user-settings-db read QPS rose to 10.2x baseline while authenticated Git request_rate is only 1.1x — amplification is from cache misses + latent client regression, not user traffic [evidence: prometheus_metrics, prometheus_alerts]\n- ~90% of the excess reads are attributed to two client apps (mobile-app v8.2, web-prefs-service v3.7) released ~3 weeks ago with a 10x read regression masked by the longer TTL [evidence: k8s_events, traces]\n- async settings-cache rewrites jumped 350 -> 8400/s and saturated the shared background-work coordinator (CPU 97%, queue depth 22x) [evidence: prometheus_metrics, k8s_events, traces]\n- git-https-proxy exhausted its upstream connection pool (4096/4096, conn_acquire p99 9.2s) because the coordinator it depends on was saturated; traces show ~9.18s spent acquiring an upstream connection to bg-coordinator, then timeout/503 [evidence: traces, prometheus_metrics, k8s_pod_logs]\n- A second incident the same day was caused by a DIFFERENT cache write source doing SYNCHRONOUS writes -> replication delay -> the same Git HTTPS proxy exhaustion [evidence: k8s_events, k8s_pod_logs]\nNON_VALIDATED_CLAIMS:\n- Git HTTPS proxy regression / bad deploy (the LOUD symptom): WRONG. git-https-proxy revision 31 is unchanged for 23d, all 60 replicas Available, image 2.41.0 stable, 0 restarts / 0 OOM. The proxy is a downstream victim; rolling it back would do nothing [evidence: k8s_deployments, k8s_events, prometheus_metrics]\n- Proxy / DB under-provisioned for organic peak-Monday traffic: WRONG. authenticated Git request_rate is only 1.1x baseline, far below the 10.2x user-settings read amplification — the load is not organic [evidence: prometheus_metrics]\n- Add user-settings-db capacity to fix DB saturation: WRONG. The read explosion is the latent client regression amplified by cache misses; scaling the DB does not stop the read amplification or the coordinator flood [evidence: prometheus_metrics, traces]\n- settings-cache crash / OOM: WRONG. settings-cache pods are Running, 0 OOM, 0 restarts; the cache is functioning — the shorter TTL merely unmasked latent demand [evidence: k8s_pods, prometheus_metrics]\n- TRAP — just revert the TTL 2h -> 12h and call it resolved: WRONG / it is only HALF the fix. Reverting the TTL re-hides the symptom but leaves the latent 10x client read regression in place, so the cascade re-arms at the next peak; the postmortem treats revert-TTL-alone as not addressing the client read traffic [evidence: k8s_events, k8s_pod_logs]\nCAUSAL_CHAIN:\n- Two client apps ship a latent 10x read regression ~3 weeks earlier; the 12h cache TTL hides it because entries rarely expire\n- user-settings cache refresh TTL is reduced 12h -> 2h during a new model rollout\n- At peak Monday traffic, 2h-TTL entries expire en masse -> user-settings-db read QPS ~10x baseline (DB overload)\n- Each miss enqueues an async cache rewrite; 8400/s of rewrites swamp the shared background-work coordinator (CPU 97%, queue 22x)\n- git-https-proxy depends on the coordinator -> cannot acquire upstream connections -> pool exhausted 4096/4096 -> Git over HTTPS 5xx, PR pushes not appearing, no self-recovery\n- A later, different cache write source doing synchronous writes repeats the cascade as a second same-day incident\n- Fix: disable async cache rewrites and restart the Git HTTPS proxy across datacenters (first incident); restrict the additional sync cache write source and restart the proxy again (second incident); then address the latent client read regression and add per-traffic switches / self-throttling so revert-TTL is not the only lever\nFIX: Disable the asynchronous user-settings cache rewrites and restart the Git HTTPS proxy across datacenters to break the coordinator flood; restrict the additional cache write source that caused the second incident; do NOT merely revert the TTL (half-fix) — drive down the latent 10x client read regression, add per-traffic switches and self-throttling on bulk cache updates, and segment the user-settings DB."
+  },
+  "remediation": {
+    "fix_tool": "clear_cache",
+    "canonical_fix": "Disable the asynchronous user-settings cache rewrites (the flood swamping the background-work coordinator) and restart the Git HTTPS proxies across datacenters to break connection exhaustion; restrict the additional cache write source responsible for the second same-day incident; then go beyond reverting the TTL by driving down the latent 10x client read regression, adding per-traffic switches and self-throttling on bulk cache updates, and segmenting the user-settings DB.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "Just revert the cache refresh TTL 2h -> 12h and declare it resolved — this is only HALF the story: it re-hides the symptom but leaves the latent 10x client read regression in place, so the cascade re-arms at the next peak (the documented half-fix that does not address the client read traffic)",
+      "Roll back / restart the git-https-proxy as the fix — the proxy is a downstream victim (revision 31 unchanged 23d, 0 restarts, image stable); rolling it back addresses nothing and restarts alone do not stop the upstream coordinator flood",
+      "Add user-settings-db capacity / scale the DB to fix 'saturation' — the read explosion is the latent client regression amplified by cache misses, not organic traffic, so more DB capacity does not stop the read amplification or the coordinator flood"
+    ],
+    "resolved": true
+  }
+}

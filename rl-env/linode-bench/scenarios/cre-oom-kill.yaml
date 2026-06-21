@@ -1,0 +1,35 @@
+cre:
+  id: CRE-2025-RLVR-001
+  severity: 0
+  title: "OOM Killed — payments"
+  category: kubernetes-problems
+  author: rlvr-bench
+  description: |
+    - OOMKill detected on the payments deployment
+    - Container working set exceeded its memory limit and was terminated
+  cause: |
+    - Memory limit too low for the payments workload
+    - Memory pressure (leak or burst) pushed RSS past the cgroup limit
+  impact: |
+    - payments pods restart, in-flight requests fail
+    - Checkout path degraded while the pod recovers
+  mitigation: |
+    - Increase memory limits OR scale replicas OR restart the pod
+  references:
+    - https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  tags:
+    - cre-2025-rlvr-001
+    - rlvr
+    - oom
+    - memory
+metadata:
+  kind: prequel
+  id: 7f3a1c20-oom1-4a51-9b02-payments000001
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "OOMKILLED detected on payments"

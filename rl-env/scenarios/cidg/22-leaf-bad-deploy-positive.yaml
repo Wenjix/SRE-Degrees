@@ -1,0 +1,93 @@
+# CIDG paired-positive LEAF scenario — the tempting tool IS the correct fix.
+#
+# Purpose: teach the harness the CONDITION, not the tool-name. rollback_deployment can
+# be the WRONG reflex in a cascade (rolling back a downstream victim does nothing when
+# the real fault is an upstream control plane). Here it is the CORRECT fix, because the
+# topology is a DEGENERATE isolated leaf whose OWN latest revision is broken.
+#
+# Isolated leaf service `checkout-api` shipped a bad revision: the new build returns
+# 500s on a hot code path (a config/serialization regression introduced in the rollout).
+# Error rate jumps the instant the new ReplicaSet takes traffic; rollout events name the
+# new revision. There is no cascade, no hidden counter, no buried gun — the loudest alert
+# (5xx spike on checkout-api coinciding with a deploy) IS the root cause. Correct
+# response: roll the deployment back to the previous known-good revision.
+
+meta:
+  id: leaf-bad-deploy-positive
+  title: "Isolated leaf service bad revision (rollback is correct)"
+  source: "Synthetic paired-positive for rollback_deployment (condition-learning leaf)"
+  urls: []
+  failure_class: leaf-bad-revision
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: checkout-api           # isolated leaf; no dependents in this degenerate topo
+      kind: service
+      resources: { replicas: 3 }
+      limits: { bad_revision_5xx: true }
+  edges: []                        # degenerate single-node topology: NO cascade path
+
+root_cause:
+  location: checkout-api
+  kind: bad_revision
+  severity: 0.8
+  hidden: false                    # NOT hidden — rollout/deploy events point straight at it
+  persistent: false                # rollback fully restores SLO; no latent counter to reset
+  reset_by: []
+  rate_law:
+    var: error_rate_pct            # observable error rate, steps up at the rollout
+    per_tick: 0                     # not an integration — it's a step change at deploy time
+    driver: request_rate
+    driver_gain: 0
+    cap: 100
+    worsened_by: []                 # rollback pushes no counter the wrong way
+  params:
+    bad_revision: "checkout-api-7f2c"
+    good_revision: "checkout-api-6e1b"
+
+fault:
+  chaos_kind: podchaos
+  exec_cmd: "deploy revision checkout-api-7f2c that 500s on POST /checkout"
+  sim: { set: { bad_revision: true } }
+  duration_s: 90
+
+observation:
+  alerting: uniform                # only one node can alert — loudness trivially = cause
+  monitoring_degrades: false
+  smoking_guns: []                 # the deploy event is on the surface, nothing buried
+
+slo:
+  - { metric: error_rate_pct, node: checkout-api, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+
+# Tempting wrong moves: restart_pod just recreates pods on the SAME bad revision, and
+# scale_deployment spreads the bad revision across more replicas. Neither restores SLO.
+trap_actions:
+  - { tool: restart_pod, args: { target: checkout-api } }
+  - { tool: scale_deployment, args: { target: checkout-api, replicas: 8 } }
+
+canonical_fix:
+  ordering_notes: >
+    No ordering subtlety on an isolated leaf: roll the deployment back to the previous
+    known-good revision and error rate recovers immediately. rollback_deployment — a
+    reflex that misfires on cascade victims — is exactly the right tool here because the
+    leaf's OWN latest revision is the fault.
+  steps:
+    - { tool: rollback_deployment, args: { target: checkout-api, to_revision: "checkout-api-6e1b" } }
+
+paired_positive: gcp-service-control   # sibling where rolling back the victim is the wrong reflex
+
+assertions:
+  cascades: false
+  loudest_alert_not_cause: false       # the alert IS the cause
+  fix_resolves: true
+  buried_gun_exists: false
+  hysteresis: false
+  monitoring_degrades: false
+
+chance:
+  flap_prob: 0.0
+  jitter: 0.02
+  partial_recovery_prob: 0.0
+
+seed: 2201

@@ -1,0 +1,347 @@
+{
+  "incident": "memory_leak",
+  "provider": "k8s",
+  "failure_mode": "memory_leak",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "user-profile",
+    "NS": "rlvr-target",
+    "WORKLOAD": "user-profile",
+    "POD": "user-profile-6c8d4f9b7d-mz2qt",
+    "POD2": "user-profile-6c8d4f9b7d-h7vlk",
+    "POD3": "user-profile-6c8d4f9b7d-x4r9n",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9kp7",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-c1ws",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] MemoryLeak — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "MemoryLeak",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "Container {{SVC}} RSS growing unbounded on {{POD}}",
+      "description": "Container working set on pod {{POD}} ({{NS}}) has climbed monotonically from 240MB to 1.31GB over the last 90 minutes with no GC reclaim and is still rising ~12MB/min. There have been zero restarts (no OOMKill yet), but container_memory_working_set_bytes is 1310720000 vs the 200MB SLO and is on track to hit the 1.5GiB cgroup limit. RSS grows even while request rate is flat, indicating a per-request allocation leak.",
+      "error": "MemoryLeak: user-profile rss crossed 1.2GiB and still climbing (no GC reclaim)",
+      "suspected_symptom": "container_memory_working_set_bytes growing > 1.2GiB",
+      "k8s_failure_mode": "memory_leak",
+      "context_sources": "prometheus_metrics,k8s_pods,k8s_events,k8s_pod_logs"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "A {{WORKLOAD}} deployment rollout completed 6 minutes before the alert fired (image user-profile:3.4.1), making a bad_deploy the obvious suspect — but the working-set ramp in prometheus_metrics started ~84 minutes earlier on the SAME revision, the image is unchanged from the previous healthy revision, and the rollout reports Available 3/3, so the deploy only restarted one already-leaking pod rather than introducing the leak.",
+      "Request rate on {{SVC}} rose from 40 to 110 req/s in the same window, suggesting a saturation/load problem driving memory up — but RSS keeps climbing at the same ~12MB/min slope during a traffic trough (RPS back to 45) and never plateaus or drops, so the growth tracks cumulative request count, not concurrent load.",
+      "Node {{NODE}} logs a MemoryPressure transition hint and a neighboring pod {{POD3}} reports occasional GC pauses, hinting at node_failure or noisy-neighbor pressure — but kube_node_status_condition Ready=true with 71% allocatable memory free, and only the {{SVC}} pods show the unbounded ramp, so the leak is container-scoped, not node-scoped."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "user-profile:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "1536Mi", "cpu": "1000m" }
+              },
+              "state": { "running": { "startedAt": "2026-06-20T17:32:08Z" } },
+              "last_state": {}
+            }
+          ]
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "user-profile:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "1536Mi", "cpu": "1000m" }
+              },
+              "state": { "running": { "startedAt": "2026-06-20T17:31:55Z" } },
+              "last_state": {}
+            }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "user-profile:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "1536Mi", "cpu": "1000m" }
+              },
+              "state": { "running": { "startedAt": "2026-06-20T19:01:34Z" } },
+              "last_state": {}
+            }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "MemoryLeakDetected",
+          "object": "pod/{{POD}}",
+          "source": "prometheus-rule-evaluator, {{CLUSTER}}",
+          "count": 1,
+          "lastTimestamp": "2026-06-20T19:07:12Z",
+          "message": "container_memory_working_set_bytes for {{SVC}} grew monotonically 240MB->1.31GB over 90m with no reclaim; threshold 1.2GiB breached"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/{{WORKLOAD}}",
+          "source": "deployment-controller",
+          "count": 1,
+          "lastTimestamp": "2026-06-20T19:01:30Z",
+          "message": "Scaled up replica set {{WORKLOAD}}-6c8d4f9b7d to 3 (image user-profile:3.4.1) — rollout complete, no image change from rev 11"
+        },
+        {
+          "type": "Normal",
+          "reason": "MemoryPressure",
+          "object": "node/{{NODE}}",
+          "source": "kubelet, {{NODE}}",
+          "count": 1,
+          "lastTimestamp": "2026-06-20T18:55:44Z",
+          "message": "Node condition MemoryPressure transitioned to False; allocatable memory 71% free"
+        },
+        {
+          "type": "Warning",
+          "reason": "GCPause",
+          "object": "pod/{{POD3}}",
+          "source": "kubelet, {{NODE}}",
+          "count": 2,
+          "lastTimestamp": "2026-06-20T19:04:18Z",
+          "message": "Container {{SVC}} reported a 180ms GC pause; heap not reclaimed below high-water mark"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "{{NS}}",
+      "pod": "{{POD}}",
+      "container": "{{SVC}}",
+      "lines": [
+        "2026-06-20T17:32:08Z INFO  user-profile started, listening on :8080 (rev user-profile:3.4.1)",
+        "2026-06-20T17:38:00Z INFO  heap allocator: working set 240MB / limit 1536MB, rps 42",
+        "2026-06-20T18:20:00Z INFO  heap allocator: working set 612MB / limit 1536MB, rps 45 (heap not returning to baseline after GC)",
+        "2026-06-20T18:55:00Z WARN  profileCache map size 1,842,310 entries and growing — no eviction policy, entries never freed",
+        "2026-06-20T19:02:00Z WARN  working set 1.12GB / limit 1536MB, rss up 12MB/min with rps flat at 45",
+        "2026-06-20T19:07:10Z ERROR MemoryLeak: user-profile rss crossed 1.2GiB (1310720000 bytes); GC cannot reclaim, retained by profileCache"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 29,
+          "pods": "16/110"
+        },
+        {
+          "name": "{{NODE2}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 24,
+          "pods": "12/110"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "image": "user-profile:3.4.1",
+      "strategy": "RollingUpdate",
+      "desired_replicas": 3,
+      "available_replicas": 3,
+      "ready_replicas": 3,
+      "unavailable_replicas": 0,
+      "current_revision": 12,
+      "previous_revision": 11,
+      "previous_image": "user-profile:3.4.1",
+      "rollout_status": "Deployment is available; 3/3 replicas ready (image unchanged from previous revision)",
+      "last_rollout": "2026-06-20T19:01:30Z",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "query": "max(container_memory_working_set_bytes{namespace=\"rlvr-target\",pod=~\"user-profile-.*\"})",
+      "primary_metric": "container_memory_working_set_bytes",
+      "slo_threshold": 200000000,
+      "direction": "lower",
+      "current_value": 1310720000,
+      "unit": "bytes",
+      "series": [
+        { "pod": "{{POD}}", "container_memory_working_set_bytes": 1310720000, "memory_limit_bytes": 1610612736, "memory_util_pct": 81.4 },
+        { "pod": "{{POD2}}", "container_memory_working_set_bytes": 1245184000, "memory_limit_bytes": 1610612736, "memory_util_pct": 77.3 },
+        { "pod": "{{POD3}}", "container_memory_working_set_bytes": 312475648, "memory_limit_bytes": 1610612736, "memory_util_pct": 19.4 }
+      ],
+      "samples": [
+        { "t": "2026-06-20T17:38:00Z", "value": 251658240 },
+        { "t": "2026-06-20T18:08:00Z", "value": 503316480 },
+        { "t": "2026-06-20T18:38:00Z", "value": 838860800 },
+        { "t": "2026-06-20T19:02:00Z", "value": 1207959552 },
+        { "t": "2026-06-20T19:07:00Z", "value": 1310720000 }
+      ],
+      "request_rate_samples": [
+        { "t": "2026-06-20T17:38:00Z", "rps": 42 },
+        { "t": "2026-06-20T18:08:00Z", "rps": 110 },
+        { "t": "2026-06-20T18:38:00Z", "rps": 47 },
+        { "t": "2026-06-20T19:02:00Z", "rps": 45 },
+        { "t": "2026-06-20T19:07:00Z", "rps": 45 }
+      ],
+      "container_oom_events_total": 0,
+      "memory_growth_bytes_per_min": 12582912
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "MemoryLeak",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "pod": "{{POD}}"
+          },
+          "annotations": {
+            "summary": "Container {{SVC}} RSS growing unbounded on {{POD}}",
+            "description": "container_memory_working_set_bytes 1310720000 grew monotonically 240MB->1.31GB over 90m with no GC reclaim; 0 restarts (not yet OOMKilled)"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:05:30Z",
+          "value": "1310720000"
+        },
+        {
+          "labels": {
+            "alertname": "ContainerMemoryHigh",
+            "severity": "warning",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "pod": "{{POD2}}"
+          },
+          "annotations": {
+            "summary": "Container {{SVC}} memory climbing on {{POD2}}",
+            "description": "container_memory_working_set_bytes 1245184000 at 77% of 1536Mi limit and rising ~12MB/min"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:06:10Z",
+          "value": "1245184000"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "resource_exhaustion",
+    "required_keywords": [
+      "memory leak",
+      "container_memory_working_set_bytes",
+      "monotonic",
+      "no GC reclaim",
+      "profileCache",
+      "1.2GiB",
+      "{{POD}}"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "node_failure",
+      "saturation",
+      "config_error",
+      "network_fault"
+    ],
+    "ruling_out_keywords": [
+      "leak ramp started 84m before the rollout",
+      "image user-profile:3.4.1 unchanged from revision 11",
+      "rollout Available 3/3 / MinimumReplicasAvailable",
+      "RSS keeps climbing while rps flat at 45 (not load-driven)",
+      "MemoryPressure=False, node 71% memory free, Ready=True",
+      "0 restarts / container_oom_events_total=0 (not yet OOMKilled)"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "describe_pod",
+      "get_events",
+      "get_logs"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "describe_pod",
+      "get_logs"
+    ],
+    "max_investigation_loops": 3,
+    "model_response": "ROOT_CAUSE: Container {{SVC}} on pod {{POD}} ({{NS}}) has a memory leak — container_memory_working_set_bytes has grown monotonically from 240MB to 1.31GB over ~90 minutes with no GC reclaim and is still rising ~12MB/min, breaching the 200MB SLO (1310720000 vs 200000000). The pod logs identify an unbounded profileCache map (1.8M+ entries, no eviction) retaining allocations across requests so the heap never returns to baseline. There have been 0 restarts and 0 OOM events (not yet OOMKilled), and RSS climbs even while request rate is flat at 45 rps, confirming a per-request allocation leak rather than load.\nROOT_CAUSE_CATEGORY: resource_exhaustion\nVALIDATED_CLAIMS:\n- container_memory_working_set_bytes ramps 251MB->503MB->838MB->1.21GB->1.31GB monotonically with no plateau, growth 12582912 bytes/min [evidence: prometheus_metrics]\n- Pod {{POD}} restart_count=0, ready 1/1, limits.memory=1536Mi, last_state empty (no OOMKill termination) [evidence: k8s_pods]\n- Pod log 'profileCache map size 1,842,310 entries and growing — no eviction policy, entries never freed' and 'MemoryLeak: user-profile rss crossed 1.2GiB ... GC cannot reclaim, retained by profileCache' [evidence: k8s_pod_logs]\n- Event MemoryLeakDetected: working set grew 240MB->1.31GB over 90m with no reclaim, 1.2GiB threshold breached [evidence: k8s_events]\n- container_oom_events_total=0 — the leak is pre-OOM, the working set is unbounded growth not a one-shot spike [evidence: prometheus_metrics]\nNON_VALIDATED_CLAIMS:\n- Not a bad deploy: the working-set ramp began ~84m before the 19:01 rollout, image user-profile:3.4.1 is unchanged from previous revision 11, and the deployment is Available 3/3 — the rollout merely reset one pod's ({{POD3}}) lower memory baseline [evidence: prometheus_metrics, k8s_deployments, k8s_events]\n- Not saturation/load: request_rate fell back to 45 rps yet RSS keeps climbing at the same slope, so growth tracks cumulative requests, not concurrency [evidence: prometheus_metrics]\n- Not node_failure: {{NODE}} Ready=True, MemoryPressure=False, 71% allocatable memory free; only {{SVC}} pods show the ramp so the leak is container-scoped [evidence: k8s_node_health]\nCAUSAL_CHAIN:\n- {{SVC}} appends each request's profile to an unbounded profileCache with no eviction -> retained objects keep the heap above its high-water mark so GC cannot reclaim -> container_memory_working_set_bytes grows ~12MB/min from 240MB toward the 1536Mi limit -> the 200MB SLO is breached and the pod is on a trajectory to OOMKill; restarting the deployment reclaims the leaked heap immediately as a stopgap while a code fix (bounded cache) is shipped."
+  },
+  "remediation": {
+    "fix_tool": "restart_service",
+    "canonical_fix": "kubectl rollout restart deployment/user-profile -n rlvr-target",
+    "trust_tier": "approval",
+    "primary_metric": "container_memory_working_set_bytes",
+    "direction": "lower",
+    "state_before": { "container_memory_working_set_bytes": 1310720000 },
+    "state_after": { "container_memory_working_set_bytes": 167772160 },
+    "recovery_check": "container_memory_working_set_bytes < 200000000",
+    "resolved": true
+  }
+}

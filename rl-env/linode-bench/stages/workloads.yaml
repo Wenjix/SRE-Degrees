@@ -1,0 +1,1369 @@
+# workloads.yaml — 16 mock service deployments + redis + upstream-mock + load-gen.
+# Each pod runs a tiny python server (from the mock-svc-src ConfigMap) that:
+#   - serves :8080 (app traffic, hit by load-gen)
+#   - serves :9090/metrics (app_* Prometheus metrics)
+#   - prints $CHAOS_MARKER to stdout every 2s when that env is non-empty
+#     (06_run_scenario.sh sets CHAOS_MARKER at fault time so preq can match the CRE)
+# When CHAOS_MARKER is set the app_* metrics also flip to their unhealthy values,
+# so the synthetic SLO signals (dns/tls/cache/upstream/error-rate/db/lag/latency)
+# move in lockstep with the injected fault. Pod-level signals (memory, cpu,
+# restarts, node condition, unavailable replicas) come from kube-state-metrics
+# / cAdvisor and are real.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rlvr-target
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mock-svc-src
+  namespace: rlvr-target
+data:
+  server.py: |
+    import os, time, threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    APP = os.environ.get("APP", "svc")
+    MARKER = os.environ.get("CHAOS_MARKER", "").strip()
+
+    def unhealthy():
+        # unhealthy while a chaos marker is active (set by 06_run_scenario.sh)
+        # or while a sentinel file exists (set by some pod-exec faults).
+        return bool(MARKER) or os.path.exists("/tmp/chaos-on")
+
+    BUCKETS = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]
+    lock = threading.Lock()
+    st = {
+        "dns_lookups": 0.0, "dns_errors": 0.0,
+        "tls_total": 0.0, "tls_ok": 0.0,
+        "cache_req": 0.0, "cache_hit": 0.0,
+        "up_req": 0.0, "up_2xx": 0.0,
+        "req_200": 0.0, "req_500": 0.0,
+        "hsum": 0.0, "hcount": 0.0, "hinf": 0.0,
+    }
+    hist = {b: 0.0 for b in BUCKETS}
+
+    def ticker():
+        while True:
+            u = unhealthy()
+            with lock:
+                st["dns_lookups"] += 100; st["dns_errors"] += (50 if u else 0)
+                st["tls_total"] += 100;   st["tls_ok"] += (10 if u else 100)
+                st["cache_req"] += 100;   st["cache_hit"] += (12 if u else 95)
+                st["up_req"] += 100;      st["up_2xx"] += (30 if u else 100)
+                st["req_200"] += 100;     st["req_500"] += (20 if u else 0)
+                lat = 1.5 if u else 0.05
+                for _ in range(100):
+                    st["hsum"] += lat; st["hcount"] += 1; st["hinf"] += 1
+                    for b in BUCKETS:
+                        if lat <= b:
+                            hist[b] += 1
+            if MARKER:
+                print(MARKER, flush=True)
+            time.sleep(2)
+
+    def render():
+        u = unhealthy()
+        db = 100 if u else 10
+        lag = 800 if u else 5
+        a = APP
+        with lock:
+            out = [
+                f'app_dns_lookups_total{{app="{a}"}} {st["dns_lookups"]}',
+                f'app_dns_errors_total{{app="{a}"}} {st["dns_errors"]}',
+                f'app_tls_handshake_total{{app="{a}"}} {st["tls_total"]}',
+                f'app_tls_handshake_success_total{{app="{a}"}} {st["tls_ok"]}',
+                f'app_cache_requests_total{{app="{a}"}} {st["cache_req"]}',
+                f'app_cache_hits_total{{app="{a}"}} {st["cache_hit"]}',
+                f'app_upstream_requests_total{{app="{a}"}} {st["up_req"]}',
+                f'app_upstream_2xx_total{{app="{a}"}} {st["up_2xx"]}',
+                f'app_requests_total{{app="{a}",status="200"}} {st["req_200"]}',
+                f'app_requests_total{{app="{a}",status="500"}} {st["req_500"]}',
+                f'app_db_conn_in_use{{app="{a}"}} {db}',
+                f'app_consumer_lag_k{{app="{a}"}} {lag}',
+            ]
+            for b in BUCKETS:
+                out.append(f'http_request_duration_seconds_bucket{{app="{a}",le="{b}"}} {hist[b]}')
+            out.append(f'http_request_duration_seconds_bucket{{app="{a}",le="+Inf"}} {st["hinf"]}')
+            out.append(f'http_request_duration_seconds_sum{{app="{a}"}} {st["hsum"]}')
+            out.append(f'http_request_duration_seconds_count{{app="{a}"}} {st["hcount"]}')
+        return ("\n".join(out) + "\n").encode()
+
+    class Metrics(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = render()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4")
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *a):
+            pass
+
+    class App(BaseHTTPRequestHandler):
+        def do_GET(self):
+            code = 500 if (unhealthy() and APP in ("orders",)) else 200
+            self.send_response(code)
+            self.end_headers()
+            self.wfile.write(b"ok\n")
+        def log_message(self, *a):
+            pass
+
+    if __name__ == "__main__":
+        threading.Thread(target=ticker, daemon=True).start()
+        threading.Thread(
+            target=lambda: HTTPServer(("0.0.0.0", 9090), Metrics).serve_forever(),
+            daemon=True,
+        ).start()
+        HTTPServer(("0.0.0.0", 8080), App).serve_forever()
+---
+# --- redis (shared cache / queue used by cache_stampede + consumer_lag) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: rlvr-target
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: rlvr-target
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+# --- upstream-mock (the dependency recommendations / search call) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: upstream-mock
+  namespace: rlvr-target
+  labels:
+    app: upstream-mock
+    tier: mock-svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: upstream-mock
+  template:
+    metadata:
+      labels:
+        app: upstream-mock
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: upstream-mock
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: upstream-mock
+  namespace: rlvr-target
+spec:
+  selector:
+    app: upstream-mock
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+# --- notifications-consumer (scaled by the consumer_lag fix) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifications-consumer
+  namespace: rlvr-target
+  labels:
+    app: notifications-consumer
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notifications-consumer
+  template:
+    metadata:
+      labels:
+        app: notifications-consumer
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: notifications-consumer
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+# --- load generator: continuously curls every service :8080 ---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: load-gen
+  namespace: rlvr-target
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: load-gen
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: load-gen
+          image: curlimages/curl:8.7.1
+          command:
+            - sh
+            - -c
+            - |
+              services="checkout payments auth cart search inventory orders notifications gateway user-profile recommendations billing shipping catalog sessions media-upload"
+              while true; do
+                for s in $services; do
+                  curl -s -m 2 "http://$s:8080/" >/dev/null 2>&1 || true
+                done
+                sleep 5
+              done
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+---
+# --- PodMonitor so kube-prometheus-stack scrapes the app_* metrics on :9090 ---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: mock-svc
+  namespace: rlvr-target
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - rlvr-target
+  selector:
+    matchLabels:
+      tier: mock-svc
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 10s
+---
+# --- checkout ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: rlvr-target
+  labels:
+    app: checkout
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: checkout
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout
+  namespace: rlvr-target
+spec:
+  selector:
+    app: checkout
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- payments ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: rlvr-target
+  labels:
+    app: payments
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payments
+  template:
+    metadata:
+      labels:
+        app: payments
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: payments
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments
+  namespace: rlvr-target
+spec:
+  selector:
+    app: payments
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- auth ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: rlvr-target
+  labels:
+    app: auth
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: auth
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  namespace: rlvr-target
+spec:
+  selector:
+    app: auth
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- cart ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: rlvr-target
+  labels:
+    app: cart
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cart
+  template:
+    metadata:
+      labels:
+        app: cart
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: cart
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart
+  namespace: rlvr-target
+spec:
+  selector:
+    app: cart
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- search ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search
+  namespace: rlvr-target
+  labels:
+    app: search
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: search
+  template:
+    metadata:
+      labels:
+        app: search
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: search
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search
+  namespace: rlvr-target
+spec:
+  selector:
+    app: search
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- inventory ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory
+  namespace: rlvr-target
+  labels:
+    app: inventory
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: inventory
+  template:
+    metadata:
+      labels:
+        app: inventory
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: inventory
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory
+  namespace: rlvr-target
+spec:
+  selector:
+    app: inventory
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- orders ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: rlvr-target
+  labels:
+    app: orders
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: orders
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders
+  namespace: rlvr-target
+spec:
+  selector:
+    app: orders
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- notifications ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifications
+  namespace: rlvr-target
+  labels:
+    app: notifications
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notifications
+  template:
+    metadata:
+      labels:
+        app: notifications
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: notifications
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notifications
+  namespace: rlvr-target
+spec:
+  selector:
+    app: notifications
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- gateway ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: rlvr-target
+  labels:
+    app: gateway
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: gateway
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: rlvr-target
+spec:
+  selector:
+    app: gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- user-profile ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-profile
+  namespace: rlvr-target
+  labels:
+    app: user-profile
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-profile
+  template:
+    metadata:
+      labels:
+        app: user-profile
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: user-profile
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-profile
+  namespace: rlvr-target
+spec:
+  selector:
+    app: user-profile
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- recommendations ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendations
+  namespace: rlvr-target
+  labels:
+    app: recommendations
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: recommendations
+  template:
+    metadata:
+      labels:
+        app: recommendations
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: recommendations
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recommendations
+  namespace: rlvr-target
+spec:
+  selector:
+    app: recommendations
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- billing ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing
+  namespace: rlvr-target
+  labels:
+    app: billing
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: billing
+  template:
+    metadata:
+      labels:
+        app: billing
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: billing
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing
+  namespace: rlvr-target
+spec:
+  selector:
+    app: billing
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- shipping ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipping
+  namespace: rlvr-target
+  labels:
+    app: shipping
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: shipping
+  template:
+    metadata:
+      labels:
+        app: shipping
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: shipping
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shipping
+  namespace: rlvr-target
+spec:
+  selector:
+    app: shipping
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- catalog ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: rlvr-target
+  labels:
+    app: catalog
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog
+  template:
+    metadata:
+      labels:
+        app: catalog
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: catalog
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog
+  namespace: rlvr-target
+spec:
+  selector:
+    app: catalog
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- sessions ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sessions
+  namespace: rlvr-target
+  labels:
+    app: sessions
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sessions
+  template:
+    metadata:
+      labels:
+        app: sessions
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: sessions
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sessions
+  namespace: rlvr-target
+spec:
+  selector:
+    app: sessions
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+# --- media-upload ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-upload
+  namespace: rlvr-target
+  labels:
+    app: media-upload
+    tier: mock-svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: media-upload
+  template:
+    metadata:
+      labels:
+        app: media-upload
+        tier: mock-svc
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python3", "/app/server.py"]
+          env:
+            - name: APP
+              value: media-upload
+            - name: CHAOS_MARKER
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 256m
+              memory: 256Mi
+      volumes:
+        - name: src
+          configMap:
+            name: mock-svc-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: media-upload
+  namespace: rlvr-target
+spec:
+  selector:
+    app: media-upload
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090

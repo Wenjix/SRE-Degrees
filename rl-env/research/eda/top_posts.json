@@ -1,0 +1,2278 @@
+[
+  {
+    "id": "144sn8r",
+    "subreddit": "programming",
+    "title": "Apollo dev posts backend code to Git to disprove Reddit’s claims of scrapping and inefficiency",
+    "selftext": "",
+    "url": "https://github.com/christianselig/apollo-backend",
+    "permalink": "/r/programming/comments/144sn8r/apollo_dev_posts_backend_code_to_git_to_disprove/",
+    "author": "GhostalMedia",
+    "score": 44750,
+    "num_comments": 2508,
+    "created_utc": 1686277449.0,
+    "flair": null,
+    "is_self": false,
+    "domain": "github.com",
+    "comments": [
+      {
+        "id": "jnhe37l",
+        "author": "FyreWulff",
+        "body": "I was honestly both creeped out and disappointed at Reddit admins for trying to: 1) falsely insinuate Apollo was abusing the API 2) falsely claim Apollo was extorting them and 3) trying to go for \"Apollo is programmed bad\" as a desperation attempt to appeal to nerds to turn people to their side.",
+        "score": 7624,
+        "created_utc": 1686279665.0
+      },
+      {
+        "id": "jnhi6xc",
+        "author": "Farados55",
+        "body": "Fuck u/spez, moderate this.\n\nOr the other mods I guess.",
+        "score": 3847,
+        "created_utc": 1686281780.0
+      },
+      {
+        "id": "jnhga8i",
+        "author": "DoubleF3lix",
+        "body": "spez is a mod on this subreddit lol",
+        "score": 3495,
+        "created_utc": 1686280773.0
+      },
+      {
+        "id": "jnhg4yv",
+        "author": "timeshifter_",
+        "body": "Victim complex. We're talking about /u/spez here, known for silently editing comments he doesn't like. Reddit has done exactly what they said they wouldn't do, on a time scale they said they wouldn't do it in, and are attempting to deflect their obvious stupidity onto the most widely known third-party dev. Reddit is going to absolutely trash their value before they even hit IPO. They've rejected endless opportunities to make their own app suck less, and instead they've tripled down on the suck, and gone out of their way to make the main website suck for the benefit of literally nobody. They're basically just asking to be killed off at this point, and given that the *entire site's* moderation is done by volunteers using primarily third-party tools... the community will be only too happy to oblige.",
+        "score": 3330,
+        "created_utc": 1686280697.0
+      },
+      {
+        "id": "jnhfcb7",
+        "author": "FC37",
+        "body": "When I read the article, it was legitimately hard for me to understand how Reddit's execs could have even interpreted those comments as \"extortion.\" I still don't understand how someone's mind can jump to that from the comments that were made.",
+        "score": 2260,
+        "created_utc": 1686280292.0
+      }
+    ]
+  },
+  {
+    "id": "7c9ms5",
+    "subreddit": "programming",
+    "title": "Chrome 64 will prevent third-party ads from redirecting the page, and prevent disguised buttons that open malicious content",
+    "selftext": "",
+    "url": "https://blog.chromium.org/2017/11/expanding-user-protections-on-web.html",
+    "permalink": "/r/programming/comments/7c9ms5/chrome_64_will_prevent_thirdparty_ads_from/",
+    "author": "kirbyfan64sos",
+    "score": 35597,
+    "num_comments": 920,
+    "created_utc": 1510420855,
+    "flair": null,
+    "is_self": false,
+    "domain": "blog.chromium.org",
+    "comments": [
+      {
+        "id": "dpo7x81",
+        "author": "crusoe",
+        "body": "Making your porn browsing safer....",
+        "score": 6265,
+        "created_utc": 1510423361
+      },
+      {
+        "id": "dpo8kr0",
+        "author": "EncapsulatedPickle",
+        "body": "And your online banking break again for a year.",
+        "score": 2280,
+        "created_utc": 1510424139
+      },
+      {
+        "id": "dpo9k4i",
+        "author": "iamajs",
+        "body": "how about an option to disable those annoying auto-play videos?",
+        "score": 1890,
+        "created_utc": 1510425320
+      },
+      {
+        "id": "dpobwlr",
+        "author": "caskey",
+        "body": "https://xkcd.com/1172/",
+        "score": 1847,
+        "created_utc": 1510428186
+      },
+      {
+        "id": "dpo9rk0",
+        "author": "kirbyfan64sos",
+        "body": "That's also coming to Chrome 64: https://blog.chromium.org/2017/09/unified-autoplay.html",
+        "score": 1157,
+        "created_utc": 1510425570
+      }
+    ]
+  },
+  {
+    "id": "7fck9y",
+    "subreddit": "programming",
+    "title": "More than a Million Pro-Repeal Net Neutrality Comments were Likely Faked",
+    "selftext": "",
+    "url": "https://hackernoon.com/more-than-a-million-pro-repeal-net-neutrality-comments-were-likely-faked-e9f0e3ed36a6",
+    "permalink": "/r/programming/comments/7fck9y/more_than_a_million_prorepeal_net_neutrality/",
+    "author": "TasslehoffBurrfoot-",
+    "score": 34858,
+    "num_comments": 1073,
+    "created_utc": 1511579913,
+    "flair": null,
+    "is_self": false,
+    "domain": "hackernoon.com",
+    "comments": [
+      {
+        "id": "dqb20nz",
+        "author": "binarysaurus",
+        "body": "No shit. I've only met one person who was for it and it was because they were misinformed by tv. ",
+        "score": 7163,
+        "created_utc": 1511587065
+      },
+      {
+        "id": "dqb2ohz",
+        "author": "rydan",
+        "body": "The TV isn't even talking about it.",
+        "score": 2281,
+        "created_utc": 1511588193
+      },
+      {
+        "id": "dqb357w",
+        "author": "ADifficultName",
+        "body": "Because the internet is a competitor.",
+        "score": 1894,
+        "created_utc": 1511589011
+      },
+      {
+        "id": "dqb17dw",
+        "author": "2402a7b7f239666e4079",
+        "body": "&gt; If there is no code in your link, it probably doesn't belong here.\n\nThis post isn't about programming at all.",
+        "score": 1225,
+        "created_utc": 1511585715
+      },
+      {
+        "id": "dqb2upx",
+        "author": "tontoto",
+        "body": "Interestingly many comment submissions to campaigns like this feature some sort of templates or script. To make those scripts vary is pretty interesting as the analysis shows. I guess purportedly stealing millions of people identities is not proven here but it doesn't seem too surprising given recent data leaks",
+        "score": 998,
+        "created_utc": 1511588493
+      }
+    ]
+  },
+  {
+    "id": "8f2lzu",
+    "subreddit": "programming",
+    "title": "There’s a reason that programmers always want to throw away old code and start over: they think the old code is a mess. They are probably wrong. The reason that they think the old code is a mess is because of a cardinal, fundamental law of programming: It’s harder to read code than to write it.",
+    "selftext": "",
+    "url": "https://www.joelonsoftware.com/2000/04/06/things-you-should-never-do-part-i/",
+    "permalink": "/r/programming/comments/8f2lzu/theres_a_reason_that_programmers_always_want_to/",
+    "author": "the_phet",
+    "score": 23482,
+    "num_comments": 1069,
+    "created_utc": 1524749052,
+    "flair": null,
+    "is_self": false,
+    "domain": "joelonsoftware.com",
+    "comments": [
+      {
+        "id": "dy02itl",
+        "author": "lukeautry",
+        "body": "I think most programmers work in a similar way: imagine a problem, then decompose the problem into its constituent parts and attack those simpler, isolated problems.\n\nThe problem with a large codebase is that no one, not even the person that wrote all of it can fit the solution in their working memory. The tendency of programmers (who generally underestimate complexity) is to say: wait a minute, this problem doesn't require 10 million LOC, I could easily solve this problem in 250 lines of elegant Haskell.\n\nThere are situations where the legacy codebase is completely unsalvagable, but I think more often than not it's throwing the baby out with the bath water, except the baby is an engine that, while flawed, is generating business value.",
+        "score": 2234,
+        "created_utc": 1524751678
+      },
+      {
+        "id": "dy02qhe",
+        "author": "chrisdoner",
+        "body": "&gt; The old mantra build one to throw away is dangerous when applied to large scale commercial applications. \n\nIt's not a mantra without reason. I already have the quotes written up from The Mythical Man Month:\n\n&gt; “Programming system builders have also been exposed to this lesson, but it seems to have not yet been learned. Project after project designs a set of algorithms and then plunges into construction of customer-deliverable software on a schedule that demands delivery of the first thing built.”\n\n&gt; “In most projects, the first system built is barely usable. It may be too slow, too big, awkward to use, or all three.”\n\n&gt; “The discard and redesign may be done in one lump, or it may be done piece-by-piece. But all large-system experience shows that it will be done.”\n\n&gt; “The management question, therefore, is not whether to build a pilot system and throw it away. You will do that. The only question is whether to plan in advance to build a throwaway, or to promise to deliver the throwaway to customers.”\n\n&gt; “Hence plan to throw one away; you will, anyhow.”\n\nThe _whole point_ is that the first time you make any system, you don't know what you're doing. Every decision has a non-zero element of speculation. Some of those decisions will be fundamental. Insights from making the first system mean you can make the better decision without speculation the second time. If you try to keep the old system forever and just patch it repeatedly, that becomes an uphill climb: the longer you maintain a difficult-to-maintain system, the harder it becomes to maintain. You'll eventually reach your goal but you won't have planned for all the extra work. Even as the authors of a system.\n\n&gt; The idea that new code is better than old is patently absurd. Old code has been used. It has been tested. Lots of bugs have been found, and they’ve been fixed. There’s nothing wrong with it. \n\nYeah, that's the problem with crappy code. You think that there's nothing wrong with it because it's been tested. But how do you know? Nobody apparently understands the code. Often, code is so bad that nobody knows how buggy it is. Look at OpenSSL, for a public example.  \n\nThe code that programmers hate to maintain is when it's like walking into a haunted house and ghosts follow you around whispering seeds of doubt every time you open a cupboard or walk past a mirror. They'd prefer to set fire to it and put the fire out with holy water.\n\nPeople like clean, simple code because it's obvious that it doesn't have problems.",
+        "score": 1642,
+        "created_utc": 1524751886
+      },
+      {
+        "id": "dy0k829",
+        "author": "nickiter",
+        "body": "&gt; The problem with a large codebase is that no one, not even the person that wrote all of it can fit the solution in their working memory.\n\nI think this is what a lot of people - even some coders - don't understand about enterprise-grade software systems.\n\nQuite literally no one knows everything about any such system - you *have* to take a systems approach, design for modularity, document like a graphomaniac, and expect constant rework.",
+        "score": 669,
+        "created_utc": 1524767243
+      },
+      {
+        "id": "dy0uh6n",
+        "author": "occams--chainsaw",
+        "body": "Unfortunately, a significant number of those enterprise systems weren't designed for modularity, have little to no documentation, and receive almost no rework to minimize debt.",
+        "score": 652,
+        "created_utc": 1524776276
+      },
+      {
+        "id": "dy00bdq",
+        "author": "Bl00dsoul",
+        "body": "While he makes some valid points, sometimes the codebase is just bad.  \nA tangled mess of rushed spaghetti code full of \"TODO\" and \"FIXME\",\nand lots of temporary hacks.  \nAt that point starting from scratch can be the right decision, sometimes.  ",
+        "score": 490,
+        "created_utc": 1524749444
+      }
+    ]
+  },
+  {
+    "id": "91i0mc",
+    "subreddit": "programming",
+    "title": "YouTube page load is 5x slower in Firefox and Edge than in Chrome because YouTube's Polymer redesign relies on the deprecated Shadow DOM v0 API only implemented in Chrome.",
+    "selftext": "",
+    "url": "https://twitter.com/cpeterso/status/1021626510296285185",
+    "permalink": "/r/programming/comments/91i0mc/youtube_page_load_is_5x_slower_in_firefox_and/",
+    "author": "malicious_turtle",
+    "score": 22215,
+    "num_comments": 1996,
+    "created_utc": 1532443617,
+    "flair": null,
+    "is_self": false,
+    "domain": "twitter.com",
+    "comments": [
+      {
+        "id": "e2y53ys",
+        "author": "jl2352",
+        "body": "Google is going through their own 'embrace, extend, extinguish' phase. Embrace open source, extend existing projects like Webkit with lots of improvements, but ensure their stuff is shit on anything non-Google.\n\nIt's kinda sad how they've changed.\n\nI'm glad we can now rely on the true bastions of open source; Microsoft.",
+        "score": 6259,
+        "created_utc": 1532444810
+      },
+      {
+        "id": "e2y6hkf",
+        "author": "terholan",
+        "body": "&gt;true bastions of open source; Microsoft\n\nOh you!",
+        "score": 2577,
+        "created_utc": 1532446001
+      },
+      {
+        "id": "e2y5jtd",
+        "author": "chugga_fan",
+        "body": "I still want to kill whoever made the Material Design theme that reddit and youtube's redesigns use. Looks fucking ugly on desktop. No surprise that it performs like shit too.",
+        "score": 1524,
+        "created_utc": 1532445193
+      },
+      {
+        "id": "e2y9wnh",
+        "author": "bj_christianson",
+        "body": "Is this an issue with Polymer in general, or just how it was used on YouTube?",
+        "score": 1227,
+        "created_utc": 1532448855
+      },
+      {
+        "id": "e2y8oh4",
+        "author": "Eirenarch",
+        "body": "I don't see why you think they've \"changed\". They have always been like this. This is simple case of competition - when you are catching up you play good, when you are on top you try to monopolize and optimize for profits (in this case control of the ecosystem). Microsoft are only good now because they are catching up. Google are still worse than MS though because Google are extreme hypocrites and people fell for it. MS didn't act like they were some charitable organization and they even proudly proclaimed that they want an MS PC on every desk.",
+        "score": 684,
+        "created_utc": 1532447834
+      }
+    ]
+  },
+  {
+    "id": "7m2z3b",
+    "subreddit": "programming",
+    "title": "How I Got Paid $0 From the Uber Security Bug Bounty",
+    "selftext": "",
+    "url": "https://medium.com/bread-and-circuses/how-i-got-paid-0-from-the-uber-security-bug-bounty-aa9646aa103f",
+    "permalink": "/r/programming/comments/7m2z3b/how_i_got_paid_0_from_the_uber_security_bug_bounty/",
+    "author": "Sprokes",
+    "score": 20724,
+    "num_comments": 1477,
+    "created_utc": 1514228884,
+    "flair": null,
+    "is_self": false,
+    "domain": "medium.com",
+    "comments": [
+      {
+        "id": "drqzqkl",
+        "author": "Vishnuprasad-v",
+        "body": "If OP can find these many security holes in uber systems, I'm sure he can go further and find more. But this time, I sincerely hope he publishes those as a zero-day vulnerability.\n",
+        "score": 5047,
+        "created_utc": 1514231934
+      },
+      {
+        "id": "drqzha2",
+        "author": "browner87",
+        "body": "And this is how bug bounty programs die and companies get breached. I understand that you can't pay out for every tiny UI bug random people find (although I was impressed that GoDaddy paid out $50 to me once for what basically equated to a UI bug), but if someone has provided something so actionable you go and take a service offline, they've found something. The purpose of a bug bounty is to encourage ethical disclosure with the promise of payment by following the ethical route. Stop honoring that and people will start following the unethical routes to get paid for their work. \n\nIf this were me, I'd probably try to take them to small claims court. I'm not sure what BS arbitration rules this middleman website has, but I'm pretty sure in most jurisdictions you're entitled to unbiased arbitration at least. Or maybe reach out to the bounty program again? Show that you had actionable data and the company acknowledged the issue by fixing it, they should pay out at this point. I'd probably also tweet up a storm about it, companies get uptight about bad Twitter press these days, especially security stuff.",
+        "score": 3644,
+        "created_utc": 1514231551
+      },
+      {
+        "id": "drr02zo",
+        "author": "xonjas",
+        "body": "Uber is such a shitbag of a company that this doesn't surprise me at all.",
+        "score": 2730,
+        "created_utc": 1514232445
+      },
+      {
+        "id": "drr0k3o",
+        "author": "5-4-3-2-1-bang",
+        "body": "Uber is such a shitbag company that I wouldn't blame him if he sold them instead.  No reason to be ethical with an unethical company.",
+        "score": 2397,
+        "created_utc": 1514233159
+      },
+      {
+        "id": "drr4vzu",
+        "author": "twizmwazin",
+        "body": "The best way to protect their customers is to get them to stop using the malicious service. If the company can't get their act together, I see no reason for others to try and help them.",
+        "score": 1168,
+        "created_utc": 1514239491
+      }
+    ]
+  },
+  {
+    "id": "7m8770",
+    "subreddit": "programming",
+    "title": "TIL there's a community called \"dwitter\" where people compose 140 character JavaScript programs that produce interesting visuals",
+    "selftext": "",
+    "url": "https://www.dwitter.net/top",
+    "permalink": "/r/programming/comments/7m8770/til_theres_a_community_called_dwitter_where/",
+    "author": "bemmu",
+    "score": 19260,
+    "num_comments": 342,
+    "created_utc": 1514300701,
+    "flair": null,
+    "is_self": false,
+    "domain": "dwitter.net",
+    "comments": [
+      {
+        "id": "drsb85h",
+        "author": "lionleaf",
+        "body": "Now that the server seems to be under control, let me high-jack my top comment to give you some tips:\n\n  - You can edit the code live! Try changing a few numbers\n  - Click the \"New Dweet\" button to get a less crazy starting point. It even has some comments!\n  - If you edit someone elses dweet, you can post it directly from their post; this tags it as a \"remix\" and is preferred over just copy-pasting into \"New Dweet\" as it preserves the link to the original.\n  - dwitter.net/random is a good way to see dweets of variable complexity\n  - and dwitter.net/new is where all the fresh redditor dweets have started to pop up :D \n\nAnd it's a ton of fun to see all the excitement :) Might have to get back to working on it.  (github.com/lionleaf/dwitter if you want to contribute)\n\n**Edit:** /u/xen_the posted a guide worth checking out if you're interested in making your first dweet! https://redd.it/7mgcd1 \n\n**Edit 2:** I've set up a discord for discussing all things dwitter: https://discord.gg/emHe6cP\n\n\n**Old post:**\n\nHi guys! Creator here, it seems you've crashed it. Currently working on getting it stabilized again.\n\nI'll come back here and post some of my favorites when I'm not in such a hurry ;)\n\nUpdate: I think we're good! Threw a bunch of hardware at it, which helped a bit at first, but then the extra caching added by my friend seems to be more than enough for the current load :D ",
+        "score": 2107,
+        "created_utc": 1514315024
+      },
+      {
+        "id": "drsbpa7",
+        "author": "white_bread",
+        "body": "The code for their load balancer was only 140 characters long.",
+        "score": 852,
+        "created_utc": 1514315614
+      },
+      {
+        "id": "drs6lny",
+        "author": "Thatmanwiththefedora",
+        "body": "I think we crashed it.",
+        "score": 779,
+        "created_utc": 1514309326
+      },
+      {
+        "id": "drs17b3",
+        "author": "matt_hammond",
+        "body": "You start with verbose and readable code and then you start stripping it down and fitting it into 140 chars. Also, you have to understand maths, mod operation and then you just have to get creative. ",
+        "score": 450,
+        "created_utc": 1514302262
+      },
+      {
+        "id": "drsckyv",
+        "author": "PleaseBeSerious",
+        "body": "And written in Javascript.",
+        "score": 360,
+        "created_utc": 1514316706
+      }
+    ]
+  },
+  {
+    "id": "8530uf",
+    "subreddit": "programming",
+    "title": "Cool website that explains algorithms as if they are IKEA instruction manuals",
+    "selftext": "",
+    "url": "https://idea-instructions.com/",
+    "permalink": "/r/programming/comments/8530uf/cool_website_that_explains_algorithms_as_if_they/",
+    "author": "TheSpaceOfAdes",
+    "score": 18070,
+    "num_comments": 249,
+    "created_utc": 1521283754,
+    "flair": null,
+    "is_self": false,
+    "domain": "idea-instructions.com",
+    "comments": [
+      {
+        "id": "dvud459",
+        "author": "CJKay93",
+        "body": "I think the public key crypto one is actually more confusing than just reading the Wikipedia article.",
+        "score": 1336,
+        "created_utc": 1521287594
+      },
+      {
+        "id": "dvudbf8",
+        "author": "fleshgolem",
+        "body": "I agree. Same goes for the Binary Search one, which is propably one of the easiest algorithms to explain in words but is barely comprehensible in the image. I say that as someone, who generally has no trouble understanding IKEA manuals\n\nThe quick sort one works really well on the other hand IMHO",
+        "score": 627,
+        "created_utc": 1521288038
+      },
+      {
+        "id": "dvubxq3",
+        "author": "paca_tatu_cotia_nao",
+        "body": "\"I've finally completed my app.\nThere's some functions that are loose, and I forgot to attach some classes, but it looks like it works.\"",
+        "score": 315,
+        "created_utc": 1521284744
+      },
+      {
+        "id": "dvud63y",
+        "author": "samredfern",
+        "body": "Good concept, poor execution ",
+        "score": 261,
+        "created_utc": 1521287714
+      },
+      {
+        "id": "dvufc4s",
+        "author": "XHF",
+        "body": "Merge sort:\n\n1. Split values\n\n2. Order the values on each side\n\n3. Do some magic\n\n4. Everything is sorted yay! ",
+        "score": 182,
+        "created_utc": 1521291878
+      }
+    ]
+  },
+  {
+    "id": "luq9oz",
+    "subreddit": "programming",
+    "title": "How I cut GTA Online loading times by 70%",
+    "selftext": "",
+    "url": "https://nee.lv/2021/02/28/How-I-cut-GTA-Online-loading-times-by-70/",
+    "permalink": "/r/programming/comments/luq9oz/how_i_cut_gta_online_loading_times_by_70/",
+    "author": "simspelaaja",
+    "score": 17860,
+    "num_comments": 1022,
+    "created_utc": 1614545840,
+    "flair": null,
+    "is_self": false,
+    "domain": "nee.lv",
+    "comments": [
+      {
+        "id": "gp8beoa",
+        "author": "deruke",
+        "body": "This article was really insightful! I've always wondered what was going on in the code while waiting eons for GTAO to load.\n\nThis is super embarrassing for Rockstar. This has been a well-known issue since GTAO was released, and it turns out to be something so simple.  \n\nI wonder how many millions of dollars Rockstar has missed out on from users being frustrated with long load times and closing the game. Meanwhile, some random guy with no access to the source code was able to solve this problem with about 100 lines of code",
+        "score": 2919,
+        "created_utc": 1614548100
+      },
+      {
+        "id": "gp8c429",
+        "author": "SE400PPp",
+        "body": "I wouldn't believe it if it wasn't for the impressive article. The biggest game on the planet, probably the best game devs in the industry, 7 years after release, by far the most common complaint about the game. And they didn't even do a cursory profile to find such a silly bug? How is that even remotely possible?\n\nFinding and fixing something like this would be trivial with access to the code, even for someone fresh out of university. I was under the assumption that the loading time was done for political/marketing reasons (\"look at our logos\"), anti-cheat or something out of the ordinary. But json parsing? I still find it hard to believe this was just not caught.",
+        "score": 1386,
+        "created_utc": 1614548347
+      },
+      {
+        "id": "gp8brae",
+        "author": "Spajk",
+        "body": "It just shows how little they care.",
+        "score": 1193,
+        "created_utc": 1614548220
+      },
+      {
+        "id": "gp8d4f8",
+        "author": "p1um5mu991er",
+        "body": "I respect him just for giving that much of a shit",
+        "score": 801,
+        "created_utc": 1614548779
+      },
+      {
+        "id": "gp8cg30",
+        "author": "UsuallyMooACow",
+        "body": "Considering the mammoth amount of hard programming problems that were solved to make this game I'm really shocked that something this easy to fix made it through.",
+        "score": 679,
+        "created_utc": 1614548481
+      }
+    ]
+  },
+  {
+    "id": "7o203z",
+    "subreddit": "programming",
+    "title": "Linus Torvalds: I think somebody inside of Intel needs to really take a long hard look at their CPU's, and actually admit that they have issues instead of writing PR blurbs that say that everything works as designed.",
+    "selftext": "",
+    "url": "https://lkml.org/lkml/2018/1/3/797",
+    "permalink": "/r/programming/comments/7o203z/linus_torvalds_i_think_somebody_inside_of_intel/",
+    "author": "TyroPyro",
+    "score": 17676,
+    "num_comments": 1637,
+    "created_utc": 1515059555,
+    "flair": null,
+    "is_self": false,
+    "domain": "lkml.org",
+    "comments": [
+      {
+        "id": "ds68qx5",
+        "author": "ArrogantlyChemical",
+        "body": "Well they did work as designed.\n\nTheir design was just bad.",
+        "score": 3125,
+        "created_utc": 1515064339
+      },
+      {
+        "id": "ds67u0e",
+        "author": "JavierTheNormal",
+        "body": "As bad as these attacks are, let's remember that most RAM vendors haven't fixed ROWHAMMER after all these years. The state of computer security is very poor.\n\nRunning untrusted code on your computer is unwise. That includes javascript.",
+        "score": 1531,
+        "created_utc": 1515062097
+      },
+      {
+        "id": "ds6736r",
+        "author": "six_string_sensei",
+        "body": "This is something that needs to said. Its great to see Linus being the person who holds Intel accountable.",
+        "score": 1048,
+        "created_utc": 1515060218
+      },
+      {
+        "id": "ds69lwa",
+        "author": "FlukyS",
+        "body": "Linus is pretty much one of the biggest public facing developers who has the right to complain about hardware stuff. He doesn't give a shit about PR, it's all unfiltered opinions on shit companies try to do to his system. He doesn't favour any specific just is on the side of Linux itself. ",
+        "score": 922,
+        "created_utc": 1515066346
+      },
+      {
+        "id": "ds6cc8o",
+        "author": "Pharisaeus",
+        "body": "&gt; Their design was just bad.\n\nI'd say the design simply didn't address security at all. Someone got task \"improve performance\", and security was not on the requirements list, so was not considered :)",
+        "score": 846,
+        "created_utc": 1515071775
+      }
+    ]
+  },
+  {
+    "id": "by9v7c",
+    "subreddit": "programming",
+    "title": "I didn't get paid, so I open sourced my clients project",
+    "selftext": "",
+    "url": "https://github.com/TrillCyborg/onefraction",
+    "permalink": "/r/programming/comments/by9v7c/i_didnt_get_paid_so_i_open_sourced_my_clients/",
+    "author": "TrillCyborg",
+    "score": 17582,
+    "num_comments": 965,
+    "created_utc": 1560012257,
+    "flair": null,
+    "is_self": false,
+    "domain": "github.com",
+    "comments": [
+      {
+        "id": "eqf2l62",
+        "author": "c0cky_",
+        "body": "Sorry this happened to you, Let this be a lesson to others that you shouldn’t put fingers to keys until the ink of the deal has dried. \n\nThis happens a lot. \n\nAlways have a contract. Even if it’s only over a couple hundred dollars. There are tons of free templates online. \n\nAnother good practice is to try to get an upfront payment so that you know they’ll be good for the rest.",
+        "score": 2558,
+        "created_utc": 1560014050
+      },
+      {
+        "id": "eqf39zp",
+        "author": "c0cky_",
+        "body": "For sure, most developers don't realize how valuable their skills are.\n\nHere's a sample link: https://www.pandadoc.com/software-development-agreement-template/\n\nThere's a bunch freely online. Make sure you predefine with the client _everything_ that needs to get built into the contract so there's no disagreement when you deliver the software.",
+        "score": 1132,
+        "created_utc": 1560014405
+      },
+      {
+        "id": "eqf2nog",
+        "author": "TrillCyborg",
+        "body": "You live and learn. Do you have some links to those templates?",
+        "score": 1095,
+        "created_utc": 1560014085
+      },
+      {
+        "id": "eqf3r2l",
+        "author": "GotenXiao",
+        "body": "[Fuck You, Pay Me](https://youtu.be/jVkLVRt6c1U) - Mike Montero gave a talk years ago about working as a freelancer, or running a studio, and ensuring that you will actually get paid for your work.",
+        "score": 1024,
+        "created_utc": 1560014652
+      },
+      {
+        "id": "eqf6sex",
+        "author": "todo-anonymize-self",
+        "body": "As long as he doesn't have to do anything money-ish with the float money he'll be 99.9999999998536905226% fine.",
+        "score": 844,
+        "created_utc": 1560016029
+      }
+    ]
+  },
+  {
+    "id": "8q3kp8",
+    "subreddit": "programming",
+    "title": "Inventor says Google is patenting work he put in the public domain",
+    "selftext": "",
+    "url": "https://arstechnica.com/tech-policy/2018/06/inventor-says-google-is-patenting-work-he-put-in-the-public-domain/",
+    "permalink": "/r/programming/comments/8q3kp8/inventor_says_google_is_patenting_work_he_put_in/",
+    "author": "Balance-",
+    "score": 17504,
+    "num_comments": 856,
+    "created_utc": 1528662197,
+    "flair": null,
+    "is_self": false,
+    "domain": "arstechnica.com",
+    "comments": [
+      {
+        "id": "e0g9p15",
+        "author": "GoBenB",
+        "body": "When I first started programming, Google was all about open source and Microsoft was all closed and proprietary. Now, it’s the opposite. \n\nI don’t think this new strategy Google is putting in place is going to end well.",
+        "score": 3117,
+        "created_utc": 1528665946
+      },
+      {
+        "id": "e0gazsx",
+        "author": "darkslide3000",
+        "body": "The stupid thing about how software patents work is that if you don't apply for it, anybody else could try to do so later and if they succeed (which is always a chance since patent officers often have no idea what the fuck they're doing), they can fuck you over with it. I could imagine that Google just decided to try as hard as possible to patent whatever the fuck they can about this important new technology... if they fail, they at least made (relatively) certain that nobody else can later do it either.\n\nThe best option for the inventor would've probably been to patent it himself and grant the world an irrevokable royalty-free license, rather than not patenting it at all. Patents are not free, unfortunately, but it seems that he cares enough about this that he might have been willing to put out the money. With the way this stupid system works, the only way you can make sure that nobody else takes it is to claim it for yourself.",
+        "score": 2680,
+        "created_utc": 1528667216
+      },
+      {
+        "id": "e0gfwy8",
+        "author": "[deleted]",
+        "body": "[deleted]",
+        "score": 1454,
+        "created_utc": 1528672298
+      },
+      {
+        "id": "e0gb81q",
+        "author": "fatpollo",
+        "body": "It worked for Microsoft though. People forget.",
+        "score": 987,
+        "created_utc": 1528667436
+      },
+      {
+        "id": "e0gbmmr",
+        "author": "CanvasSolaris",
+        "body": "It worked in the short term. If it was still working, they wouldn't have changed it. These days, the talented developers are more likely to be working on linux-based OS's and languages. Without changing, they would be Oracle.",
+        "score": 916,
+        "created_utc": 1528667825
+      }
+    ]
+  },
+  {
+    "id": "rka1s4",
+    "subreddit": "programming",
+    "title": "TikTok streaming software is an illegal fork of OBS",
+    "selftext": "",
+    "url": "https://twitter.com/Naaackers/status/1471494415306788870",
+    "permalink": "/r/programming/comments/rka1s4/tiktok_streaming_software_is_an_illegal_fork_of/",
+    "author": "Kok_Nikol",
+    "score": 15666,
+    "num_comments": 1065,
+    "created_utc": 1639960220,
+    "flair": null,
+    "is_self": false,
+    "domain": "twitter.com",
+    "comments": [
+      {
+        "id": "hp8okt4",
+        "author": "ElectronRotoscope",
+        "body": "It's worth pointing out earlier this year Tiktok got caught using a voice synth library they didn't have a license for either\n\nhttps://www.theverge.com/2021/9/29/22701167/bev-standing-tiktok-lawsuit-settles-text-to-speech-voice",
+        "score": 3293,
+        "created_utc": 1639963644
+      },
+      {
+        "id": "hp8lax4",
+        "author": "rydan",
+        "body": "They are a Chinese company.  Chinese companies steal IP.  It is what they do.",
+        "score": 2636,
+        "created_utc": 1639962046
+      },
+      {
+        "id": "hp8u1u3",
+        "author": "DefaultVariable",
+        "body": "So if I'm understanding the GPLv2 license properly. In order for TikTok to be compliant, they must release their source code publicly?",
+        "score": 1791,
+        "created_utc": 1639966323
+      },
+      {
+        "id": "hp8vp99",
+        "author": "YM_Industries",
+        "body": "Yep.\n\nWith LGPL you could avoid this by bundling the LGPL code into an open-source library, and then linking against that library in your closed-source project. But under GPLv2 this is prohibited, so they would have to open source their entire app.",
+        "score": 1144,
+        "created_utc": 1639967126
+      },
+      {
+        "id": "hp8i28r",
+        "author": "ThatWontCutIt",
+        "body": "They are a billion dollar company. Like why?",
+        "score": 1111,
+        "created_utc": 1639960472
+      }
+    ]
+  },
+  {
+    "id": "5yym2n",
+    "subreddit": "programming",
+    "title": "Notepad++: We are in a f**king corrupted world",
+    "selftext": "",
+    "url": "https://notepad-plus-plus.org/news/notepad-7.3.3-fix-cia-hacking-issue.html",
+    "permalink": "/r/programming/comments/5yym2n/notepad_we_are_in_a_fking_corrupted_world/",
+    "author": "thedankzone",
+    "score": 15385,
+    "num_comments": 1233,
+    "created_utc": 1489324432,
+    "flair": null,
+    "is_self": false,
+    "domain": "notepad-plus-plus.org",
+    "comments": [
+      {
+        "id": "detvte4",
+        "author": "max630",
+        "body": "so, there was no real vulnerability in the n++ itself, it was just a rootkit modifying its installation?",
+        "score": 1840,
+        "created_utc": 1489325418
+      },
+      {
+        "id": "detw5tl",
+        "author": "Moeri",
+        "body": "Well the vulnerability was that Notepad++ did not notice one of its dependencies has been tampered with. This is what the Notepad++ devs fixed in this update.\n\nHowever, if they (the CIA) managed to override DLLs they could maybe also override the .exe file as well, which circumvents any measures Notepad++ can take. ",
+        "score": 1635,
+        "created_utc": 1489326221
+      },
+      {
+        "id": "detw2i8",
+        "author": "lost_send_berries",
+        "body": "Are there not dozens of other dlls they can replace?",
+        "score": 1336,
+        "created_utc": 1489326011
+      },
+      {
+        "id": "detwfy8",
+        "author": "BaconWraith",
+        "body": "Wow it's almost like it would be a good idea for Windows to validate certificates on randomly installed DLLs",
+        "score": 1041,
+        "created_utc": 1489326842
+      },
+      {
+        "id": "detwoxc",
+        "author": "Chirimorin",
+        "body": "Even if notepad++ would have 100% perfect security, they could technically always make their own program that looks and behaves exactly like notepad++, add whatever invisible extra functionality they want and replace the full installation. \n\nSure it would be a lot of work to do, but technically not a single program is completely safe if someone has the ability to replace files on your computer. ",
+        "score": 841,
+        "created_utc": 1489327372
+      }
+    ]
+  },
+  {
+    "id": "adjw6g",
+    "subreddit": "programming",
+    "title": "GitHub now gives free users unlimited private repositories",
+    "selftext": "",
+    "url": "https://thenextweb.com/dd/2019/01/05/github-now-gives-free-users-unlimited-private-repositories/",
+    "permalink": "/r/programming/comments/adjw6g/github_now_gives_free_users_unlimited_private/",
+    "author": "i_wonder_as_i_wander",
+    "score": 15077,
+    "num_comments": 1086,
+    "created_utc": 1546881949,
+    "flair": null,
+    "is_self": false,
+    "domain": "thenextweb.com",
+    "comments": [
+      {
+        "id": "edhlt48",
+        "author": "slightlyintoout",
+        "body": "Just went looking for more details, then saw:\n\n&gt;Due to a scheduling error, we published this story one day before the embargo lifted. This feature isn’t live yet, but Github will formally unveil it tomorrow. When that happens, we’ll update this post with a link to the official announcement. \n\nSo for anyone else that skimmed the top bit, it's not live yet.\n\nI'm wondering if there's any reason to keep paying for an individual dev account.",
+        "score": 2468,
+        "created_utc": 1546883046
+      },
+      {
+        "id": "edhmjxm",
+        "author": "vinniep",
+        "body": "&gt;I'm wondering if there's any reason to keep paying for an individual dev account.\n\nI'm going to guess \"no.\" I suspect Microsoft is taking this the way of other developer tools they own:\n\n\"If you do the sort of work that can make real money with our tools, we want our cut. Otherwise, do whatever you want.\"",
+        "score": 1591,
+        "created_utc": 1546883420
+      },
+      {
+        "id": "edi3qa4",
+        "author": "Xaxxus",
+        "body": "FINALLY.\n\nI can hide my shitty Udemy learning repositories and keep my actual products visible to people.",
+        "score": 1376,
+        "created_utc": 1546892488
+      },
+      {
+        "id": "edhq8ov",
+        "author": "JavierReyes945",
+        "body": "I can see the logic behind that, and seems quite fair IMO. ",
+        "score": 905,
+        "created_utc": 1546885295
+      },
+      {
+        "id": "edhm912",
+        "author": "CherryJimbo",
+        "body": "This is really interesting. GitLab's biggest feature (in my opinion) was free private repos. This completely changes that.",
+        "score": 700,
+        "created_utc": 1546883271
+      }
+    ]
+  },
+  {
+    "id": "yg9cpw",
+    "subreddit": "programming",
+    "title": "Twitter engineers asked to print out their last 30-60 days of code. And to be ready for pairings with Musk",
+    "selftext": "",
+    "url": "https://twitter.com/caseynewton/status/1586127052767318016?s=46&amp;t=cQeLx1_rGjRZK2XPJhlAaA",
+    "permalink": "/r/programming/comments/yg9cpw/twitter_engineers_asked_to_print_out_their_last/",
+    "author": "DisneyLegalTeam",
+    "score": 14962,
+    "num_comments": 3149,
+    "created_utc": 1667015994,
+    "flair": null,
+    "is_self": false,
+    "domain": "twitter.com",
+    "comments": [
+      {
+        "id": "iu7lriw",
+        "author": "pineapplecooqie",
+        "body": "that is so unbelievably fucking stupid, and in *so many* different unique and wonderful ways, it has to be true",
+        "score": 4435,
+        "created_utc": 1667016812
+      },
+      {
+        "id": "iu7oyd0",
+        "author": "nadmaximus",
+        "body": "i don't think i have printed any code since twitter has existed",
+        "score": 4343,
+        "created_utc": 1667018864
+      },
+      {
+        "id": "iu7uzt2",
+        "author": "strangepostinghabits",
+        "body": "I'd be hard pressed to point out much code that is \"mine\". Programming is collaborative and messy.",
+        "score": 2216,
+        "created_utc": 1667023366
+      },
+      {
+        "id": "iu7m3en",
+        "author": "cballowe",
+        "body": "Not at Twitter but my last 60 has been mostly cleanup/refactoring/delete - not sure how I'd print out negative 200k lines of code.",
+        "score": 1867,
+        "created_utc": 1667017021
+      },
+      {
+        "id": "iu7r3nl",
+        "author": "aWildDeveloperAppear",
+        "body": "Twitter dev, Leah Culver, holding printed pages from their iOS app: [https://twitter.com/leahculver/status/1586145696163373056](https://twitter.com/leahculver/status/1586145696163373056)",
+        "score": 1403,
+        "created_utc": 1667020364
+      }
+    ]
+  },
+  {
+    "id": "6xh3xp",
+    "subreddit": "programming",
+    "title": "Reddit's main code is no longer open-source.",
+    "selftext": "",
+    "url": "https://www.reddit.com/r/changelog/comments/6xfyfg/an_update_on_the_state_of_the_redditreddit_and/",
+    "permalink": "/r/programming/comments/6xh3xp/reddits_main_code_is_no_longer_opensource/",
+    "author": "interiot",
+    "score": 14659,
+    "num_comments": 926,
+    "created_utc": 1504296547,
+    "flair": null,
+    "is_self": false,
+    "domain": "reddit.com",
+    "comments": [
+      {
+        "id": "dmfypkq",
+        "author": "valar_k",
+        "body": "&gt;back in 2008, Reddit Inc was a ragtag organization1 and the future of the company was very uncertain. We wanted to make sure the community could keep the site alive should the company go under and making the code available was the logical thing to do\n\nTranslation: We needed you guys back then. We don't now.\n\nThe rest of it seems like a combination of technical hurdles that don't seem particularly compelling (they don't need to have secret new feature branches in their public repo) and some that don't make any sense (how does a move away from a monolithic repo into microservices change anything?) and some that are comical (our shit's so complicated to deploy and use that you can't use it anyway)\n\nIt's sad that their development processes have effectively resulted in administrative reasons they can't do it. I remember them doing shenanigans like using their single-point-of-failure production RabbitMQ server to run the untested April fools thing this year (r/place) and in doing so almost brought everything down. So I'm not surprised that there doesn't seem to be much maturity in the operations and development processes over there.\n\nTo be fair though, the reddit codebase always had a reputation for being such a pain that it wasn't really useful for much. Thankfully, their more niche open source contributions, while not particularly polished and documented, might end up being more useful than the original reddit repo. I know I've been meaning to look into the Websocket one.",
+        "score": 5093,
+        "created_utc": 1504301626
+      },
+      {
+        "id": "dmg4735",
+        "author": "[deleted]",
+        "body": "[deleted]",
+        "score": 1212,
+        "created_utc": 1504308774
+      },
+      {
+        "id": "dmfz3os",
+        "author": "onebit",
+        "body": "I guess they dont know they could make a private repo and update origin after the feature is done.",
+        "score": 944,
+        "created_utc": 1504302108
+      },
+      {
+        "id": "dmfze91",
+        "author": "Arancaytar",
+        "body": "If I read it right, it's not so much that it's \"no longer\" open source, but hasn't been truly open for a while now and they're just giving up on maintaining the open version.\n\n&gt; Because of the above, our internal development, production and “feature” branches have been moving further and further from the “canonical” state of the open source repository. Such balkanization means that merges are getting increasingly difficult, especially as the company grows and more developers are touching the code more frequently.\n\nSo in effect, they made a private fork of their own code and it's now diverged to the point where they can't feasibly maintain both.\n\nIt's sad but I suppose inevitable when your business model involves using your code rather than giving it to other people and selling support. Any users of your code are not potential customers but competitors.\n\nHowever, since their source apparently remains available under a semi-free copyleft license (CPAL), maybe there will be a community-maintained fork of some kind.",
+        "score": 892,
+        "created_utc": 1504302469
+      },
+      {
+        "id": "dmgbwiv",
+        "author": "shodanx",
+        "body": "Just like they dropped \"bastion of free speech\" like a hot potato.",
+        "score": 800,
+        "created_utc": 1504319757
+      }
+    ]
+  },
+  {
+    "id": "mvf2ai",
+    "subreddit": "programming",
+    "title": "Researchers Secretly Tried To Add Vulnerabilities To Linux Kernel, Ended Up Getting Banned",
+    "selftext": "[deleted]",
+    "url": "https://fosspost.org/researchers-secretly-tried-to-add-vulnerabilities-to-linux-kernel/",
+    "permalink": "/r/programming/comments/mvf2ai/researchers_secretly_tried_to_add_vulnerabilities/",
+    "author": "[deleted]",
+    "score": 14624,
+    "num_comments": 1445,
+    "created_utc": 1619009701,
+    "flair": null,
+    "is_self": false,
+    "domain": "fosspost.org",
+    "comments": [
+      {
+        "id": "gvbkjib",
+        "author": "Color_of_Violence",
+        "body": "&gt;Greg announced that the Linux kernel will ban all contributions from the University of Minnesota.\n\nWow.",
+        "score": 3511,
+        "created_utc": 1619011680
+      },
+      {
+        "id": "gvbm86p",
+        "author": "fireisveryfun",
+        "body": "Burned it for everyone but hopefully other institutions take the warning",
+        "score": 1728,
+        "created_utc": 1619012542
+      },
+      {
+        "id": "gvbyix9",
+        "author": "[deleted]",
+        "body": "[deleted]",
+        "score": 1654,
+        "created_utc": 1619018210
+      },
+      {
+        "id": "gvbj36v",
+        "author": "ZinloosTijdverdrijf",
+        "body": "I don't find this ethical. Good thing they got banned.",
+        "score": 1507,
+        "created_utc": 1619010912
+      },
+      {
+        "id": "gvbjnb1",
+        "author": "tripledjr",
+        "body": "Got the University banned. Nice.",
+        "score": 1352,
+        "created_utc": 1619011211
+      }
+    ]
+  },
+  {
+    "id": "656z8t",
+    "subreddit": "programming",
+    "title": "How We Built r/Place",
+    "selftext": "",
+    "url": "https://redditblog.com/2017/04/13/how-we-built-rplace/",
+    "permalink": "/r/programming/comments/656z8t/how_we_built_rplace/",
+    "author": "bsimpson",
+    "score": 14487,
+    "num_comments": 881,
+    "created_utc": 1492104916,
+    "flair": null,
+    "is_self": false,
+    "domain": "redditblog.com",
+    "comments": [
+      {
+        "id": "dg7xb5d",
+        "author": "DrBoondoggle",
+        "body": "Nerds.",
+        "score": 3338,
+        "created_utc": 1492105711
+      },
+      {
+        "id": "dg7xdcu",
+        "author": "Drunken_Economist",
+        "body": "&gt;an artisanal, hand-crafted monitoring script\n\ndamn SF latte-sipping liberals. Just watch the raw logs the way GOD intended",
+        "score": 2080,
+        "created_utc": 1492105777
+      },
+      {
+        "id": "dg7xy4h",
+        "author": "Euthy",
+        "body": "Huh, it's interesting that support for bots was actually part of the design spec considering the controversy they caused. I don't disagree, it's just interesting. ",
+        "score": 1806,
+        "created_utc": 1492106385
+      },
+      {
+        "id": "dg82mh5",
+        "author": "tabarra",
+        "body": "Cannot confirm. The board was 1000x1000, not 1024x1024.",
+        "score": 1349,
+        "created_utc": 1492111410
+      },
+      {
+        "id": "dg80jg2",
+        "author": "bsimpson",
+        "body": "Yeah, that'll be released at some point in the future\n\nEDIT: here it is https://www.reddit.com/r/redditdata/comments/6640ru/place_datasets_april_fools_2017/",
+        "score": 1178,
+        "created_utc": 1492109148
+      }
+    ]
+  },
+  {
+    "id": "6p89yq",
+    "subreddit": "programming",
+    "title": "18yo arrested for reporting a bug in the new Budapest e-Ticket system",
+    "selftext": "",
+    "url": "https://blog.marai.me/2017/07/24/18-year-old-arrested-bkk-tsystems-e-ticket/",
+    "permalink": "/r/programming/comments/6p89yq/18yo_arrested_for_reporting_a_bug_in_the_new/",
+    "author": "minusSeven",
+    "score": 13494,
+    "num_comments": 861,
+    "created_utc": 1500901997,
+    "flair": null,
+    "is_self": false,
+    "domain": "blog.marai.me",
+    "comments": [
+      {
+        "id": "dkndyfs",
+        "author": "Autious",
+        "body": "I wish there was a large and strong international white hat/it security institution that could back this kid up. He did the right thing. Found a flaw, verified it and reported it. We need to throw our weight in and cover each other when someone gets targeted like this, just because some fucking ego was scuffed.",
+        "score": 3095,
+        "created_utc": 1500906340
+      },
+      {
+        "id": "dknebpe",
+        "author": "amchacon",
+        "body": "I know [a similar case in Spain](https://www.genbeta.com/actualidad/a-este-desarrollador-el-metro-de-sevilla-le-ha-hecho-cerrar-por-plagio-una-app-que-hizo-desde-cero)\n\nBasically, Sevilla Transport had an APP with schedule's information. The app was awful as hell, so a young student decides create his own app. His app was a complete success, beating the original. Just contrast the difference at the picture of below: \n  \nhttps://i.blogs.es/e9d80e/tumblr_inline_okoz72fiyj1qbxxsf_540/1366_2000.png\n\n(left: original, right: made by the student).  \n\nSevilla transport authority was ashamed by a young boy! That couldn't happen, so they sue criminal charges against him: Hacking security measures, plagiarism... These charges didn't have any fucking sense, but the author didn't want take the risk for a free app. So he deleted it of the market place.",
+        "score": 2789,
+        "created_utc": 1500906796
+      },
+      {
+        "id": "dknffq2",
+        "author": "GuiSim",
+        "body": "Should have offered him a job. Idiots.",
+        "score": 2302,
+        "created_utc": 1500908128
+      },
+      {
+        "id": "dkni88n",
+        "author": "Hypersapien",
+        "body": "&gt; they earlier talked about how this was not ethical hacking because no one asked the guy to do it\n\nThat's not what \"ethical hacking\" means.",
+        "score": 839,
+        "created_utc": 1500911288
+      },
+      {
+        "id": "dknkisc",
+        "author": "Neuromante",
+        "body": "Given how things work in Spain, I would bet that the government of Sevilla sub-contracted a shitty contractor company (Cárnicas or Meat Grinders due the high turnover and burnout rates and low prices and salaries) to do the work and they delivered the minimal shitty available app possible.\n\nThey wouldn't offer him a job  because, first, they probably weren't even hiring on the first place, second, the contracting company most probably finished the contract after delivering (Or maybe after delivering, providing a bit of support and had their contract removed after other shitty contractor company bid less money for the maintenance), and third, either the contracting company wasn't hiring people with no degree or just they weren't interested in someone who actually had technical knowledge.\n\nSource: I'm a spaniard and I've been working for one of those contractor companies for a while.\n",
+        "score": 702,
+        "created_utc": 1500913794
+      }
+    ]
+  },
+  {
+    "id": "141oyj9",
+    "subreddit": "programming",
+    "title": "r/programming should shut down from 12th to 14th June",
+    "selftext": "",
+    "url": "https://www.reddit.com/r/Save3rdPartyApps/comments/13yh0jf/dont_let_reddit_kill_3rd_party_apps/",
+    "permalink": "/r/programming/comments/141oyj9/rprogramming_should_shut_down_from_12th_to_14th/",
+    "author": "Tintin_Quarentino",
+    "score": 13353,
+    "num_comments": 558,
+    "created_utc": 1685993299.0,
+    "flair": null,
+    "is_self": false,
+    "domain": "reddit.com",
+    "comments": [
+      {
+        "id": "jn0ybve",
+        "author": "Tintin_Quarentino",
+        "body": "APIs are our lifeline.",
+        "score": 1329,
+        "created_utc": 1685993349.0
+      },
+      {
+        "id": "jn1zezl",
+        "author": "Cadoc7",
+        "body": "lol. The mods of this subreddit are reddit employees, including the CEO as 2nd mod. They aren't shutting it down.",
+        "score": 1026,
+        "created_utc": 1686008810.0
+      },
+      {
+        "id": "jn1ioar",
+        "author": "PuzzledProgrammer",
+        "body": "r/Programming mods should remove u/spez and shut it down. The API policy is bad business driven by corporate greed and out-of-touch management.\n\nEdit: if I don’t add another edit later you’ll known I’ve been shadow-banned.\n\nEdit2: don’t kill apollo, u/spez!\n\nEdit3: still here…",
+        "score": 842,
+        "created_utc": 1686001495.0
+      },
+      {
+        "id": "jn1iim5",
+        "author": "vicegrip",
+        "body": "I’ve been supporting reddit since 2010. Reddit gold. \n\nHow much is the data worth?\n\nHow much is everyone’s support worth? That’s a better question. \n\nDon’t trade your future for a quick payday, Reddit. \n\nPremium was supposed to be the alternative to selling the users out like Facebook.\n\nHmmm, that reminds me. Did you ask redditors what they wanted for Reddit?",
+        "score": 841,
+        "created_utc": 1686001429.0
+      },
+      {
+        "id": "jn27ci2",
+        "author": "TerrorBite",
+        "body": "We can just pretend that it's shut down and not participate here",
+        "score": 585,
+        "created_utc": 1686012436.0
+      }
+    ]
+  },
+  {
+    "id": "puok1h",
+    "subreddit": "programming",
+    "title": "A single person answered 76k questions about SQL on StackOverflow. Averaging 22.8 answers per day, every day, for the past 8.6 years.",
+    "selftext": "",
+    "url": "https://stackoverflow.com/search?q=user%3A1144035+%5Bsql%5D+is%3Aanswer",
+    "permalink": "/r/programming/comments/puok1h/a_single_person_answered_76k_questions_about_sql/",
+    "author": "youwillnevercatme",
+    "score": 13318,
+    "num_comments": 602,
+    "created_utc": 1632504575,
+    "flair": null,
+    "is_self": false,
+    "domain": "stackoverflow.com",
+    "comments": [
+      {
+        "id": "he472y9",
+        "author": "vonadz",
+        "body": "I picture this individual getting back home from a full day of work at a boutique furniture store, putting a vinyl of Earth Wind and Fire on, pouring themselves a full glass of wine, and just fucking going at answering SQL questions until the early hours.",
+        "score": 4376,
+        "created_utc": 1632505131
+      },
+      {
+        "id": "he4dmoz",
+        "author": "tldr_MakeStuffUp",
+        "body": "The man is the head of an analytics department at the New York Times, a professor at Columbia, and owns an analytics consulting company. He fits that profile to a tee.",
+        "score": 2321,
+        "created_utc": 1632507885
+      },
+      {
+        "id": "he4jjsh",
+        "author": "mishugashu",
+        "body": "He also literally wrote a book on SQL. Several of them, actually. And on datamining as well.\n\nhttps://www.amazon.com/s?rh=p_27%3AGordon+S.+Linoff&amp;ref=dp_byline_sr_book_1",
+        "score": 1289,
+        "created_utc": 1632510379
+      },
+      {
+        "id": "he4id2z",
+        "author": "Sinity",
+        "body": "[Most of What You Read on the Internet is Written by Insane People](https://www.reddit.com/r/slatestarcodex/comments/9rvroo/most_of_what_you_read_on_the_internet_is_written/)\n\n&gt; The largest subs see from 1% to 3% of uniques comment per month.\n&gt; \n&gt; So Reddit consists of 97-99% of users rarely contributing to the discussion, just passively consuming the content generated by the other 1-3%. This is a pretty consistent trend in Internet communities and is known as the 1% rule.\n&gt; \n&gt; But there's more, because not all the users who post do so with the same frequency. The 1% rule is of course just another way of saying that the distribution of contributions follows a Power Law Distribution, which means that the level of inequality gets more drastic as you look at smaller subsets of users. \n\n&gt; Inequalities are also found on Wikipedia, where more than 99% of users are lurkers. According to Wikipedia's \"about\" page, it has only 68,000 active contributors, which is 0.2% of the 32 million unique visitors it has in the U.S. alone.\n&gt; \n&gt; **Wikipedia's most active 1,000 people — 0.003% of its users — contribute about two-thirds of the site's edits. Wikipedia is thus even more skewed than blogs, with a 99.8–0.2–0.003 rule.**\n\n---\n\n&gt; I found one [Amazon] reviewer with 20.8k reviews since 2011. That's just under **3,000 reviews per year, which comes out to around 8 per day.** This man has written an average of 8 reviews on Amazon per day, all of the ones I see about books, every day for seven years. I thought it might be some bot account writing fake reviews in exchange for money, but if it is then it's a really good bot because Grady Harp is a real person whose job matches that account's description. And my skimming of some reviews **looked like they were all relevant to the book, and he has the \"verified purchase\" tag on all of them, which also means he's probably actually reading them.**\n&gt; \n&gt; **The only explanation for this behavior is that he is insane. I mean, normal people don't do that. We read maybe 20 books a year, tops, and we probably don't write reviews on Amazon for all of them. There has to be something wrong with this guy.**\n\n&gt; He's less prominent now, but YouTube power-user Justin Y. had a top comment on pretty much every video you clicked on for like a year. He says he spends 1-3 hours per day commenting on YouTube, finds videos by looking at the statistics section of the site to see which are spiking in popularity, and comments on a lot of videos without watching them. Maybe he's not quite insane, but he's clearly interacting the site in a way that's different than most people, essentially optimizing for comment likes.\n&gt; \n&gt; **If you read reviews on Amazon, you're mostly reading reviews written by people like Grady Harp. If you read Wikipedia, you're mostly reading articles written by people like Justin Knapp. If you watch Twitch streamers, you're mostly watching people like Tyler Blevins. And if you read YouTube comments, you're mostly reading comments written by people like Justin Young. If you consume any content on the Internet, you're mostly consuming content created by people who for some reason spend most of their time and energy creating content on the Internet. And those people clearly differ from the general population in important ways.**",
+        "score": 1201,
+        "created_utc": 1632509890
+      },
+      {
+        "id": "he4bshv",
+        "author": "[deleted]",
+        "body": "[deleted]",
+        "score": 835,
+        "created_utc": 1632507109
+      }
+    ]
+  },
+  {
+    "id": "76ohly",
+    "subreddit": "programming",
+    "title": "Severe flaw in WPA2 protocol leaves Wi-Fi traffic open to eavesdropping",
+    "selftext": "",
+    "url": "https://arstechnica.com/information-technology/2017/10/severe-flaw-in-wpa2-protocol-leaves-wi-fi-traffic-open-to-eavesdropping/",
+    "permalink": "/r/programming/comments/76ohly/severe_flaw_in_wpa2_protocol_leaves_wifi_traffic/",
+    "author": "karptonite",
+    "score": 13176,
+    "num_comments": 1157,
+    "created_utc": 1508132425,
+    "flair": null,
+    "is_self": false,
+    "domain": "arstechnica.com",
+    "comments": [
+      {
+        "id": "dofnkff",
+        "author": "theGentlemanInWhite",
+        "body": "Whenever this happens (like with heartbleed), I always wonder how long someone else has known and taken advantage of it.",
+        "score": 1535,
+        "created_utc": 1508139578
+      },
+      {
+        "id": "dofljhy",
+        "author": "nutrecht",
+        "body": "Not just eavesdropping:\n\n&gt; The impact of exploiting these vulnerabilities **includes decryption, packet replay, TCP connection hijacking, HTTP content injection, and others**. \n\nBasically WPA is just as 'bad' as WEP now. \n\nThese are the CVE-2017-identifiers registered for the exploits 13077, 13078, 13079, 13080, 13081, 13082, 13084, 13086, 13087, 13088. Yes. 10 of them.\n\nIt looks like this is actually a pretty big deal. WPA-2 is vulnerable at the protocol level so it doesn't really matter if you use WPA Enterprise; it's just as vulnerable. \n\nSo yeah. \"Oops\" describes this mess pretty well.  If anything this shows the importance of end-to-end encryption and that now in 2017 there is no excuse at all anymore to not offer https to your customers. \n\nEdit: Fortunately it can also be [patched client-side](https://www.reddit.com/r/programming/comments/76ohly/severe_flaw_in_wpa2_protocol_leaves_wifi_traffic/dofqjmn/) so the world isn't coming to an end just yet (thanks /u/Chee5e)\n\nEdit 2: To all the people in this thread correcting others: please keep in mind that when this was posted the site explaining the exploit was not live yet and it seemed a LOT more severe. ",
+        "score": 1283,
+        "created_utc": 1508134564
+      },
+      {
+        "id": "dofp5pf",
+        "author": "streichholzkopf",
+        "body": "&gt; Whenever this happens (like with heartbleed), I always wonder how long someone else has known and taken advantage of it.\n\nGiven the vast amount of mathematicians &amp; security researchers employed by the NSA, it's hard to imagine they *haven't* known it for quite some time.\n\nThe same probably applies to russian &amp; chinese agencies...",
+        "score": 1002,
+        "created_utc": 1508144249
+      },
+      {
+        "id": "dofl7sg",
+        "author": "mauxfaux",
+        "body": "Will be interesting to see the complexity required to perform this attack. A hole this wide in WPA2 would have serious security ramifications for almost all of us who connect to home and many commercial WiFi routers. ",
+        "score": 917,
+        "created_utc": 1508133837
+      },
+      {
+        "id": "doftuo8",
+        "author": "comparmentaliser",
+        "body": "Absolutely this has been known by at least one global intelligence agency. However, using it carelessly poses the risk of an extremely valuable resource being burnt. It would likely be handled with the utmost’s of care and not in situations where the value of data it could glean would outweigh the risk of it being detected and burnt.\n\nIn other words, it’s entirely unlikely that it was used to spy on your Yahoo Answers replies at the airport.",
+        "score": 474,
+        "created_utc": 1508156234
+      }
+    ]
+  },
+  {
+    "id": "fj4czk",
+    "subreddit": "Entrepreneur",
+    "title": "Reselling essentials like toilet paper and water is not entrepreneurial, it is taking advantage of the needy. If this is you, please stop.",
+    "selftext": "",
+    "url": "https://www.reddit.com/r/Entrepreneur/comments/fj4czk/reselling_essentials_like_toilet_paper_and_water/",
+    "permalink": "/r/Entrepreneur/comments/fj4czk/reselling_essentials_like_toilet_paper_and_water/",
+    "author": "an_onanist",
+    "score": 13144,
+    "num_comments": 809,
+    "created_utc": 1584291305,
+    "flair": "Lessons Learned",
+    "is_self": true,
+    "domain": "self.Entrepreneur",
+    "comments": [
+      {
+        "id": "fkku5o7",
+        "author": "Reverend_James",
+        "body": "Also, the supply chain of those essentials isn't broken. There is only a manufactured shortage caused by people buying out the stores. Once they can no longer afford to buy out the stores, the shelves will just fill up again leaving people who bought them out with a shit ton of supplies that they won't be able to resell at retail prices.",
+        "score": 797,
+        "created_utc": 1584292001
+      },
+      {
+        "id": "fkkui98",
+        "author": "Hyperman360",
+        "body": "Like that guy who bought thousands of dollars of toiletries to scalp and got banned from Amazon so now he can't sell it.",
+        "score": 406,
+        "created_utc": 1584292212
+      },
+      {
+        "id": "fkkuzya",
+        "author": "attemptedcleverness",
+        "body": "He got served a cease and desist order also, likely fucked. \n\nhttps://m.imgur.com/yIEVCdg",
+        "score": 320,
+        "created_utc": 1584292509
+      },
+      {
+        "id": "fkkvz4y",
+        "author": "StantonMcBride",
+        "body": "Hahaha I hope he loses as much money as he thought he’d make",
+        "score": 184,
+        "created_utc": 1584293089
+      },
+      {
+        "id": "fkku6kf",
+        "author": "ukiyuh",
+        "body": "It's price gouging. \n\nAnd it's illegal\n\nhttps://legaldictionary.net/price-gouging/\n\n#Here is what happens if you're caught: https://www.reddit.com/r/JusticeServed/comments/fj8uxs/greedy_man_has_his_hoard_of_hand_sanitizer/?utm_medium=android_app&amp;utm_source=share",
+        "score": 130,
+        "created_utc": 1584292016
+      }
+    ]
+  },
+  {
+    "id": "13wuj25",
+    "subreddit": "programming",
+    "title": "Reddit may force Apollo dev and other third party clients to shut down",
+    "selftext": "",
+    "url": "https://9to5mac.com/2023/05/31/reddit-may-force-apollo-and-third-party-clients-to-shut-down/",
+    "permalink": "/r/programming/comments/13wuj25/reddit_may_force_apollo_dev_and_other_third_party/",
+    "author": "aniforprez",
+    "score": 12489,
+    "num_comments": 908,
+    "created_utc": 1685558990.0,
+    "flair": null,
+    "is_self": false,
+    "domain": "9to5mac.com",
+    "comments": [
+      {
+        "id": "jmec7hk",
+        "author": "[deleted]",
+        "body": "[deleted]",
+        "score": 2794,
+        "created_utc": 1685570424.0
+      },
+      {
+        "id": "jmdxpx1",
+        "author": "RelaTosu",
+        "body": "The [enshittification of Reddit](https://www.wired.com/story/tiktok-platforms-cory-doctorow/) is on schedule.\n\nIrony is, if they knocked a zero off of $12,000/month *per 50 million HTTP Requests* price, it would’ve been **7.2x** Imgur’s (**expensive** but not outrageous) and would’ve gotten immediate uptake.\n\nThis reeks of desperation on part of Reddit, Inc to make you use their adware-infested client that probably harvests as much information as possible (like geolocation). I’ve a background in location adtech and honestly it’s such an undervalued and dangerous space for personally identifiable information of highly sensitive natures.\n\nLike to the extent that linking Reddit content on a porn sub with phone “dwell time” on a location in any residential zone makes a easily correlated data set of where you live, right down to a probable bed location.\n\nReddit, Inc is pulling a Facebook style of walled garden for most probably Facebook-level private information.",
+        "score": 2649,
+        "created_utc": 1685564949.0
+      },
+      {
+        "id": "jmevrit",
+        "author": "in_n_out_sucks",
+        "body": "Once they abandon old.reddit.com my life is going to change significantly",
+        "score": 1247,
+        "created_utc": 1685578801.0
+      },
+      {
+        "id": "jmdhy9d",
+        "author": "aniforprez",
+        "body": "/u/spez is a greedy little pigboy\n\nThis is to protest the API actions of June 2023",
+        "score": 902,
+        "created_utc": 1685559081.0
+      },
+      {
+        "id": "jme7od2",
+        "author": "LaPolloGrande",
+        "body": "Exactly, and this is related to other actions intended to enhance tracking:\n\n-\tbeing required to login to change sort \n-\tnumerous subs requiring “age verification” (by logging in) to see comments\n-\tredirects to download the app\n\nThat said, Reddit exists exclusively to make profits for already rich people. Why would we expect any other behavior?",
+        "score": 855,
+        "created_utc": 1685568658.0
+      }
+    ]
+  },
+  {
+    "id": "kq90iq",
+    "subreddit": "programming",
+    "title": "Hundreds of Google Employees Unionize, Culminating Years of Activism",
+    "selftext": "",
+    "url": "https://www.nytimes.com/2021/01/04/technology/google-employees-union.html",
+    "permalink": "/r/programming/comments/kq90iq/hundreds_of_google_employees_unionize_culminating/",
+    "author": "tolerablepartridge",
+    "score": 12447,
+    "num_comments": 1377,
+    "created_utc": 1609767885,
+    "flair": null,
+    "is_self": false,
+    "domain": "nytimes.com",
+    "comments": [
+      {
+        "id": "gi2hhex",
+        "author": "_spinnaker_",
+        "body": "https://alphabetworkersunion.org/principles/mission-statement/\n\nThe language is interesting. It's very different than, for example, my wife's teachers union. Much more focused on the current day hot topics in tech. No talk of wages, health care, vacation, retirement etc. Instead it's power, justice, discrimination, marginalized.",
+        "score": 1090,
+        "created_utc": 1609769750
+      },
+      {
+        "id": "gi36arv",
+        "author": "DrBoomkin",
+        "body": "Call me a conspiracy theorist, but a tiny (but highly publicized) union that advocates for fringe left wing political issues (and deliberately avoids any of the standard union stuff - compensation, WLB, firing procedures) is exactly the kind of poisoned well a corporate think tank would come up with, to discredit and ruin the prospects of unionization in the industry.\n\nI dont think the people in the union are in on it, but the fact that this disaster of a union was the first one to be formed, speaks volumes. The members are simply useful idiots.",
+        "score": 828,
+        "created_utc": 1609782357
+      },
+      {
+        "id": "gi2hqwx",
+        "author": "Chibraltar_",
+        "body": "&gt;wages, health care, vacation\n\nwelp, google engineers aren't really interested in having better wages right now",
+        "score": 787,
+        "created_utc": 1609769913
+      },
+      {
+        "id": "gi2nbfs",
+        "author": "[deleted]",
+        "body": "[deleted]",
+        "score": 409,
+        "created_utc": 1609773115
+      },
+      {
+        "id": "gi2pthu",
+        "author": "7sidedmarble",
+        "body": "Is /r/programming just anti-union on political grounds, or anti *this* union? I agree the language here is not what I would have chosen, however, I believe everyone could better negotiate their workplace needs if they had a union and that they are objectively a better choice then the alternative, despite any flaw. Technology workers need a union. This is one of the first steps in that direction I've ever heard of. A full on industrial union for programmers would be even better. But this is an interesting step.",
+        "score": 378,
+        "created_utc": 1609774429
+      }
+    ]
+  },
+  {
+    "id": "rtgwcf",
+    "subreddit": "programming",
+    "title": "In 2022, YYMMDDhhmm formatted times exceed signed int range, breaking Microsoft services",
+    "selftext": "",
+    "url": "https://twitter.com/miketheitguy/status/1477097527593734144",
+    "permalink": "/r/programming/comments/rtgwcf/in_2022_yymmddhhmm_formatted_times_exceed_signed/",
+    "author": "rk-imn",
+    "score": 12111,
+    "num_comments": 1184,
+    "created_utc": 1641033351,
+    "flair": null,
+    "is_self": false,
+    "domain": "twitter.com",
+    "comments": [
+      {
+        "id": "hqsmta1",
+        "author": "AyrA_ch",
+        "body": "What a great way for the developer to learn that compiling for 64 bit doesn't increases the size of integers to 64 bits.",
+        "score": 2664,
+        "created_utc": 1641034856
+      },
+      {
+        "id": "hqst91g",
+        "author": "blackmist",
+        "body": "Who the fuck stores dates like that?",
+        "score": 1266,
+        "created_utc": 1641040511
+      },
+      {
+        "id": "hqsnnpt",
+        "author": "bilog78",
+        "body": "I think the biggest issue is the implicit assumption that sizeof(long) &gt; sizeof(int), which is not true in the LLP64 model used by the MS compiler. It's a bit sad that people seem so reluctant to use explicitly-sized types.",
+        "score": 855,
+        "created_utc": 1641035620
+      },
+      {
+        "id": "hqsu5sy",
+        "author": "rk-imn",
+        "body": "microsoft, apparently",
+        "score": 841,
+        "created_utc": 1641041223
+      },
+      {
+        "id": "hqsof1f",
+        "author": "-Laokoon-",
+        "body": "It's always a great Idea to convert strings to numbers without any fallback... This bug is pure gold!",
+        "score": 683,
+        "created_utc": 1641036301
+      }
+    ]
+  },
+  {
+    "id": "i4xxnk",
+    "subreddit": "programming",
+    "title": "20GB leak of Intel data: whole Git repositories, dev tools, backdoor mentions in source code",
+    "selftext": "",
+    "url": "https://twitter.com/deletescape/status/1291405688204402689",
+    "permalink": "/r/programming/comments/i4xxnk/20gb_leak_of_intel_data_whole_git_repositories/",
+    "author": "flaming_bird",
+    "score": 11915,
+    "num_comments": 941,
+    "created_utc": 1596740655,
+    "flair": null,
+    "is_self": false,
+    "domain": "twitter.com",
+    "comments": []
+  },
+  {
+    "id": "qeuaxf",
+    "subreddit": "programming",
+    "title": "“Digging around HTML code” is criminal. Missouri Governor doubles down again in attack ad",
+    "selftext": "",
+    "url": "https://youtu.be/9IBPeRa7U8E",
+    "permalink": "/r/programming/comments/qeuaxf/digging_around_html_code_is_criminal_missouri/",
+    "author": "purforium",
+    "score": 11823,
+    "num_comments": 1340,
+    "created_utc": 1635089029,
+    "flair": null,
+    "is_self": false,
+    "domain": "youtu.be",
+    "comments": []
+  },
+  {
+    "id": "8gkqmn",
+    "subreddit": "programming",
+    "title": "xkcd: Containers",
+    "selftext": "",
+    "url": "https://xkcd.com/1988/",
+    "permalink": "/r/programming/comments/8gkqmn/xkcd_containers/",
+    "author": "chrisdoner",
+    "score": 11811,
+    "num_comments": 941,
+    "created_utc": 1525293960,
+    "flair": null,
+    "is_self": false,
+    "domain": "xkcd.com",
+    "comments": []
+  },
+  {
+    "id": "6ph49n",
+    "subreddit": "programming",
+    "title": "Adobe to end-of-life Flash by 2020",
+    "selftext": "",
+    "url": "https://blogs.adobe.com/conversations/2017/07/adobe-flash-update.html",
+    "permalink": "/r/programming/comments/6ph49n/adobe_to_endoflife_flash_by_2020/",
+    "author": "Pandalism",
+    "score": 11273,
+    "num_comments": 1419,
+    "created_utc": 1500998714,
+    "flair": null,
+    "is_self": false,
+    "domain": "blogs.adobe.com",
+    "comments": []
+  },
+  {
+    "id": "9sc0qj",
+    "subreddit": "programming",
+    "title": "DeepCreamPy: Decensoring Hentai with Deep Neural Networks",
+    "selftext": "",
+    "url": "https://github.com/deeppomf/DeepCreamPy",
+    "permalink": "/r/programming/comments/9sc0qj/deepcreampy_decensoring_hentai_with_deep_neural/",
+    "author": "Angristan",
+    "score": 11241,
+    "num_comments": 789,
+    "created_utc": 1540810309,
+    "flair": null,
+    "is_self": false,
+    "domain": "github.com",
+    "comments": []
+  },
+  {
+    "id": "q3smfr",
+    "subreddit": "programming",
+    "title": "Unfollow Everything developer banned for life from Facebook services for creating plug-in to clean up news feed",
+    "selftext": "",
+    "url": "https://slate.com/technology/2021/10/facebook-unfollow-everything-cease-desist.html",
+    "permalink": "/r/programming/comments/q3smfr/unfollow_everything_developer_banned_for_life/",
+    "author": "a_false_vacuum",
+    "score": 10816,
+    "num_comments": 725,
+    "created_utc": 1633677126,
+    "flair": null,
+    "is_self": false,
+    "domain": "slate.com",
+    "comments": [
+      {
+        "id": "hfu2182",
+        "author": "ticklestuff",
+        "body": "Here's the extension zip files that were archived from the Chrome Store. You can get all versions back to 1.0.  \n  \nhttps://extensions.crxcavator.io/ohceakcebcalehmaliegoenkliddajoo_0.0.12.zip  \nhttps://extensions.crxcavator.io/ohceakcebcalehmaliegoenkliddajoo_0.0.13.zip  \nhttps://extensions.crxcavator.io/ohceakcebcalehmaliegoenkliddajoo_0.0.14.zip  \n  \nThey are CRX (Chrome Extension) files, some manual steps needed to unpack, or change .zip to .crx and open with Chrome. i.e. Drag the CRX file into the Extensions page, after you toggle Developer Mode to on in there.  \nhttps://www.reddit.com/r/programming/comments/q3smfr/unfollow_everything_developer_banned_for_life/hfus51x\n  \nInstall Instructions:  \nhttps://www.reddit.com/r/programming/comments/q3smfr/unfollow_everything_developer_banned_for_life/hful17d  \n  \nhttps://en.wikipedia.org/wiki/Streisand_effect",
+        "score": 1981,
+        "created_utc": 1633684539
+      },
+      {
+        "id": "hfu1vdn",
+        "author": "Morhaus",
+        "body": "I created a browser extension that interacted with Facebook a few years back, and also received a C&amp;D letter—where the lawyers managed to spell my name three different ways in so many pages—once it went viral. The letter threatened to disable all my accounts, and since I was in the same situation as the author, I promptly complied with their terms: delete all source code, remove the extension from the store. The extension was open sourced anyway and already largely forked by the time I scrapped it, so it’d essentially become an immutable record on the internet.\n\nEvery FB employee I talked to about the situation after the fact found the extension hilarious and were shocked to learn of the C&amp;D ¯\\_(ツ)_/¯",
+        "score": 1167,
+        "created_utc": 1633684391
+      },
+      {
+        "id": "hfu5no8",
+        "author": "Morhaus",
+        "body": "Showed a notification anytime someone started typing to you, whether you had the conversation open or not. Creepiest thing I’ve built (yet). It was called “Facebook Sixth Sense” if you want to look it up.",
+        "score": 782,
+        "created_utc": 1633687785
+      },
+      {
+        "id": "hfu0ob7",
+        "author": "a_false_vacuum",
+        "body": "Facebook already released their ~~winged monkeys~~ lawyers. The dev got a cease-and-desist order. I'm sure that uploading the code to Github would cause him to get into more trouble.\n\nThe problem is, that even if he's in the right legally speaking, Facebook has way more resources to drain him in legal battles. He could very well lose it all because Facebook can just out spend him.",
+        "score": 607,
+        "created_utc": 1633683294
+      },
+      {
+        "id": "hfu1dx1",
+        "author": "captainMaluco",
+        "body": "This doesn't sound like the rule of law. Our society is fucked.",
+        "score": 483,
+        "created_utc": 1633683951
+      }
+    ]
+  },
+  {
+    "id": "kk8pxz",
+    "subreddit": "programming",
+    "title": "This programmer reverse engineered the Pfizer mRNA vaccine source code",
+    "selftext": "",
+    "url": "https://berthub.eu/articles/posts/reverse-engineering-source-code-of-the-biontech-pfizer-vaccine/",
+    "permalink": "/r/programming/comments/kk8pxz/this_programmer_reverse_engineered_the_pfizer/",
+    "author": "powerdick",
+    "score": 10295,
+    "num_comments": 602,
+    "created_utc": 1608941110,
+    "flair": null,
+    "is_self": false,
+    "domain": "berthub.eu",
+    "comments": [
+      {
+        "id": "gh1aae0",
+        "author": "jabiko",
+        "body": "The article was way better than the (editoralized) Reddit post title would lead one to suspect.\n\nThinking of DNA/RNA as a programming code with file headers etc. is funny, but even without that the breakdown and high level explanation of the different segments was great.",
+        "score": 1919,
+        "created_utc": 1608945941
+      },
+      {
+        "id": "gh1iixu",
+        "author": "cballowe",
+        "body": "https://youtu.be/2hf9yN-oBV4 ... If you've got 30 minutes and want your mind kinda blown.",
+        "score": 925,
+        "created_utc": 1608951810
+      },
+      {
+        "id": "gh15fpx",
+        "author": "ofclock",
+        "body": "&gt;\tIt is 4284 characters long, so it would fit in a bunch of tweets.\n\nWhat an odd thing to write in the article.",
+        "score": 825,
+        "created_utc": 1608942691
+      },
+      {
+        "id": "gh19ut4",
+        "author": "symbally",
+        "body": "that was an amazing read and shows just how far we have come and powerful capabilities of humans are now. total respect and everlasting love to the people who put in millions of hours to get us this far, we salute you!",
+        "score": 547,
+        "created_utc": 1608945639
+      },
+      {
+        "id": "gh19f6s",
+        "author": "Feynt",
+        "body": "While this is great and all, when do we get to in vivo editing of genes to get catgirls and reverse aging?",
+        "score": 417,
+        "created_utc": 1608945336
+      }
+    ]
+  },
+  {
+    "id": "8oh3mq",
+    "subreddit": "programming",
+    "title": "Microsoft acquires GitHub",
+    "selftext": "",
+    "url": "https://blogs.microsoft.com/?p=52553832",
+    "permalink": "/r/programming/comments/8oh3mq/microsoft_acquires_github/",
+    "author": "PerfectlyClear",
+    "score": 10252,
+    "num_comments": 1579,
+    "created_utc": 1528117537,
+    "flair": null,
+    "is_self": false,
+    "domain": "blogs.microsoft.com",
+    "comments": [
+      {
+        "id": "e03brxa",
+        "author": "the_goose_says",
+        "body": "I don’t mind that it’s Microsoft. My problem is any wide reaching tech company that acquires GitHub is going to have conflicts of interest. That’s definitely true with Microsoft. It’s tough to resist the temptation that exploiting GitHub to benefit other parts of your company. That was definitely less of an issue with a stand alone GitHub.",
+        "score": 3443,
+        "created_utc": 1528121015
+      },
+      {
+        "id": "e039g60",
+        "author": "Quenhus",
+        "body": "&gt; Microsoft is all-in on open source.\n\n&gt; When it comes to our commitment to open source, judge us by the actions we have taken in the recent past, our actions today, and in the future.\n\nLet's open source Windows guys &lt;3",
+        "score": 1972,
+        "created_utc": 1528118467
+      },
+      {
+        "id": "e03d526",
+        "author": "valar_k",
+        "body": "Yeah, we'll see. The thing is that Github, like Sourceforge once did, has the market of users locked down to the point that hosting a FOSS project on Github is almost a given these days.\n\nLike SF, if they do something scummy enough, people will almost certainly jump ship. And then the service will be worthless.\n\nI'm hoping MS keeps largely hands off and uses GH Enterprise as the money maker. I'd imagine that with MS's enterprise world popularity, they should have no problem bundling it and immediately monetizing it with far more market penetration than GH ever had.",
+        "score": 1277,
+        "created_utc": 1528122410
+      },
+      {
+        "id": "e03aezo",
+        "author": "oblio-",
+        "body": "Also new Github boss:\n\n&gt; Once the acquisition closes later this year, GitHub will be led by CEO Nat Friedman, an open source veteran and founder of Xamarin, who will continue to report to Microsoft Cloud + AI Group Executive Vice President Scott Guthrie; GitHub CEO and Co-Founder Chris Wanstrath will be a technical fellow at Microsoft, also reporting to Scott.\n\nNat Friedman is one of the Ximian/Xamarin guys that used to work on Gnome and then on Mono. He has a ton of FOSS experience.",
+        "score": 598,
+        "created_utc": 1528119563
+      },
+      {
+        "id": "e03a0h3",
+        "author": "pingpong",
+        "body": "Why would Microsoft knowingly embarrass themselves?",
+        "score": 588,
+        "created_utc": 1528119115
+      }
+    ]
+  },
+  {
+    "id": "7ekxi7",
+    "subreddit": "Entrepreneur",
+    "title": "HEY! If anyone should care about NET NEUTRALITY it's this sub!",
+    "selftext": "Obviously consumers will be hugely disadvantaged by net neutrality going away. But for many small businesses it could mean massive restructuring, big cost increases and potentially shutting down altogether.\n\nBig companies will have enough volume and money to negotiate deals that keep them functional and profitable. But without net neutrality that is not guaranteed for small businesses that rely on the web.\n\nSo please, [go here](https://www.battleforthenet.com/) and do your part. There's nothing better for a true entrepreneur than a free and open marketplace. Let's do it!",
+    "url": "https://www.reddit.com/r/Entrepreneur/comments/7ekxi7/hey_if_anyone_should_care_about_net_neutrality/",
+    "permalink": "/r/Entrepreneur/comments/7ekxi7/hey_if_anyone_should_care_about_net_neutrality/",
+    "author": "mcsharp",
+    "score": 10243,
+    "num_comments": 370,
+    "created_utc": 1511296295,
+    "flair": "Best Practices",
+    "is_self": true,
+    "domain": "self.Entrepreneur",
+    "comments": [
+      {
+        "id": "dq6fkfq",
+        "author": "komali_2",
+        "body": "Those emails will never get read, but I have made it a personal goal of mine to spend the rest of our time alive (me and Ajit) reminding him of how much of a shitstain he is for doing this. \n\nI'll remind him regularly on twitter, send him emails wherever he's working, call in to his secretary, and god forbid I ever get his personal address because every year, without fail, until either he or I dies, I will send him a nice Christmas card letting him know I haven't forgotten him selling his soul to Comcast for a dime :) \n\nMy goal is a restraining order for sending tweets ;) ",
+        "score": 139,
+        "created_utc": 1511329269
+      },
+      {
+        "id": "dq620og",
+        "author": "glazor",
+        "body": "How much would you pay to be actually found(not blacklisted) on the internet?",
+        "score": 115,
+        "created_utc": 1511311140
+      },
+      {
+        "id": "dq62c8m",
+        "author": "raxreddit",
+        "body": "I called in favor of NN. Getting a lot of busy phone lines or voicemails. Left a voicemail and hit some full mailboxes. ",
+        "score": 111,
+        "created_utc": 1511311541
+      },
+      {
+        "id": "dq64pyn",
+        "author": "jaypooner",
+        "body": "Here is another way to get the message across. The three (out of five) FCC Commissioners planning to vote *against* Net Neutrality are Ajit Pai, Michael O'Rielly, and Brendan Carr. Here are the links to directly email them:\n\n* [Ajit Pai](https://www.fcc.gov/about/leadership/ajit-pai?qt-leadership_tabs=6#qt-leadership_tabs)\n\n* [Michael O'Rielly](https://www.fcc.gov/about/leadership/mike-orielly?qt-leadership_tabs=6#qt-leadership_tabs)\n\n* [Brendan Carr](https://www.fcc.gov/about/leadership/brendan-carr?qt-leadership_tabs=6#qt-leadership_tabs)\n\nThis is an easy way to directly get in touch with those who will be casting the votes. Here's a message that will drive the point across. Feel free to edit or to send a completely different one:\n\n\"Net Neutrality is the cornerstone of innovation, free speech and democracy on the Internet. Control over the Internet should remain in the hands of the people who use it every day. The ability to share information without impediment is critical to the progression of technology, science, small business, and culture. Please stand with the public by protecting Net Neutrality once and for all.\"",
+        "score": 98,
+        "created_utc": 1511314490
+      },
+      {
+        "id": "dq621xv",
+        "author": "Kinoxciv",
+        "body": "The idea is the ISP's could significantly lower standard internet speeds, and offer increased \"fast lanes\" (just the same internet you have today, re-branded) for specific sites in different packages - similar to how TV works today.\n\n$9.99 for Social Media (Reddit, Facebook, Twitter, &amp; Instagram)\n$5.99 for Sports (ESPN, Fox Sports, etc)\n$7.99 for News (CNN, Fox, NYT)\n\nAs the internet stands today, if your startup makes a website it will be as accessible as any other site on the web. But once these sort of packages come into play (when Net Neutrality ends), your site is going to be significantly slower, leading to consumers sticking to sites they know work well. \n\nIt's effectively the beginning of the monopolization of the internet. ",
+        "score": 84,
+        "created_utc": 1511311186
+      }
+    ]
+  },
+  {
+    "id": "6j8fdi",
+    "subreddit": "programming",
+    "title": "Mozilla is offering $2 million of you can architect a plan to decentralize the web",
+    "selftext": "",
+    "url": "https://blog.mozilla.org/blog/2017/06/21/2-million-prize-decentralize-web-apply-today/",
+    "permalink": "/r/programming/comments/6j8fdi/mozilla_is_offering_2_million_of_you_can/",
+    "author": "donrhummy",
+    "score": 10141,
+    "num_comments": 902,
+    "created_utc": 1498314596,
+    "flair": null,
+    "is_self": false,
+    "domain": "blog.mozilla.org",
+    "comments": [
+      {
+        "id": "djcbq6d",
+        "author": "MrNegativePositive",
+        "body": "Don't they watch Silicon Valley ?? ",
+        "score": 2140,
+        "created_utc": 1498315449
+      },
+      {
+        "id": "djcdcxg",
+        "author": "Camarade_Tux",
+        "body": "Note that this is joint with the NSF and only American citizens can participate.\n\nedit: /u/geocar [corrected me below](https://www.reddit.com/r/programming/comments/6j8fdi/mozilla_is_offering_2_million_of_you_can/djckal8/) with the more precise \"Only US permanent residents (including US citizens who live in the US) can participate.\"",
+        "score": 1285,
+        "created_utc": 1498317798
+      },
+      {
+        "id": "djcizul",
+        "author": "Purple10tacle",
+        "body": "That would never work without a compression algorithm with a Weissmann Score of at least 4.3.",
+        "score": 1072,
+        "created_utc": 1498325420
+      },
+      {
+        "id": "djcdxxc",
+        "author": "devraj7",
+        "body": "That's a bit surreal since one of the underpinnings of the Internet and the way it was designed was to be decentralized.\n\nInterestingly, because of the era of when all this started to take form, the main motivation for a decentralized Internet was driven by the fear of a nuclear strike knocking off the servers. If the network is designed to move packets from node to node dynamically so that it would automatically route around destroyed sections, then it becomes impossible to shut it down other than destroying most of the country.\n\nI've read the article and the motivation behind this initiative and I'm still at a loss about what they think that can come out of this project that's fundamentally different from the way the Internet already works today.\n",
+        "score": 631,
+        "created_utc": 1498318597
+      },
+      {
+        "id": "djcld2a",
+        "author": "Darkbyte",
+        "body": "It wouldn't work anyway, it would drain the shit out of everyone's phone batteries.",
+        "score": 558,
+        "created_utc": 1498328717
+      }
+    ]
+  },
+  {
+    "id": "85mdck",
+    "subreddit": "programming",
+    "title": "Intel just open sourced Stephen Hawking’s speech system and it’s a .NET 4.5 WinForms app that you can try for yourself",
+    "selftext": "",
+    "url": "https://blogs.msdn.microsoft.com/cdndevs/2015/08/14/intel-just-open-sourced-stephen-hawkings-speech-system-and-its-a-net-4-5-winforms-app-that-you-can-try-for-yourself/",
+    "permalink": "/r/programming/comments/85mdck/intel_just_open_sourced_stephen_hawkings_speech/",
+    "author": "magenta_placenta",
+    "score": 9753,
+    "num_comments": 256,
+    "created_utc": 1521488541,
+    "flair": null,
+    "is_self": false,
+    "domain": "blogs.msdn.microsoft.com",
+    "comments": [
+      {
+        "id": "dvyhvoo",
+        "author": "Hellmark",
+        "body": "Also, to be clear, this doesn't include the actual speech synthesizer. It was just the input so he could determine what to say.",
+        "score": 1268,
+        "created_utc": 1521490146
+      },
+      {
+        "id": "dvygw7u",
+        "author": "Shatterbrain",
+        "body": "\"Just\" in 2015?",
+        "score": 1193,
+        "created_utc": 1521489222
+      },
+      {
+        "id": "dvylhc9",
+        "author": "RobIII",
+        "body": "&gt; doesn't include the actual speech synthesizer\n\nMore about that [here](http://www.hawking.org.uk/the-computer.html).",
+        "score": 609,
+        "created_utc": 1521493545
+      },
+      {
+        "id": "dvyo4og",
+        "author": "Dreamtrain",
+        "body": "I remember reading about him not wanting to replace his synthetic voice because to him that was his voice, makes me wonder at which point in his mind his internal voice he stopped sounding like himself and started sounding like the synthesizer.",
+        "score": 379,
+        "created_utc": 1521496145
+      },
+      {
+        "id": "dvyhypn",
+        "author": "maccio92",
+        "body": "not op, i assume the intention was to keep the title preserved word for word",
+        "score": 353,
+        "created_utc": 1521490227
+      }
+    ]
+  },
+  {
+    "id": "qj8tsf",
+    "subreddit": "programming",
+    "title": "Fake resume with tech buzzwords gets 90% success rate.",
+    "selftext": "",
+    "url": "https://twitter.com/Coding_Career/status/1454293034179317764",
+    "permalink": "/r/programming/comments/qj8tsf/fake_resume_with_tech_buzzwords_gets_90_success/",
+    "author": "9cantthinkofgoodname",
+    "score": 9709,
+    "num_comments": 488,
+    "created_utc": 1635622562,
+    "flair": null,
+    "is_self": false,
+    "domain": "twitter.com",
+    "comments": []
+  },
+  {
+    "id": "hqnt9y",
+    "subreddit": "programming",
+    "title": "New IBM role asks for 'Minimum 12+ years experience in Kubernetes', which it's self is only 6 years old",
+    "selftext": "",
+    "url": "https://intellijobs.ai/job/IBMCloud-Native-Infrastructure-Engineer-Architect-bvJJ6yraexfWOk1nMRKP-bvJJ6yraexfWOk1nMRKP",
+    "permalink": "/r/programming/comments/hqnt9y/new_ibm_role_asks_for_minimum_12_years_experience/",
+    "author": "jl2352",
+    "score": 9538,
+    "num_comments": 592,
+    "created_utc": 1594674399,
+    "flair": null,
+    "is_self": false,
+    "domain": "intellijobs.ai",
+    "comments": []
+  },
+  {
+    "id": "fem3g2",
+    "subreddit": "programming",
+    "title": "hentAI: Detecting and removing censors with Deep Learning and Image Segmentation",
+    "selftext": "",
+    "url": "https://github.com/natethegreate/hentAI",
+    "permalink": "/r/programming/comments/fem3g2/hentai_detecting_and_removing_censors_with_deep/",
+    "author": "7cmStrangler",
+    "score": 9399,
+    "num_comments": 394,
+    "created_utc": 1583536328,
+    "flair": null,
+    "is_self": false,
+    "domain": "github.com",
+    "comments": []
+  },
+  {
+    "id": "nmodyl",
+    "subreddit": "ExperiencedDevs",
+    "title": "Drunk Post: Things I've learned as a Sr Engineer",
+    "selftext": "I'm drunk and I'll probably regret this, but here's a drunken rank of things I've learned as an engineer for the past 10 years.\n\n* The best way I've advanced my career is by changing companies.\n* Technology stacks don't really matter because there are like 15 basic patterns of software engineering in my field that apply.  I work in data so it's not going to be the same as webdev or embedded. But all fields have about 10-20 core principles and the tech stack is just trying to make those things easier, so don't fret overit.\n* There's a reason why people recommend job hunting. If I'm unsatisfied at a job, it's probably time to move on.\n* I've made some good, lifelong friends at companies I've worked with. I don't need to make that a requirement of every place I work. I've been perfectly happy working at places where I didn't form friendships with my coworkers and I've been unhappy at places where I made some great friends.\n* I've learned to be honest with my manager. Not too honest, but honest enough where I can be authentic at work. What's the worse that can happen? He fire me? I'll just pick up a new job in 2 weeks.\n* If I'm awaken at 2am from being on-call for more than once per quarter, then something is seriously wrong and I will either fix it or quit.\n* pour another glass\n* Qualities of a good manager share a lot of qualities of a good engineer.\n* When I first started, I was enamored with technology and programming and computer science.  I'm over it.\n* Good code is code that can be understood by a junior engineer.  Great code can be understood by a first year CS freshman.  The best code is no code at all.\n* The most underrated skill to learn as an engineer is how to document.  Fuck, someone please teach me how to write good documentation.  Seriously, if there's any recommendations, I'd seriously pay for a course (like probably a lot of money, maybe 1k for a course if it guaranteed that I could write good docs.)\n* Related to above, writing good proposals for changes is a great skill.\n* Almost every holy war out there (vim vs emacs, mac vs linux, whatever) doesn't matter... except one.  See below.\n* The older I get, the more I appreciate dynamic languages. Fuck, I said it. Fight me.\n* If I ever find myself thinking I'm the smartest person in the room, it's time to leave.\n* I don't know why full stack webdevs are paid so poorly. No really, they should be paid like half a mil a year just base salary. Fuck they have to understand both front end AND back end AND how different browsers work AND networking AND databases AND caching AND differences between web and mobile AND omg what the fuck there's another framework out there that companies want to use?  Seriously, why are webdevs paid so little.\n* We should hire more interns, they're awesome. Those energetic little fucks with their ideas.  Even better when they can question or criticize something. I love interns.\n* *sip*\n* Don't meet your heroes. I paid 5k to take a course by one of my heroes.  He's a brilliant man, but at the end of it I realized that he's making it up as he goes along like the rest of us.\n* Tech stack matters. OK I just said tech stack doesn't matter, but hear me out. If you hear Python dev vs C++ dev, you think very different things, right? That's because certain tools are really good at certain jobs.  If you're not sure what you want to do, just do Java. It's a shitty programming language that's good at almost everything.\n* The greatest programming language ever is lisp.  I should learn lisp.\n* For beginners, the most lucrative programming language to learn is SQL. Fuck all other languages. If you know SQL and nothing else, you can make bank.  Payroll specialtist?  Maybe 50k.  Payroll specialist who knows SQL?  90k.  Average joe with organizational skills at big corp?  $40k.  Average joe with organization skills AND sql?  Call yourself a PM and earn $150k.\n* Tests are important but TDD is a damn cult.\n* Cushy government jobs are not what they are cracked up to be, at least for early to mid-career engineers.  Sure, $120k + bennies + pension sound great, but you'll be selling your soul to work on esoteric proprietary technology. Much respect to government workers but seriously there's a reason why the median age for engineers at those places is 50+.  Advice does not apply to government contractors.\n* Third party recruiters are leeches.  However, if you find a good one, seriously develop a good relationship with them. They can help bootstrap your career.  How do you know if you have a good one? If they've been a third party recruiter for more than 3 years, they're probably bad.  The good ones typically become recruiters are large companies.\n* Options are worthless or can make you a millionaire.  They're probably worthless unless the headcount of engineering is more than 100.  Then *maybe* they are worth something within this decade.\n* Work from home is the tits. But lack of whiteboarding sucks.\n* I've never worked at FAANG so I don't know what I'm missing.  But I've hired (and not hired) engineers from FAANGs and they don't know what they're doing either.\n* My self worth is not a function of or correlated with my total compensation.  Capitalism is a poor way to determine self-worth.\n* Managers have less power than you think.  Way less power.  If you ever thing, why doesn't Manager XYZ fire somebody, it's because they can't.\n* Titles mostly don't matter.  Principal Distinguished Staff Lead Engineer from Whatever Company, whatever.  What did you do and what did you accomplish. That's all people care about.\n* Speaking of titles: early in your career, title changes up are nice.  Junior to Mid. Mid to Senior. Senior to Lead.  Later in your career, title changes *down* are nice.  That way, you can get the same compensation but then get an increase when you're promoted.  In other words, early in your career (&lt;10 years), title changes UP are good because it lets you grow your skills and responsibilities.  Later, title changes down are nice because it lets you grow your salary.\n* Max out our 401ks.\n* Be kind to everyone.  Not because it'll help your career (it will), but because being kind is rewarding by itself.\n* If I didn't learn something from the junior engineer or intern this past month, I wasn't paying attention.\n* Oops I'm out of wine.\n* Paying for classes, books, conferences is worth it.  I've done a few conferences, a few 1.5k courses, many books, and a subscription.  Worth it. This way, I can better pretend what I'm doing.\n* Seriously, why aren't webdevs paid more? They know everything!!!\n* Carpal tunnel and back problems are no joke.  Spend the 1k now on good equipment.\n* The smartest man I've every worked for was a Math PhD. I've learned so much from that guy. I hope he's doing well.\n* Once, in high school, there was thing girl who was a great friend of mine. I mean we talked and hung out and shared a lot of personal stuff over a few years.  Then there was a rumor that I liked her or that we were going out or whatever.  She didn't take that too well so she started to ignore me.  That didn't feel too good.  I guess this would be the modern equivalent to \"ghosting\".  I don't wish her any ill will though, and I hope she's doing great. I'm sorry I didn't handle that better.\n* I had a girlfriend in 8th grade that I didn't want to break up with even though I didn't like her anymore so I just started to ignore her. That was so fucked up. I'm sorry, Lena.\n* You know what the best part of being a software engineer is?  You can meet and talk to people who think like you.  Not necessarily the same interests like sports and TV shows and stuff.  But they think about problems the same way you think of them.  That's pretty cool.\n* There's not enough women in technology.  What a fucked up industry.  That needs to change.  I've been trying to be more encouraging and helpful to the women engineers in our org, but I don't know what else to do.\n* Same with black engineers.  What the hell?\n* I've never really started hating a language or technology until I started becoming intimately familiar with it.  Also, I think a piece of tech is good if I hate it but I simultaneously would recommend it to a client.  Fuck Jenkins but man I don't think I would be commuting software malpractice by recommending it to a new client.\n* That being said, git is awful and I have choice but to use it. Also, GUI git tools can go to hell, give me the command line any day.  There's like 7 command lines to memorize, everything else can be googled.\n* Since I work in data, I'm going to give a data-specific lessons learned.  Fuck pandas.\n* My job is easier because I have semi-technical analysts on my team. Semi-technical because they know programming but not software engineering.  This is a blessing because if something doesn't make sense to them, it means that it was probably badly designed.  I love the analysts on the team; they've helped me grow so much more than the most brilliant engineers.\n* Dark mode is great until you're forced to use light mode (webpage or an unsupported app). That's why I use light mode.\n* I know enough about security to know that I don't know shit about security.\n* Crap I'm out of wine.\n* Being a good engineer means knowing best practices.  Being a senior engineer means knowing when to break best practices.\n* If people are trying to assign blame to a bug or outage, it's time to move on.\n* A lot of progressive companies, especially startups, talk about bringing your \"authentic self\".  Well what if your authentic self is all about watching porn? Yeah, it's healthy to keep a barrier between your work and personal life.\n* I love drinking with my co-workers during happy hour.  I'd rather spend time with kids, family, or friends.\n* The best demonstration of great leadership is when my leader took the fall for a mistake that was 100% my fault.  You better believe I would've walked over fire for her.\n* On the same token, the best leaders I've been privileged to work under did their best to both advocate for my opinions and also explain to me other opinions 'that conflict with mine.  I'm working hard to be like them.\n* Fuck side projects.  If you love doing them, great! Even if I had the time to do side-projects, I'm too damn busy writing drunken posts on reddit\n* Algorithms and data strictures are important--to a point.  I don't see pharmacist interviews test trivia about organic chemistry.  There's something fucked with our industry's interview process.\n* Damn, those devops guys and gals are f'ing smart.  At least those mofos get paid though.\n* It's not important to do what I like.  It's more important to do what I don't hate.\n* The closer I am to the product, the closer I am to driving revnue, the more I feel valued regardless of how technical my work is.  This has been true for even the most progressive companies.\n* Linux is important even when I was working in all Windows.  Why?  Because I eventually worked in Linux.  So happy for those weekend where I screwed around installing Arch.\n* I've learned to be wary for ambiguous buzz words like big data.  WTF is \"big\" data?  I've dealt with 10k rows streaming every 10 minutes in Spark and Kafka and dealt with 1B rows batched up hourly in Python and MySQL.  Those labels can go fuck themselves.\n* Not all great jobs are in Silicon Valley. But a lot are.\n\nFinally, if you really want to hurt me, don't downvote I don't care about that. Just ignore this post. Nothing makes me sadder than when I wrote a long post and then nobody responds.  So if you hate this post, just ignore.",
+    "url": "https://www.reddit.com/r/ExperiencedDevs/comments/nmodyl/drunk_post_things_ive_learned_as_a_sr_engineer/",
+    "permalink": "/r/ExperiencedDevs/comments/nmodyl/drunk_post_things_ive_learned_as_a_sr_engineer/",
+    "author": "flipstables",
+    "score": 9344,
+    "num_comments": 681,
+    "created_utc": 1622171342,
+    "flair": null,
+    "is_self": true,
+    "domain": "self.ExperiencedDevs",
+    "comments": [
+      {
+        "id": "gzq03ho",
+        "author": "flipstables",
+        "body": "Oh shit I found beer: let's keeping going.\n\nOn programming languages:\n\n* I once hated a programming language (C#) until I started using it.  Now I hated it but think it's useful.\n* Then I started hating a programming language (C#) and left it and came back.  Wow, that programming language has really improved.\n* The greatest thing about functional languages is that functions are first class and all other programmers know that.\n* No matter how great or superior a language is, it doesn't matter if people don't use it.\n* Learning a language isn't hard.  It's learning the ecosystem.\n\nOn coworkers\n\n* Pair programming is great, it just takes a lot of time--time that the company usually doesn't want to spend.\n* Working with smart engineers has made me a better coder.  Working with smart non-technical co-workers has made me a better engineer.\n* Don't spend time outside of the 9-5 working.  Unless you want to because you got a banging project and you're in the groove.  That shit is awesome.\n* Happy hours and social hours across teams are 99% just chilling and getting to know coworkers.  That's cool.  Every once in a while, the 1% is about a critical project with a critical piece of code and you're glad you brought up work in a social setting because shit would've hit the fan otherwise. I'm not saying that I should hang out with other teams outside of work because of this.  I just want to bond.  But it sure as hell is a nice perk.\n\nOn working from home\n\n* If the company is half remote and half on-site, it's important to determine if the remote people aren't treated as second-class citizens.  If major decisions are made \"at the water cooler\", then it's better to try to change the company culture (hard) or move on to a different company that treats its remote employees as first class citizens.\n* The second worst major downside of working from home is no whiteboard.\n* The first major downside of working from home is that it's hard to learn from coworkers.  Unless I'm (a) confident and assertive to ask questions and (b) the company has a culture where remote workers are equivelent to on-site workers, I think it was best that I worked on-side for the first 5 years of my career.\n\n\nOn technology\n\n* Everyone knows that tech changes.  The tech landscape of the past 10 years has changed dramatically.  But fundamentals don't change very much, especially fundamentals that apply to my field.\n* Hacker news and /r/programming is only good to get general ideas and keep up-to-date.  The comments are almost worthless.\n* There's a lot of vocal amateurs with strong opinions about technology. Even amateurs published on \"respectable\" journals and blogs. I found it to keep abreast of the rumors but to figure things out for myself.\n* I work at a cutting edge startup and we don't use the latest XYZ tech that was present at ABC cutting edge tech company.  And it turn out, what they usually present is only a small percentage of their engineering department and that most of them are using the same tech we are.\n* That being said, it's important to read the signs. If you want to work with modern tech and you're company is still doing the majority of it's development in jQuery, might be time to re-evauluate.\n\nOn Data Engineering\n\n* Fuck it I'm a data engineer so I might as well give more specific, target advice/experience\n* SQL is king.  Databases like MySQL, Postgres, Oracle, SQL Server, SQLite is still supreme.  Even if you work with new tech, most of it transfers anyway.\n* Most companies aren't doing streaming.  It's hard and complicated.  If you're 10 years into your career and you don't know how to work with 10k records per second, don't worry about it, there's still jobs out for you.\n* Airflow is shit, yes.  There are other products out there, but fuck me if Airflow isn't the most widely used.\n* Machine learning projects are highly prone to failure.  They're complicated and hard to implement.  Don't believe me?  How easy is it to write fucking unit test a machine learning model?  Yeah.\n* Our field is new.  There's no good book on data engineering, just go and \"do it\".  Can't learn it through a bootcamp and shit.  This will probably change in 10 years as we all figure out what the fuck we're doing.\n\nOn Life\n\n* People die.  Do you want your code to be your legacy?  If yes, then spend a lot of time on it because that's your fucking legacy and you go!  But if you are like me, your legacy is surrounded with family, friends, and people in your life and not the code you write.  So don't get too hung up on it.\n* Good people write shitty code.  Smart people write shitty code.  Good coders and good engineers write shitty code.  Don't let code quality be a dependent variable on your self worth.\n* I got into tech and coding because tech was my hobby.  Now my hobby is is the same as work and work has ruined my hobby.  So now if I want to enjoy tech I need to quit my hobby.  Or I need to be OK that tech is no longer my hobby and find new hobbies.\n* Programming and computer science is like, what, 80 years old?  Compare that with any other engineering discipline.  Yeah, we collectively don't know what the fuck we're doing.\n* I'm making pretty good money.  Be grateful and appreciate.  Also, save.\n\nOther shit\n\n* I've built large platforms and libraries that are used by multiple teams and people for many years. Yet for some reason, the most proud I was of the code I wrote was the small script that was used by me.\n* The proudest accomplishment of my career has been helping other people be better at their jobs.  That's probably because I'm destined to be a people manager, so this is probably not helpful to other people.\n* When I was looking for a job, I created an updated my Linkedin. I got shit replies and deleted it.  Now I use Linkedin to find other candidates to join my company.  Bottom line, Linkedin is a lot of noise.  I only find it valuable because now, part of my job is contributing to that noise.\n* Once, I found out in college that a girl liked me. I didn't believe it because I had poor self esteem, but then she asked me out.  I told her I wasn't interested even though she was really cool. That was one of the proudest moments in my life because I as mature enough at 19 to say \"no\" in a mature way.\n* /r/cscareerquestions is such a cesspool of ego and misinformation that I don't know what to do about it.  Like, WTF.  I want to shake all those people and try to explain to them how the world really is, but they wouldn't believe me.\n\nOn my general feelings right now\n\n* I'm drunk and I usually don't drink, so I would think that everything I say is probably cringy or terrible\n* I feel strongly that people should save and invest money. If you have a 6 figure salary, do your best to max our your 401k please.\n* I've become what I've always hated: someone who works in tech in a career but avoid tech in real life.  Maybe that comes with being old.\n* /r/ExperiencedDevs is a pretty cool community.  Thank you mods.  You get way less appreciation than you deserve.  Seriously, thank you.\n* I probably owe my career, my salary, my life to Reddit.  Reddit gets a lot of shit but the communities here have lifted me out of poverty (working at a gas station earning min wage) to learning Linux, SQL, python, C#, Python, and others to get me where I am.\n* Kids are great.  I don't have kids by choice.  Why?  Because I love kids and I'm scared about what kind of father I would be.  Oh shit, is that too personal for a post here?\n* Once, someone asked me who I looked up to and I said Conan O'brien, and they laughed at me.  But I was being serous because on [his last show on the Tonight Show](https://www.youtube.com/watch?v=AcF1OoWqXBc), he told his audience to be kind and work hard.  It happend during a difficult period of my life, and when I watched him say that, I said, you know what, I'm going to do just that.  Because what would I have to lose?  And you know what?  I've met some brilliant people who I've learned from over 10+ years because I was kind to them.  And I've grown a lot by working hard and not being afraid to try new things.  And my life is infinitely, infinitely better because of those words.  So yes, it might seem silly and even ridiculous to say that I've achieved a level of fulfillment in my life because of a late night talk show.  But you know what, fuck it, it's my life and I will proudly say that I owe any success I've achieved because a fucking comic on late night television.\n\nI'm highly intoxicated so please disregard anything I say.  Also apologies for ranting.",
+        "score": 930,
+        "created_utc": 1622175519
+      },
+      {
+        "id": "gzq31n6",
+        "author": "flipstables",
+        "body": "Oh man I love the responses.  You all are friggin awesome.  On the whiteboards: yeah it's not the whiteboard per se.  It's the collaboration on a whiteboard.  If it's just about drawing something out, then pen and paper is fine.  It's the collaboration between two people on a shared workspace where you can easily draw out ideas.  It's the \"here's my idea but here's the pen what's your idea and shred mine to pieces\" workspace.  A shared text editor isn't the same.  And not everyone has a tablet so that a virtual whiteboard works the same way.\n\nAgain I'm drunk so maybe I'm just an old fogey.  Anyway, thanks for the replies!  Glad this resonated with a lot of you!  Don't feel so lonely tonight!",
+        "score": 218,
+        "created_utc": 1622177289
+      },
+      {
+        "id": "gzpu0ct",
+        "author": "Fabled-Martin",
+        "body": "This post should be pinned.",
+        "score": 194,
+        "created_utc": 1622172042
+      },
+      {
+        "id": "gzq0n4h",
+        "author": "SealClubb3r",
+        "body": "This is gold. I want more of this on Reddit",
+        "score": 190,
+        "created_utc": 1622175830
+      },
+      {
+        "id": "gzpur5n",
+        "author": "pl9870",
+        "body": "this is a godly post. I love the authenticity.",
+        "score": 182,
+        "created_utc": 1622172464
+      }
+    ]
+  },
+  {
+    "id": "fjk9lq",
+    "subreddit": "programming",
+    "title": "US Politicians Want to Ban End-to-End Encryption",
+    "selftext": "",
+    "url": "https://news.bitcoin.com/us-ban-encryption/",
+    "permalink": "/r/programming/comments/fjk9lq/us_politicians_want_to_ban_endtoend_encryption/",
+    "author": "CarrotRobber",
+    "score": 9314,
+    "num_comments": 535,
+    "created_utc": 1584362188,
+    "flair": null,
+    "is_self": false,
+    "domain": "news.bitcoin.com",
+    "comments": []
+  },
+  {
+    "id": "8kd7r9",
+    "subreddit": "programming",
+    "title": "The most sophisticated piece of software/code ever written",
+    "selftext": "",
+    "url": "https://www.quora.com/What-is-the-most-sophisticated-piece-of-software-code-ever-written/answer/John-Byrd-2",
+    "permalink": "/r/programming/comments/8kd7r9/the_most_sophisticated_piece_of_softwarecode_ever/",
+    "author": "jailbird",
+    "score": 9165,
+    "num_comments": 892,
+    "created_utc": 1526650574,
+    "flair": null,
+    "is_self": false,
+    "domain": "quora.com",
+    "comments": [
+      {
+        "id": "dz6or07",
+        "author": "DonManuel",
+        "body": "The most detailed description of stuxnet I read so far, without explicitly researching the topic.",
+        "score": 2475,
+        "created_utc": 1526651311
+      },
+      {
+        "id": "dz6tcxa",
+        "author": "youcanteatbullets",
+        "body": "&gt;At this point, the worm makes copies of itself to any *other*  USB sticks you happen to plug in. It does this by installing a  carefully designed but fake disk driver. This driver was digitally  signed by Realtek, which means that the authors of the worm were somehow  able to break into the most secure location in a huge Taiwanese  company, and steal the most secret key that this company owns, without  Realtek finding out about it.\n\nStuxnet was almost certainly written by US or Israeli intelligence. Meaning they bribed, blackmailed, or threatened the right people. Other parts of this worm are technologically sophisticated, this part is espionage.",
+        "score": 1800,
+        "created_utc": 1526655796
+      },
+      {
+        "id": "dz6swgp",
+        "author": "geek_on_two_wheels",
+        "body": "When I read the bit about the 21 second loop of good data all I could picture was the looped video footage from Speed.\n\nI knew about stuxnet before but I still love reading about it, every time. Such a beautiful piece of work. Makes me wonder how many of my machines are currently infected.",
+        "score": 1173,
+        "created_utc": 1526655369
+      },
+      {
+        "id": "dz72e9f",
+        "author": "gavin7",
+        "body": "I'll take overestimating security competence of tech companies for $500, Alex.",
+        "score": 847,
+        "created_utc": 1526664026
+      },
+      {
+        "id": "dz6uzh3",
+        "author": "lolzfeminism",
+        "body": "Another possibility is that they physically broke into Realtek and JMicron. The two companies are in the same industrial park in Taiwan.",
+        "score": 771,
+        "created_utc": 1526657310
+      }
+    ]
+  },
+  {
+    "id": "h8rhj6",
+    "subreddit": "programming",
+    "title": "Google resumes its senseless attack on the URL bar, hides full addresses on Chrome 85",
+    "selftext": "",
+    "url": "https://www.androidpolice.com/2020/06/12/google-resumes-its-senseless-attack-on-the-url-bar-hides-full-addresses-on-chrome-canary/",
+    "permalink": "/r/programming/comments/h8rhj6/google_resumes_its_senseless_attack_on_the_url/",
+    "author": "iamapizza",
+    "score": 9162,
+    "num_comments": 971,
+    "created_utc": 1592130935,
+    "flair": null,
+    "is_self": false,
+    "domain": "androidpolice.com",
+    "comments": [
+      {
+        "id": "fusg13j",
+        "author": "bluearrowil",
+        "body": "I switched to Firefox a year ago when chromium dropped the mute feature. Also became the only dev on the team on Firefox, so I’ve been encouraged not to switch back.",
+        "score": 1699,
+        "created_utc": 1592131422
+      },
+      {
+        "id": "fusg2dc",
+        "author": "iamapizza",
+        "body": "From a developer POV, I'm thinking that troubleshooting for end-users will become harder.  Although we can expect users to show screenshots, but they won't necessarily double/triple click the URL bar to show what URL they're on, nor will they readily capture a HAR.  And as bad as it sounds, not all developers will be able to make this distinction either, especially if this is how their browser 'just behaves' all the time. \n\nMy other worry is around AMP (Google AMP hosts the pages) and [Signed HTTP Exchanges](https://developers.google.com/web/updates/2018/11/signed-exchanges) where you allow \"google.com\" to serve \"yoursite.com\" content but show \"yoursite.com\" in the URL.  Combine these three, and you get \"yoursite.com\" pages being served from the user's perspective, but the user never leaving the Google.com infrastructure.",
+        "score": 955,
+        "created_utc": 1592131456
+      },
+      {
+        "id": "fuskwnx",
+        "author": "my_two_pence",
+        "body": "Your second paragraph is probably a big part of the reason. This way Google can make their own browser feel a lot snappier for the users, in a way that no competing browser could ever hope to catch up with. Google have been doing a lot of shady stuff like this recently. ~~Such as introducing secret Chrome API:s for Youtube to use, so that no competing browser (or competing video hosting site) can ever be as quick to load as Chrome+Youtube is.~~\\* Honestly, I think this behaviour should warrant antitrust investigations.\n\n(\\*) People are saying this is not a good description of what happened, and my source is literally a single article I read a year ago, so I'll strike it out.",
+        "score": 669,
+        "created_utc": 1592136092
+      },
+      {
+        "id": "fushxrb",
+        "author": "TheDevilsAdvokaat",
+        "body": "Yeah fuck that.\n\nObfuscation of information. Plus I use URLS fairly often to discover things.\n\nBasically they want to take control away from us...and hide the fact that they're stealing content and even entire web pages from someone else.",
+        "score": 638,
+        "created_utc": 1592133292
+      },
+      {
+        "id": "fusn420",
+        "author": "EncapsulatedPickle",
+        "body": "&gt; sites could be trusted\n\nWell, there's your problem.",
+        "score": 627,
+        "created_utc": 1592138001
+      }
+    ]
+  },
+  {
+    "id": "nd26jh",
+    "subreddit": "programming",
+    "title": "Humanity wastes about 500 years per day on CAPTCHAs. It’s time to end this madness",
+    "selftext": "",
+    "url": "https://blog.cloudflare.com/introducing-cryptographic-attestation-of-personhood/",
+    "permalink": "/r/programming/comments/nd26jh/humanity_wastes_about_500_years_per_day_on/",
+    "author": "Atulin",
+    "score": 9123,
+    "num_comments": 851,
+    "created_utc": 1621094692,
+    "flair": null,
+    "is_self": false,
+    "domain": "blog.cloudflare.com",
+    "comments": [
+      {
+        "id": "gy8b8vd",
+        "author": "PackAttacks",
+        "body": "I’d like a captcha for autodialers who spam my phone.  Like, before my pocket even vibrates it asks the caller to punch in answers to a question.  Ex: “what year is it?”",
+        "score": 1936,
+        "created_utc": 1621097019
+      },
+      {
+        "id": "gy8b0nm",
+        "author": "StoneCypher",
+        "body": "\"Hey guys, do you want to stop using a system that works, and run everything through our proprietary thing, so we can collect data on you?  [You're super going to ignore the valid criticisms of our approach, aren't you](https://herrjemand.medium.com/why-cloudflares-captcha-replacement-with-fido2-webauthn-is-a-really-bad-idea-d5487f6c7566)?  Pretty please?  Not using our product is madness?  Stop the madness?\"\n\n\"Guys?\"",
+        "score": 1303,
+        "created_utc": 1621096909
+      },
+      {
+        "id": "gy8gg6s",
+        "author": "Paradox",
+        "body": "Google pixels have this. Always funny to see half a dozen calls in the log of nothing but frustrated spammers",
+        "score": 1016,
+        "created_utc": 1621099512
+      },
+      {
+        "id": "gy89w3v",
+        "author": "happyscrappy",
+        "body": "Replacing a process designed (perhaps poorly) to identify a human with one designed to identify a machine seems like a bad tradeoff.\n\nPeople wanting to bot things will just acquire a lot of keys. And yes, they will manage to automatically \"touch the finger pad\". And if bot farms start tainting key IDs then you will have to lock out real humans with keys that happen to be in the same batch.\n\nI love digital signatures and FIDO keys. I feel we should be using them to replace human-replayed secrets (passwords) for logins. But the threat model these are best for are for situations where the actor WANTS to be part of security. They don't want the system to be fooled. So the human will not share their key. Will not press the finger pad when they don't want to authenticate.\n\nWith these human-detection processes the actor WANTS to beat the system. The actor is a bad actor and is trying to pass off their machine as a human (or a machine in this case). The preventative measures put in place on FIDO keys were not really designed for this threat model.",
+        "score": 744,
+        "created_utc": 1621096371
+      },
+      {
+        "id": "gy8e1lq",
+        "author": "neoform",
+        "body": "The only captcha I ever see is reCaptcha – a Google tool.\n\nWhen I filed my taxes with the IRS, I got a reCaptcha... of all the places I don't want to see a 3rd party tracking tool like that... the IRS is using it.",
+        "score": 511,
+        "created_utc": 1621098349
+      }
+    ]
+  },
+  {
+    "id": "b799yb",
+    "subreddit": "programming",
+    "title": "GitHub Protest Over Chinese Tech Companies' \"996\" Culture Goes Viral. \"996\" refers to the idea tech employees should work 9am-9pm 6 days a week. Chinese tech companies really make their employees feel that they own all of their time. Not only while in the office, but also in after hours with WeChat.",
+    "selftext": "",
+    "url": "https://radiichina.com/github-protest-chinese-tech-996/",
+    "permalink": "/r/programming/comments/b799yb/github_protest_over_chinese_tech_companies_996/",
+    "author": "Xiaomizi",
+    "score": 9002,
+    "num_comments": 812,
+    "created_utc": 1553937688,
+    "flair": null,
+    "is_self": false,
+    "domain": "radiichina.com",
+    "comments": [
+      {
+        "id": "ejq1nb1",
+        "author": "AngularBeginner",
+        "body": "They're protesting? This surely will lower their social credit score.",
+        "score": 1055,
+        "created_utc": 1553937772
+      },
+      {
+        "id": "ejq1q62",
+        "author": "Xiaomizi",
+        "body": "They expect you to be always available and if you want separate work and life or show that actually you have life outside work they already look at you in weird  way.  Some people just stay in the office to be there even if they don't have much to do. And use video chat to talk to their kids instead of going home. I know I worked for a few of these. The culture is set up for short term. What I mean is startups come and go in China as the wind blows. So even company leaders don't know if they survive the next 3 months anyway. ",
+        "score": 1041,
+        "created_utc": 1553937908
+      },
+      {
+        "id": "ejq4rh2",
+        "author": "InEnduringGrowStrong",
+        "body": "&gt;Some people just stay in the office to be there even if they don't have much to do. And use video chat to talk to their kids instead of going home. I know I worked for a few of these.\n\nThat's sounds like slavery with extra steps. ",
+        "score": 822,
+        "created_utc": 1553943089
+      },
+      {
+        "id": "ejq6kys",
+        "author": "kkchaurasia13",
+        "body": "Here is Singapore, I am working in software industry with people come after working in China and above behavior is clearly observable.\nSitting in office late evening even when no work. Not much participating in team activities. It seem like they are living in their hole where work is the only thing and other than work, some kind a sin. ",
+        "score": 340,
+        "created_utc": 1553945905
+      },
+      {
+        "id": "ejq86hk",
+        "author": "SureNick",
+        "body": "I mean this the case in a lot of Asian cultures for better or worse not just the authoritarian Chinese. Look at the Japanese salary man ideal and it's basically the same thing. It's not slavery, more intense social coercion.  Again not staying that's better necessarily. Lord knows I would never want to be part of such a culture. ",
+        "score": 300,
+        "created_utc": 1553948064
+      }
+    ]
+  },
+  {
+    "id": "6gr2fc",
+    "subreddit": "programming",
+    "title": "TIL the current hash function for Java strings is of unknown author. In 2004 Joshua Bloch \"went so far as to call up Dennis Ritchie, who said that he did not know where the hash function came from. He walked across the hall and asked Brian Kernighan, who also had no recollection.\" [x-post /r/java]",
+    "selftext": "",
+    "url": "http://bugs.java.com/bugdatabase/view_bug.do?bug_id=4045622",
+    "permalink": "/r/programming/comments/6gr2fc/til_the_current_hash_function_for_java_strings_is/",
+    "author": "walen",
+    "score": 8918,
+    "num_comments": 506,
+    "created_utc": 1497257997,
+    "flair": null,
+    "is_self": false,
+    "domain": "bugs.java.com",
+    "comments": [
+      {
+        "id": "disgmga",
+        "author": "namekuseijin",
+        "body": "Fascinating bit of quite recent (1997) historic trivia going back even further ('70s).  That's good digital archeology, a hacking art itself.\n\nIf neither Steele, Ritchie, Kernighan and many of those serious computer scientists from the '70s know its origins, we can be pretty sure it's alien tech, probably first implemented in Lisp. ;-)\n\nedited to appease friendly grammar nazis, thanks all. :)",
+        "score": 1544,
+        "created_utc": 1497263528
+      },
+      {
+        "id": "disgx5c",
+        "author": "roerd",
+        "body": "The title is very misleading. It suggests the author of the implementation within Java is unknown, whereas it's actually the author of the algorithm that this implementation is based on who is unknown.",
+        "score": 829,
+        "created_utc": 1497264315
+      },
+      {
+        "id": "disnr9v",
+        "author": "LeifCarrotson",
+        "body": "That was hard to get to (had to create a temporary Quora profile and log in),so I'm backing it up here:\n\n*This was mine:\n\nI was hired by a psychologist to fix a program that seemed to have \"strange output\" written by one of his ex-grad students. It was a program that reads a data file, asks about 50 questions, does some calculations, and comes up with some score based on this PhD's research. It's on a research 3B2 at the university. He demonstrates the program and sure enough there seemed to be strange flashing words on the screen when it moves from question to question, and they don't seem nice. I agree to do it, should be pretty straightforward, so he'll pay me by the hour to determine how big the fix is and then we'll agree to a fee.\n\nDay 1\nI sit down at the 3B2 and login to the ex-grad student's account that has been given to me. This is where the code resides. I examine the C code. It is written to be hard to read. All the code is squished on one line. It's spread over 15 files with about 3 functions per file -- all on one line. All variable names are just three, seemingly random, letters. I talk to the guy and agree to go with hourly on this (great decision). I untangle all the code and format it nicely so I can see it.\n\nIt was done on purpose. It used the curses library to move to a point on the screen, print a question and the answers, and wait for a response. But it first went to the first line of the question, printed some white supremacy message, waited 1/2 a second, and then overwrote it with the question. This ought to be simple. There are only about five places it could output anything, and all of them had this subliminal flash of a message. Each one was hard coded. No problem. Delete the offending mvprintw() and all is well. Or should be. I compile, thinking I'm done. But when I ran it, there it is again -- the subliminal messages. This time with different text still the same subject, just different messages.\n\nI check my code and believe it or not it's back to the initial state I found it. 15 files, mangled, 3-letter variables -- the whole thing right back where I started. I want shoot myself for not making a copy of my code. I unmangle again, this time putting it in three files, named differently. I make a copy of the whole directory, and I mark the files readable only. I compiled it. All looks good. I run the program. There's now a copy of the original 15 files in the directory along with mine and the subliminal messages are back.\n\nOkay, so somewhere on the disk is the source code necessary to keep doing this and he's set the program up to pull in that code when you compile it. I do a full disk search in the include areas (/usr/include) and since this is a research version we have source for just about everything but the kernel itself. That's a lot of header files and this takes some time on the 3B2, so that's day 1.\n\nDay 2\nThe disk search showed up nothing. The strings were apparently either encrypted or they are buried in a library somewhere. Because I don't have check sums of all the original executable objects, I decide to search all libraries for the text. This is even longer than before, so day two is over. \n\nDay 3\nNo results. The strings are encrypted. That means I'm going to have to follow all the header files from each #include and each one they #include to find where this is. And that will, take some time. We do alert the campus computing department that we believe someone has gained root level access to Dr. Phelps research computer, which is just a shared lab computer in the science building. They're understandably not convinced.\n\nI start unwinding the #include files. I do that, nowhere do I find the code. So now I know it's compiled in a library. No problem at all. Why not just recompile all those libraries, we do have the source after all.\n\nDays 4-6\nThe hardest part, convincing the campus nerds they have an issue. But we finally do and Mark, the Unix admin who was hired because he married the Dean's daughter, gets busy learning how to do this. In the end, he agrees to allow me to handle it, because he just doesn't really know how to get all that stuff compiled. End of Day 6, all standard libraries are recompiled. Woo hoo! \n\nI whip out my modified, cleaned up source and start the compile. All looks good. I run it. O M G. It did it again. 15 messed up source files and the subliminal messages are back. This is suddenly like magic. I investigate very very carefully though I am stumped. This code doesn't exist in source code. I think I might be beaten. Dr. Phelps isn't happy with the hours involved and thinks maybe we ought to just rewrite the program from scratch. \"Sure\", I say staring at the terminal like a lost puppy too deep in my thoughts to put out of my thinking mode, \"I think you're right. That will be quicker.\" \"Good,\" he says, \"we can start tomorrow.\"\n\nDay 7\nTo hell with that. This guy isn't beating me. We are compiling it from his stinking code or not at all! \"You don't have to pay me anymore, Dr. Phelps, I just want lab time.\" This is nerd war.\n\nDays 8-14\nI get smart, I'm thinking he somehow modified the curses library. I compile the curses code to assembly and though I don't know 3B2 assembly (yet!), I start learning.  I read manuals for 6 days, piecing together that assembly code. Waste of time, nothing seems unusual.\n\nDay 15\nI suddenly realize it's in the compiler. It was the compiler. And every time you compile the original code and run it puts in the subliminal message code into the source code. I'd heard of this before.\n\nAh ah! I've got him!!!! We have the source code for the compiler as well. I search through it looking for a reference. Lo and behold, I find it. Indeed. There is source code in the compiler/linker that does this:\n1) it examines any call to fopen(), searches the file opened looking for Dr. Phelp's questions; if it finds them then\n2) it rewrites the 15 files to the current directory when compiling that specific program.\n3) It then compiles Dr. Phelps program using the 15 files and outputs to the -o name in the link phase.\n\nThe compiler was modified to put that code in Dr. Phelps program was written by the man that modified the compiler.\n\nSeveral days later, an AT&amp;T tech shows up with a disk and loads the proper compile and linker source and we recompile the compiler from the source. That solves it. All the bad source in the compiler is gone and we've got a new clean copy of the compiler. \n\nExcept it didn't. Because the compiler was poisoned with other source code that we didn't have. And that source code, that now existed only in the executable compiler, put those changes back into the compiler source before it compiled it. But this time it didn't modify the /usr/src copy, it copied it to a hidden directory, modified the compiler source, compiled itself from there, and deleted the hidden directory. It took an AT&amp;T tech to find this. The ex-grad student had poisoned the compiler to poison itself when it was recompiled. We had to put a new binary version of the compiler on disk from another 3B2 running the same revision before the problem went away.\n\nWe also found that if /sbin/login is compiled it puts in a backdoor allowing anyone who uses a specific password to login in as the root user. This computer is accessible by modem and Tymnet. Finally, this gets the computing center's attention.\n\nGenius! But put to a horrible cause.*",
+        "score": 534,
+        "created_utc": 1497276445
+      },
+      {
+        "id": "disggch",
+        "author": "mariopenna",
+        "body": "That's a dumb question. Of course it was Satoshi Nakamoto!",
+        "score": 520,
+        "created_utc": 1497263065
+      },
+      {
+        "id": "dish1g1",
+        "author": "TargetBoy",
+        "body": "Probably the NSA like IBM's encryption algorithms from the '70's.",
+        "score": 428,
+        "created_utc": 1497264612
+      }
+    ]
+  },
+  {
+    "id": "aiswpe",
+    "subreddit": "programming",
+    "title": "Google proposes changes to Chromium which would disable uBlock Origin",
+    "selftext": "",
+    "url": "https://bugs.chromium.org/p/chromium/issues/detail?id=896897&amp;desc=2#c23",
+    "permalink": "/r/programming/comments/aiswpe/google_proposes_changes_to_chromium_which_would/",
+    "author": "SubMachineGhost",
+    "score": 8862,
+    "num_comments": 1843,
+    "created_utc": 1548198693,
+    "flair": null,
+    "is_self": false,
+    "domain": "bugs.chromium.org",
+    "comments": [
+      {
+        "id": "eeqa2ul",
+        "author": "funkymunniez",
+        "body": "Want me to switch to firefox?  This is how you gonna make me switch to firefox.",
+        "score": 8442,
+        "created_utc": 1548201087
+      },
+      {
+        "id": "eeq89f9",
+        "author": "literallyARockStar",
+        "body": "Good news! Firefox exists. ",
+        "score": 3199,
+        "created_utc": 1548199776
+      },
+      {
+        "id": "eeq96yx",
+        "author": "Malor",
+        "body": "Isn't it interesting that Google is (potentially) trying to eliminate one of the major adblockers *just after* one of their biggest competitors went away?  \n\nMicrosoft switches to Chromium, and a few weeks later, Chromium is becoming sharply better for Google and sharply worse for users. \n\nProbably just a coincidence.  Probably.\n",
+        "score": 2648,
+        "created_utc": 1548200448
+      },
+      {
+        "id": "eeqf1bz",
+        "author": "joequin",
+        "body": "I recently switched back to Firefox. I've tried it every year for the last 5 years and always ended up going back to chrome. This last time, I stuck with it. It's great now. Even Firefox mobile and Android works well now.",
+        "score": 2161,
+        "created_utc": 1548204743
+      },
+      {
+        "id": "eeqcxui",
+        "author": "tRfalcore",
+        "body": "I switched, it works great and is fast as shit.",
+        "score": 1684,
+        "created_utc": 1548203181
+      }
+    ]
+  },
+  {
+    "id": "6cw1tf",
+    "subreddit": "programming",
+    "title": "Stack Overflow: Helping One Million Developers Exit Vim",
+    "selftext": "",
+    "url": "https://stackoverflow.blog/2017/05/23/stack-overflow-helping-one-million-developers-exit-vim/",
+    "permalink": "/r/programming/comments/6cw1tf/stack_overflow_helping_one_million_developers/",
+    "author": "variance_explained",
+    "score": 8807,
+    "num_comments": 1120,
+    "created_utc": 1495559669,
+    "flair": null,
+    "is_self": false,
+    "domain": "stackoverflow.blog",
+    "comments": [
+      {
+        "id": "dhxvxzc",
+        "author": "HeimrArnadalr",
+        "body": "&gt;In contrast, in China, Korea and Japan the fraction going to this question is a tenth smaller. That might indicate that when developers in these countries enter Vim, they usually meant to do so, and they know how to get out of it.\n\nAlternatively, it could mean that people in China, Korea, and Japan are still stuck in Vim to this very day.\n\nAlso, that should read \"one-tenth as much\", not \"a tenth smaller\". If it were \"a tenth smaller\" then those countries would be around 5.5% instead of 0.5%.",
+        "score": 1401,
+        "created_utc": 1495563711
+      },
+      {
+        "id": "dhy45xd",
+        "author": "skztr",
+        "body": "My \"how to use vim\" guide in every wiki I've ever made for a company includes only the instructions:\n\n1. Press \"escape\"\n2. Type \":\"\n3. Type \"q\"\n4. Press enter.\n\n\nIf you're in a position where you need more instruction than that, you probably already know how to use vim. If you don't know how to use vim, those are the only instructions you will ever need.\n\n\n\n**....  FFS after typing this comment I swear to god I just typed ESC :wq**\n\n\n\nedit: As several people have mentioned that the command should probably include an exclamation point, I logged in to an old wiki I currently have access to in order to copy the actual text verbatim:\n\n--------8&lt;---------\n\n - **vi** The default UNIX editor. Don't use it.\n - **vim** The *real* default UNIX editor: Running `vi` on many modern servers (including our own), actually runs vim in “compatibility mode”. If you don't already know how to use it, you should do this:\n1. Hit “Escape”\n2. Type `:q!` (that is: colon, q, exclamation mark)\n3. Hit “Enter”\n\nThis will exit the editor without saving changes.\n\nIf you really want to use it, see: http://www.vim.org/htmldoc/quickref.html\n\n--------&gt;8---------",
+        "score": 812,
+        "created_utc": 1495572820
+      },
+      {
+        "id": "dhxst0b",
+        "author": "Yehosua",
+        "body": "Exiting Vim is easy.\n\nEsc, Alt-X, Ctrl-Q, Ctrl-C Ctrl-C Ctrl-C, \"ARGH\", Alt-Tab to another window, `killall -9 vim`",
+        "score": 544,
+        "created_utc": 1495560248
+      },
+      {
+        "id": "dhy0q0t",
+        "author": "Vondi",
+        "body": "Couldn't it just mean they're less likely to search for the answer on an English-language site?",
+        "score": 365,
+        "created_utc": 1495568970
+      },
+      {
+        "id": "dhxxuls",
+        "author": "DownvoteALot",
+        "body": "\"Alt-Tab\" damn noobs not on a headless server.",
+        "score": 326,
+        "created_utc": 1495565806
+      }
+    ]
+  }
+]

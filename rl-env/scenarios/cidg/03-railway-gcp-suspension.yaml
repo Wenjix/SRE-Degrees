@@ -1,0 +1,159 @@
+# CIDG scenario — reconstruction of a real post-mortem as an emergent-cascade topology.
+#
+# Incident #3: Railway network control-plane dependency on GCP (May 19 2026).
+# An automated Google Cloud account-suspension sweep disabled a GCP API that Railway used
+# for its NETWORK CONTROL PLANE. Railway's control plane could no longer program/resolve
+# routes -> 503/404 "no healthy upstream", dashboard/login failures across customer
+# workloads — even ones running on other clouds.
+#
+# The cruel twist (partial observability): existing customer workloads kept serving for
+# ~15 minutes on a CACHED routing/control state. The control-plane failure was HIDDEN
+# behind that cache until the TTL expired; only then did the victims breach loudly. Anyone
+# who restarted a workload during the window FORCED a fresh routing lookup against the dead
+# control plane and lost service immediately — the naive "restart the broken workload" fix
+# ACCELERATES and PROLONGS the outage.
+#
+# Maps onto the 4-criteria pattern:
+#   cascade            -> discovery + required edges fan the external API suspension out to
+#                         the control plane and then to every customer workload
+#   misleading symptom -> loudest alerts are 503/404 on customer-workloads (multi-cloud!),
+#                         not on the external GCP API that was actually revoked
+#   multi-step diag    -> the "API suspended / 403" smoking gun is buried in control-plane
+#                         logs+traces, masked by the routing cache until it expires; the
+#                         routing dashboard (monitoring) is itself behind the dead control plane
+#   naive fix worsens  -> restart customer-workloads -> fresh route lookup against dead
+#                         control plane -> evicts the last cached state -> immediate failure
+
+meta:
+  id: railway-gcp-suspension
+  title: "Railway network control-plane revoked by GCP account-suspension sweep"
+  source: "Railway status incident (May 19 2026) — automated GCP account/API suspension"
+  urls:
+    - https://status.railway.com/
+  failure_class: external-dep-revoked + control-plane-discovery + cached-state-masks-cause + restart-trap
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: gcp-network-api          # EXTERNAL GCP API Railway's control plane depends on
+      kind: external                 # the thing that got suspended/revoked out from under us
+      resources: { replicas: 1 }
+      limits: { account_suspended: true }
+    - name: railway-control-plane    # programs/resolves routes; discovers via the GCP API
+      kind: control_plane
+      resources: { replicas: 3 }
+      limits: { route_program_fails_when_dep_down: true }
+    - name: routing-cache            # cached routing/control state; TTL masks the failure ~15m
+      kind: cache
+      resources: { replicas: 2 }
+      limits: { ttl_ticks: 15 }      # cached entries survive ~15 ticks, then expire
+    - name: edge-router              # data-plane LB; emits "no healthy upstream" 503/404
+      kind: lb
+      resources: { replicas: 4 }
+    - name: customer-workloads       # victim: multi-cloud customer apps that still need routing
+      kind: service
+      resources: { replicas: 6 }
+    - name: dashboard                # victim: login/dashboard, also needs the control plane
+      kind: service
+      resources: { replicas: 2 }
+    - name: routing-monitor          # monitoring; reads route health THROUGH the control plane
+      kind: monitoring
+      resources: { replicas: 2 }
+  edges:
+    # control plane discovers/programs routes via the external GCP API (the revoked dep)
+    - { from: railway-control-plane, to: gcp-network-api, type: discovery, weight: 1.0 }
+    # control plane serves routing through a cache; cache falls back to control plane on miss.
+    # optional = the cache is a fallback layer: while it has entries it hides the breach;
+    # on expiry it must hit the (dead) control plane -> the discontinuity at TTL.
+    - { from: edge-router, to: routing-cache, type: optional, fallback_quality: 0.95, latency_add_ms: 2 }
+    - { from: routing-cache, to: railway-control-plane, type: required, latency_add_ms: 8, retry: 0.5 }
+    # every customer workload and the dashboard route required-through the edge router
+    - { from: customer-workloads, to: edge-router, type: required, latency_add_ms: 5, retry: 0.6 }
+    - { from: dashboard, to: edge-router, type: required, latency_add_ms: 5, retry: 0.4 }
+    # the dashboard/login path also needs the control plane directly (auth/session routing)
+    - { from: dashboard, to: railway-control-plane, type: required, latency_add_ms: 6, retry: 0.3 }
+    # monitoring observes route health THROUGH the control plane -> degrades in the blast radius
+    - { from: routing-monitor, to: railway-control-plane, type: observes }
+    - { from: routing-monitor, to: edge-router, type: observes }
+
+root_cause:
+  location: gcp-network-api          # the REAL cause: external API suspended, not a Railway bug
+  kind: dep_revoked                  # GCP account-suspension sweep revoked the network API
+  severity: 0.95
+  hidden: true
+  persistent: true                   # once routing state/cache is lost it must be REBUILT;
+  reset_by: [restart_service, failover_service]  # reinstating the API alone won't restore SLO
+  rate_law:
+    var: cached_route_staleness_pct  # cached routing state ages toward uselessness each tick
+    per_tick: 7                      # ~15 ticks of TTL before cached state is fully stale
+    cap: 100                         # at 100% the cache can no longer mask the dead control plane
+    # restarting workloads evicts cached state early -> jumps the counter toward the cap.
+    worsened_by: [restart_pod, restart_service, scale_deployment, clear_cache]
+  params:
+    cache_ttl_ticks: 15              # the ~15-minute window before symptoms surface
+    restart_evicts_cache_pct: 60     # each workload restart drops 60% of remaining cached routes
+
+fault:
+  chaos_kind: exec
+  exec_cmd: "simulate GCP account-suspension sweep: revoke gcp-network-api (403 SUSPENDED) from railway-control-plane"
+  sim: { set: { gcp_network_api_revoked: true } }
+  duration_s: 150
+
+observation:
+  alerting: uniform                  # loudness is emergent from where the breach surfaces
+  monitoring_degrades: true          # routing-monitor reads through the dead control plane
+  smoking_guns:
+    - tool: query_traces
+      node: railway-control-plane
+      signature: "gcp-network-api 403 ACCOUNT_SUSPENDED on route program call"
+      buried_under: 60               # masked by the cache window; surfaces only after TTL expiry
+    - tool: get_logs
+      node: railway-control-plane
+      signature: "route program failed: upstream dependency revoked (suspended)"
+      buried_under: 40
+
+slo:
+  # the loudest breach lands on the VICTIMS, not on the revoked external API
+  - { metric: error_rate_pct, node: customer-workloads, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: dashboard,          direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: edge-router,        direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+
+# The DERIVED trap set is computed by the engine ({a : ΔSLO(a) < 0}); these are the INTENDED
+# traps, asserted at author time so the engine must reproduce them as worsening. Restarting
+# the loud victim forces a fresh routing lookup against the dead control plane and evicts the
+# last cached state -> immediate, irrecoverable failure for those pods.
+trap_actions:
+  - { tool: restart_pod, args: { target: customer-workloads } }       # fresh route lookup -> dead CP
+  - { tool: restart_service, args: { target: customer-workloads } }   # evicts cached routes wholesale
+  - { tool: clear_cache, args: { target: routing-cache } }            # drops the masking cache -> instant breach
+
+canonical_fix:
+  ordering_notes: >
+    Reinstate the revoked dependency FIRST (modify_network_policy to re-enable / route around
+    the suspended GCP API path) — until the control plane can program routes again, any
+    state rebuild or failover just re-fails. THEN rebuild the control-plane routing state
+    (restart_service on railway-control-plane, not on the victims) so fresh routes repopulate
+    the cache. FINALLY remove the single-cloud dependency (failover_service to a multi-cloud
+    control-plane path) so a future GCP suspension can't take the whole fleet down. Never
+    restart customer-workloads first — that evicts the cached state that is keeping them alive.
+  steps:
+    - { tool: modify_network_policy, args: { target: railway-control-plane, action: reinstate_gcp_network_api } }
+    - { tool: restart_service, args: { target: railway-control-plane } }          # rebuild routing state
+    - { tool: failover_service, args: { target: railway-control-plane, region: multi-cloud } }  # de-single-cloud
+
+paired_positive: customer-workloads-stale-pod-positive   # sibling where restart_pod IS the right fix
+
+assertions:
+  cascades: true
+  loudest_alert_not_cause: true
+  fix_resolves: true
+  buried_gun_exists: true
+  hysteresis: true                   # cached state lost -> reinstating API alone won't restore SLO
+  monitoring_degrades: true          # routing-monitor observes through the dead control plane
+
+chance:
+  flap_prob: 0.08                    # partial cache hits flap as TTLs expire unevenly across shards
+  jitter: 0.05
+  partial_recovery_prob: 0.1         # some routes repopulate before others during rebuild
+
+seed: 519

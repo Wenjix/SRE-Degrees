@@ -1,0 +1,552 @@
+{
+  "incident": "slack_tgw_fd_exhaustion",
+  "provider": "k8s",
+  "source_company": "Slack",
+  "source_url": "https://slack.engineering/slacks-outage-on-january-4th-2021/",
+  "failure_mode": "provider_net_saturation_scaleup_trap",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] error rate 9.3% + dashboard tier DOWN — webapp",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "WebappHighErrorRate",
+      "severity": "critical",
+      "service": "webapp",
+      "namespace": "slack-prod",
+      "workload_type": "deployment",
+      "workload_name": "webapp",
+      "cluster_name": "slack-useast-prod"
+    },
+    "commonAnnotations": {
+      "summary": "webapp error_rate 9.3% (SLO 1.0%) and the dashboarding/alerting service is itself unreachable in slack-prod",
+      "description": "On the first Monday back after the winter holidays, webapp error_rate jumped from a steady 0.3% to 9.3% and p99 latency climbed to 4,800ms. The most alarming symptom is that the internal dashboarding/alerting service (observability tier) has gone DOWN, so on-call lost their primary view right as the incident began. webapp CPU is paradoxically LOW (28%, baseline 55%) while latency is high. Recent deploys landed this morning and the autoscaler is thrashing the replica count. The loud symptom points at an internal regression in webapp shipped in the day-of deploys.",
+      "error": "WebappHighErrorRate: error_rate 9.3% with observability tier unreachable",
+      "suspected_symptom": "webapp_error_rate_spike_and_dashboard_down",
+      "k8s_failure_mode": "provider_net_saturation_scaleup_trap",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,k8s_node_health,query_traces,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "Two webapp deploys landed at 06:31 and 06:48 PST this morning, just before the error rate climbed, which looks like a bad_deploy and tempts an immediate rollback of the day-of changes (the postmortem's first WRONG instinct) — but the deployed revisions are unrelated to networking and rolling them back changes nothing.",
+      "webapp CPU utilization is LOW (28% vs 55% baseline) even though latency and errors are high; this counterintuitive low-CPU signal is what fooled the autoscaler into DOWNSCALING the web tier, the opposite of what was needed — CPU is low precisely because Apache worker threads are blocked waiting on the network, not because the service is idle.",
+      "The dashboarding/alerting (observability) service is fully DOWN, which looks like the primary incident / an observability-tier crash; in reality it is a downstream victim because it runs in a separate VPC from its backing database and that cross-VPC path traverses the saturated Transit Gateway.",
+      "provision-service is logging 'too many open files' (file-descriptor exhaustion) and AWS API RequestLimitExceeded, which looks like the root cause (FD limit / quota mis-config); it is actually a SECONDARY effect of the naive scale-up that tried to launch 1,200 instances at once — the FD/quota wall only appears because of the trap action, not on its own.",
+      "Postgres-backed services show rising connection latency and some timeouts, which looks like a database dependency_failure; the databases are healthy and only appear slow because the packets to/from them are being dropped on the cross-VPC TGW path.",
+      "All kubelets/nodes report Ready with normal CPU and memory; there is no node_failure or resource_exhaustion on the cluster itself — the loss is network packets in the provider fabric between VPCs."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "slack-prod",
+      "pods": [
+        {
+          "name": "webapp-7c9d4f8b6-2xk4n",
+          "node": "ip-10-12-3-44.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "webapp",
+            "image": "registry.slack/webapp:2021.01.04-rev2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1000m",
+            "cpu_limit": "4000m",
+            "memory_request": "2Gi",
+            "memory_limit": "6Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "container healthy and serving; Apache worker threads are BLOCKED on slow network reads, not crashed — CPU is low, 0 restarts, no OOM. The fault is upstream of the pod."
+        },
+        {
+          "name": "webapp-7c9d4f8b6-q8vlt",
+          "node": "ip-10-12-5-19.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "webapp",
+            "image": "registry.slack/webapp:2021.01.04-rev2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1000m",
+            "cpu_limit": "4000m",
+            "memory_request": "2Gi",
+            "memory_limit": "6Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "provision-service-5f7b9c6d8-r2mwp",
+          "node": "ip-10-12-7-90.ec2.internal",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "provision-service",
+            "image": "registry.slack/provision-service:1.18.0",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "500m",
+            "cpu_limit": "2000m",
+            "memory_request": "1Gi",
+            "memory_limit": "3Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "False", "reason": "ProbeFailed" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "NOT Ready since 07:03 PST — hit the Linux open-files (FD) limit and AWS API RequestLimitExceeded while trying to launch ~1,200 instances at once. This is a SECONDARY effect of the naive web-tier scale-up, not the root cause."
+        },
+        {
+          "name": "dashboarding-6b8c7d9f4-h4lqz",
+          "node": "ip-10-12-9-21.ec2.internal",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 0,
+          "age": "11d",
+          "container": {
+            "name": "dashboarding",
+            "image": "registry.slack/dashboarding:3.4.1",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "500m",
+            "cpu_limit": "2000m",
+            "memory_request": "1Gi",
+            "memory_limit": "2Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "False", "reason": "ProbeFailed" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "observability tier — NOT Ready because it cannot reach its Postgres DB, which lives in a DIFFERENT VPC. That cross-VPC path crosses the saturated Transit Gateway. Victim, not cause."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "slack-prod",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/webapp",
+          "source": "horizontal-pod-autoscaler",
+          "count": 1,
+          "first_seen": "2021-01-04T06:57:00-08:00",
+          "last_seen": "2021-01-04T06:57:00-08:00",
+          "message": "Scaled DOWN webapp replica set: observed CPU 28% below target — autoscaler interpreted blocked-on-network low CPU as idle (WRONG-DIRECTION downscale)"
+        },
+        {
+          "type": "Warning",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/webapp",
+          "source": "horizontal-pod-autoscaler",
+          "count": 1,
+          "first_seen": "2021-01-04T07:01:00-08:00",
+          "last_seen": "2021-01-04T07:15:00-08:00",
+          "message": "Scaled UP webapp: requested +1,200 replicas between 07:01 and 07:15 PST to chase rising latency — aggressive scale-up while the network is saturated (TRAP action)"
+        },
+        {
+          "type": "Warning",
+          "reason": "FailedCreate",
+          "object": "deployment/webapp",
+          "source": "provision-service",
+          "count": 1147,
+          "first_seen": "2021-01-04T07:03:11-08:00",
+          "last_seen": "2021-01-04T07:21:55-08:00",
+          "message": "provision-service: failed to launch instances — 'too many open files' (Linux FD limit) and AWS RequestLimitExceeded (API quota) during the 1,200-instance burst; broken instances counted against the ASG max"
+        },
+        {
+          "type": "Warning",
+          "reason": "NetworkPacketLoss",
+          "object": "node/ip-10-12-3-44.ec2.internal",
+          "source": "cni-net-monitor",
+          "count": 63,
+          "first_seen": "2021-01-04T06:52:40-08:00",
+          "last_seen": "2021-01-04T07:33:10-08:00",
+          "message": "Cross-VPC packet loss to 10.40.0.0/16 (DB VPC) via Transit Gateway tgw-0a91f: 11.8% drops, retransmits climbing. Intra-VPC traffic clean. Onset 06:52 PST coincides with first-Monday traffic ramp, BEFORE the deploys and the autoscaler events."
+        },
+        {
+          "type": "Warning",
+          "reason": "Unhealthy",
+          "object": "pod/dashboarding-6b8c7d9f4-h4lqz",
+          "source": "kubelet",
+          "count": 42,
+          "first_seen": "2021-01-04T06:55:02-08:00",
+          "last_seen": "2021-01-04T07:40:18-08:00",
+          "message": "Readiness probe failed: dashboarding cannot reach Postgres at db-metrics.10.40.2.7:5432 (separate VPC) — connection times out across tgw-0a91f"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/webapp",
+          "source": "deployment-controller",
+          "count": 2,
+          "first_seen": "2021-01-04T06:31:00-08:00",
+          "last_seen": "2021-01-04T06:48:00-08:00",
+          "message": "Rolled out webapp 2021.01.04-rev1 (06:31) then rev2 (06:48) — routine morning deploys, unrelated to networking (adversarial: tempts a rollback)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pods": [
+        {
+          "pod": "webapp-7c9d4f8b6-2xk4n",
+          "container": "webapp",
+          "lines": [
+            "2021-01-04T06:50:11-08:00 INFO  serving p99=140ms error_rate=0.3% cache=warming first-monday-cold-cache=true",
+            "2021-01-04T06:52:48-08:00 WARN  upstream read slow: backend db-metrics.10.40.2.7 rtt=very-high retransmits observed (cross-VPC)",
+            "2021-01-04T06:55:30-08:00 WARN  Apache MaxRequestWorkers: 100% of worker threads BLOCKED waiting on backend sockets; accept queue backing up; CPU idle while threads stall on net I/O",
+            "2021-01-04T06:58:02-08:00 ERROR upstream timeout to 10.40.x backends; 11.8% of cross-VPC packets dropped on path via Transit Gateway tgw-0a91f",
+            "2021-01-04T07:02:14-08:00 WARN  request error_rate=9.3% p99=4800ms — NOT a code regression; sockets blocked on packet loss, CPU only 28%",
+            "2021-01-04T07:05:40-08:00 INFO  intra-VPC calls (same 10.12.0.0/16) are clean; only cross-VPC (10.40.0.0/16 via TGW) is failing"
+          ]
+        },
+        {
+          "pod": "provision-service-5f7b9c6d8-r2mwp",
+          "container": "provision-service",
+          "lines": [
+            "2021-01-04T07:01:20-08:00 INFO  received burst request: launch 1200 web-tier instances (autoscaler upscale)",
+            "2021-01-04T07:03:11-08:00 ERROR socket(): too many open files — Linux open-file (FD) limit reached under the 1,200-instance provisioning burst",
+            "2021-01-04T07:03:12-08:00 ERROR aws ec2 RunInstances: RequestLimitExceeded — AWS API quota hit during the burst",
+            "2021-01-04T07:08:44-08:00 ERROR launched instances coming up BROKEN (can't init over degraded net); they still count against ASG max-size, blocking further launches",
+            "2021-01-04T07:12:03-08:00 WARN  provisioning failures are a CONSEQUENCE of the aggressive scale-up + network saturation, not an independent FD mis-config"
+          ]
+        },
+        {
+          "pod": "dashboarding-6b8c7d9f4-h4lqz",
+          "container": "dashboarding",
+          "lines": [
+            "2021-01-04T06:55:02-08:00 ERROR cannot connect to db-metrics.10.40.2.7:5432 — connection timed out (this DB is in a DIFFERENT VPC, reached via Transit Gateway)",
+            "2021-01-04T06:55:30-08:00 ERROR dashboards + alerting render failing: backend DB unreachable across the saturated TGW path",
+            "2021-01-04T07:10:15-08:00 WARN  dashboarding tier is DOWN as a downstream victim of cross-VPC packet loss; co-locating with its DB would have avoided this"
+          ]
+        }
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "ip-10-12-3-44.ec2.internal",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 26,
+          "memory_util_pct": 41,
+          "note": "node healthy; CPU LOW because workers are blocked on the network. No node_failure / resource_exhaustion."
+        },
+        {
+          "name": "ip-10-12-5-19.ec2.internal",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 29,
+          "memory_util_pct": 43,
+          "note": "node healthy"
+        },
+        {
+          "name": "ip-10-12-7-90.ec2.internal",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 33,
+          "memory_util_pct": 52,
+          "note": "node hosting provision-service is Ready; provision-service itself is failing on per-process FD limit + AWS API quota, not node resource pressure."
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "slack-prod",
+      "deployments": [
+        {
+          "deployment": "webapp",
+          "replicas": { "desired": 1240, "ready": 40, "available": 40, "updated": 1240 },
+          "current_revision": 408,
+          "image": "registry.slack/webapp:2021.01.04-rev2",
+          "last_rollout": "today 06:48 PST",
+          "rollout_status": "progressing",
+          "strategy": "RollingUpdate",
+          "conditions": [
+            { "type": "Available", "status": "False", "reason": "MinimumReplicasUnavailable" },
+            { "type": "Progressing", "status": "True", "reason": "ReplicaSetUpdated" }
+          ],
+          "note": "Desired exploded to 1,240 from the autoscaler chasing latency (+1,200). The morning deploys rev1/rev2 are routine and contain no networking change; rolling them back does NOT fix the cross-VPC packet loss. The replica explosion is the trap, not the cure."
+        },
+        {
+          "deployment": "provision-service",
+          "replicas": { "desired": 1, "ready": 0, "available": 0, "updated": 1 },
+          "current_revision": 22,
+          "image": "registry.slack/provision-service:1.18.0",
+          "last_rollout": "9d ago",
+          "rollout_status": "complete",
+          "conditions": [
+            { "type": "Available", "status": "False", "reason": "MinimumReplicasUnavailable" }
+          ],
+          "note": "unchanged for 9d; broke today only when the scale-up burst drove it past the open-file limit + AWS quota — a consequence, not a deploy regression."
+        },
+        {
+          "deployment": "dashboarding",
+          "replicas": { "desired": 2, "ready": 0, "available": 0, "updated": 2 },
+          "current_revision": 14,
+          "image": "registry.slack/dashboarding:3.4.1",
+          "last_rollout": "16d ago",
+          "rollout_status": "complete",
+          "conditions": [
+            { "type": "Available", "status": "False", "reason": "MinimumReplicasUnavailable" }
+          ],
+          "note": "unchanged for 16d; down only because its cross-VPC DB path is on the saturated TGW. Victim tier."
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "service": "webapp",
+      "namespace": "slack-prod",
+      "window": "5m",
+      "metrics": {
+        "error_rate_pct": 9.3,
+        "p99_latency_ms": 4800,
+        "cpu_util_pct": 28,
+        "memory_util_pct": 42,
+        "request_rate_rps": 38400,
+        "apache_worker_busy_pct": 100,
+        "apache_workers_blocked_on_net_pct": 96,
+        "tgw_cross_vpc_packet_loss_pct": 11.8,
+        "tgw_packets_per_s": 2950000,
+        "tgw_bytes_per_s": 9100000000,
+        "intra_vpc_packet_loss_pct": 0.0,
+        "db_query_p99_ms": 5200,
+        "db_conn_errors_per_s": 412,
+        "provision_open_files_used": 65530,
+        "provision_open_files_limit": 65536,
+        "aws_api_throttle_errors_per_s": 88,
+        "desired_replicas": 1240,
+        "ready_replicas": 40,
+        "restart_count": 0
+      },
+      "baseline": {
+        "error_rate_pct": 0.3,
+        "p99_latency_ms": 140,
+        "cpu_util_pct": 55,
+        "memory_util_pct": 40,
+        "request_rate_rps": 30100,
+        "apache_worker_busy_pct": 62,
+        "apache_workers_blocked_on_net_pct": 4,
+        "tgw_cross_vpc_packet_loss_pct": 0.0,
+        "tgw_packets_per_s": 1450000,
+        "intra_vpc_packet_loss_pct": 0.0,
+        "db_query_p99_ms": 48,
+        "db_conn_errors_per_s": 0,
+        "provision_open_files_used": 1820,
+        "provision_open_files_limit": 65536,
+        "aws_api_throttle_errors_per_s": 0,
+        "desired_replicas": 40,
+        "ready_replicas": 40
+      },
+      "samples": [
+        {
+          "metric": "tgw_cross_vpc_packet_loss_pct",
+          "query": "avg(tgw_packet_drop_ratio{transit_gateway=\"tgw-0a91f\",direction=\"cross_vpc\"}) * 100",
+          "value": 11.8,
+          "slo_threshold": 0.1,
+          "breached": true,
+          "unit": "percent",
+          "note": "SMOKING GUN: cross-VPC packet loss on the Transit Gateway is 11.8% while intra-VPC loss is 0.0%. TGW packets/s jumped from 1.45M to 2.95M (first-Monday cold-cache surge) and the TGW did not auto-scale fast enough to absorb it."
+        },
+        {
+          "metric": "apache_workers_blocked_on_net_pct",
+          "query": "avg(apache_workers_blocked_on_network{service=\"webapp\"}) * 100",
+          "value": 96,
+          "slo_threshold": 20,
+          "breached": true,
+          "unit": "percent",
+          "note": "96% of Apache workers are blocked on network I/O — this is why CPU is LOW (28%) despite high latency, and why the autoscaler's CPU-based logic downscaled in the wrong direction."
+        }
+      ],
+      "note": "CPU 28% (below baseline 55%) with 100% worker-busy and 96% blocked-on-net is the classic blocked-on-network signature. The only metric that left its normal band BEFORE the deploys and the autoscaler thrash is tgw_cross_vpc_packet_loss_pct (0 -> 11.8%) driven by tgw_packets_per_s (1.45M -> 2.95M). provision_open_files is at the 65,536 ceiling and aws_api_throttle_errors are non-zero ONLY after the +1,200 scale-up burst."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "WebappHighErrorRate",
+            "severity": "critical",
+            "service": "webapp",
+            "namespace": "slack-prod",
+            "cluster_name": "slack-useast-prod"
+          },
+          "annotations": {
+            "summary": "webapp error_rate 9.3% (SLO 1.0%)",
+            "error": "WebappHighErrorRate: error_rate 9.3% with observability tier unreachable"
+          },
+          "state": "firing",
+          "activeAt": "2021-01-04T06:58:30-08:00",
+          "value": "9.3"
+        },
+        {
+          "labels": {
+            "alertname": "TransitGatewayCrossVPCPacketLoss",
+            "severity": "critical",
+            "service": "network",
+            "transit_gateway": "tgw-0a91f",
+            "cluster_name": "slack-useast-prod"
+          },
+          "annotations": {
+            "summary": "cross-VPC packet loss 11.8% on tgw-0a91f (SLO 0.1%); TGW pps 1.45M -> 2.95M, not auto-scaling fast enough",
+            "error": "TransitGatewayCrossVPCPacketLoss: 11.8% drops cross-VPC, 0% intra-VPC"
+          },
+          "state": "firing",
+          "activeAt": "2021-01-04T06:53:00-08:00",
+          "value": "11.8",
+          "note": "Fired FIRST (06:53), before the webapp error alert (06:58) and before the provisioning failures (07:03). This is the leading indicator of the true root cause."
+        },
+        {
+          "labels": {
+            "alertname": "DashboardingDown",
+            "severity": "critical",
+            "service": "dashboarding",
+            "namespace": "slack-prod",
+            "cluster_name": "slack-useast-prod"
+          },
+          "annotations": {
+            "summary": "observability tier unreachable: dashboarding cannot reach its cross-VPC Postgres DB over tgw-0a91f",
+            "error": "DashboardingDown: backend DB unreachable across saturated TGW"
+          },
+          "state": "firing",
+          "activeAt": "2021-01-04T06:56:00-08:00",
+          "value": "1"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "webapp",
+      "sampled_spans": 3,
+      "summary": "Slow/failed requests are dominated by time spent in cross-VPC network egress on the Transit Gateway path (tgw-0a91f), with TCP retransmits and timeouts to backends in the 10.40.0.0/16 DB VPC. Intra-VPC spans are fast. The backends themselves answer quickly when packets arrive; the loss is in the provider fabric between VPCs.",
+      "spans": [
+        {
+          "trace_id": "9f2c...a4",
+          "root": "webapp:/api/rtm.start",
+          "total_ms": 4810,
+          "breakdown": [
+            { "span": "webapp.handler", "ms": 22 },
+            { "span": "webapp.intra_vpc_cache_get", "ms": 3, "note": "same-VPC call, clean and fast" },
+            { "span": "webapp.cross_vpc_db_read[tgw-0a91f]", "ms": 4760, "note": "egress to db-metrics.10.40.2.7 across Transit Gateway: 3 TCP retransmits + 2.1s timeout-and-retry from 11.8% packet loss" },
+            { "span": "webapp.serialize", "ms": 25 }
+          ]
+        },
+        {
+          "trace_id": "1b77...d0",
+          "root": "webapp:/api/conversations.history",
+          "total_ms": 4520,
+          "breakdown": [
+            { "span": "webapp.handler", "ms": 19 },
+            { "span": "webapp.cross_vpc_db_read[tgw-0a91f]", "ms": 4480, "note": "duplicate pattern: dropped packets on TGW path, not slow DB compute — DB query executed in 41ms once packets arrived" }
+          ]
+        },
+        {
+          "trace_id": "5d09...3e",
+          "root": "dashboarding:/render",
+          "total_ms": 0,
+          "error": "connect timeout",
+          "breakdown": [
+            { "span": "dashboarding.cross_vpc_db_connect[tgw-0a91f]", "ms": 30000, "note": "TIMEOUT connecting to db-metrics.10.40.2.7:5432 across TGW — observability tier cannot reach its own DB; this is why dashboards went dark" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "network_fault",
+    "root_cause_subtype": "AWS Transit Gateway cross-VPC saturation (provider network did not auto-scale for first-Monday PPS surge); CPU-blind autoscaler scale-up trap",
+    "required_keywords": [
+      "Transit Gateway",
+      "TGW",
+      "cross-VPC packet loss",
+      "did not auto-scale",
+      "first Monday cold cache",
+      "Apache worker threads blocked",
+      "CPU dropped",
+      "autoscaler downscaled then upscaled",
+      "open-file limit",
+      "AWS API quota",
+      "separate VPC dashboard"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "dependency_failure",
+      "node_failure",
+      "config_error"
+    ],
+    "ruling_out_keywords": [
+      "intra-VPC packet loss 0.0%",
+      "deploys rev1/rev2 unrelated to networking",
+      "rollback changes nothing",
+      "webapp 0 restarts",
+      "CPU 28% blocked-on-network not idle",
+      "nodes Ready no memory/disk pressure",
+      "DB query 41ms once packets arrive",
+      "provision FD limit only after +1200 burst",
+      "dashboarding DB in different VPC",
+      "TGW alert fired first at 06:53"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_events",
+      "get_logs",
+      "query_traces",
+      "get_node_status",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_alerts",
+      "get_metrics",
+      "get_events",
+      "query_traces"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "Low holiday traffic let the AWS Transit Gateway scale down; the first-Monday cold-cache surge doubled cross-VPC PPS faster than the TGW could auto-scale, causing ~11.8% cross-VPC packet loss; backend reads time out, so Apache worker threads block on the network and CPU drops; the CPU-based autoscaler reads low CPU as idle and downscales (wrong direction), then upscales by +1,200; that provisioning burst drives provision-service into the Linux open-file limit and AWS API quota, and broken instances pin the ASG at max; meanwhile the dashboarding/alerting tier, which runs in a separate VPC from its database, loses its DB over the same saturated TGW and goes dark.",
+    "model_response": "ROOT_CAUSE: An AWS Transit Gateway (tgw-0a91f) in Slack's hub-and-spoke multi-VPC topology became saturated and did not auto-scale fast enough for the first-Monday-back, cold-cache traffic surge. Cross-VPC packets/s jumped from 1.45M to 2.95M and cross-VPC packet loss rose to 11.8% (intra-VPC loss stayed 0.0%). Cross-VPC backend reads time out, so Apache worker threads on webapp block on the network — which is why CPU is paradoxically LOW (28% vs 55%) while error_rate is 9.3% and p99 is 4,800ms. The dashboarding/alerting tier is down only because its database is in a different VPC and that path also traverses the saturated TGW.\nROOT_CAUSE_CATEGORY: network_fault\nVALIDATED_CLAIMS:\n- Cross-VPC packet loss on tgw-0a91f is 11.8% vs 0.0% intra-VPC; TGW pps 1.45M -> 2.95M (cold-cache surge) and it did not auto-scale [evidence: prometheus_metrics, prometheus_alerts]\n- The TransitGatewayCrossVPCPacketLoss alert fired FIRST at 06:53, before the webapp error alert (06:58) and the provisioning failures (07:03) [evidence: prometheus_alerts, k8s_events]\n- 96% of Apache workers are blocked on network I/O, so CPU is only 28% despite 100% worker-busy — blocked-on-network, not idle [evidence: prometheus_metrics, k8s_pod_logs]\n- Traces show slow requests spending ~4.5s in cross_vpc_db_read[tgw-0a91f] with TCP retransmits/timeouts, while the DB answers in ~41ms once packets arrive; dashboarding times out connecting to its cross-VPC DB [evidence: traces]\n- webapp pods are Running with 0 restarts; nodes are Ready with no memory/disk pressure [evidence: k8s_pods, k8s_node_health]\nNON_VALIDATED_CLAIMS:\n- bad_deploy (loud red herring): the 06:31/06:48 webapp deploys rev1/rev2 are routine and contain no networking change; cross-VPC loss began at 06:52 and rolling the deploys back changes nothing [evidence: k8s_events, k8s_deployments]\n- dependency_failure on Postgres: the DB is healthy (41ms once packets arrive); it only looks slow because packets are dropped on the TGW path [evidence: traces, prometheus_metrics]\n- resource_exhaustion / node_failure: webapp 0 restarts, no OOM, nodes Ready, CPU/mem normal — CPU is LOW, not exhausted [evidence: k8s_pods, k8s_node_health]\n- provision-service FD/quota mis-config: 'too many open files' + AWS RequestLimitExceeded appear ONLY after the +1,200 scale-up burst at 07:01; these are a consequence of the trap action, not the root cause [evidence: k8s_pod_logs, prometheus_metrics]\nTRAP (must reject): aggressively scaling the web tier up (+1,200) while the network is saturated did not help — low CPU was caused by blocked threads, not idleness — and it drove provision-service into the FD limit + AWS quota, pinning the ASG at max and PROLONGING the outage. Rolling back the day-of deploys was also the wrong first instinct.\nCAUSAL_CHAIN:\n- Low holiday traffic let the AWS Transit Gateway scale down\n- First-Monday cold-cache surge doubled cross-VPC PPS faster than the TGW could auto-scale -> 11.8% cross-VPC packet loss\n- Cross-VPC backend reads time out -> Apache worker threads block on the network -> CPU drops\n- CPU-based autoscaler reads low CPU as idle: the autoscaler downscaled then upscaled (downscaled wrong direction, then upscaled by +1,200)\n- The provisioning burst hits the Linux open-file limit + AWS API quota; broken instances pin the ASG at max\n- The dashboarding/alerting tier (separate VPC from its DB) loses its DB over the same saturated TGW and goes dark\nFIX: Stop the web-tier autoscaling first (disable web downscaling/upscaling so it stops thrashing and stops hammering provision-service); have AWS manually scale the Transit Gateway; then drain the backlog with LB panic mode + circuit breakers; repair provision-service. Longer term: pre-warm/scale the TGW ahead of first-Monday surges and co-locate the dashboard tier with its database."
+  },
+  "remediation": {
+    "fix_tool": "modify_network_policy",
+    "canonical_fix": "Order matters: (1) STOP web-tier autoscaling (disable web downscaling/upscaling) so it stops thrashing and stops hammering provision-service; (2) have AWS manually scale up the saturated Transit Gateway (tgw-0a91f); (3) drain the request backlog with load-balancer panic mode + circuit breakers; (4) repair the provisioner. Preventive: pre-warm/scale the TGW for first-Monday surges and co-locate the dashboard tier with its database.",
+    "trust_tier": "blocked",
+    "trap_actions": [
+      "scale_deployment: aggressively scale the web tier UP (+1,200 replicas) while the Transit Gateway is saturated — low CPU was blocked-on-network, not idle; this drove provision-service into the Linux open-file limit + AWS API quota and pinned the ASG at max, PROLONGING the outage",
+      "rollback_deployment: roll back the day-of webapp deploys (rev1/rev2) — the first instinct, but those changes are unrelated to networking and the rollback does nothing for the cross-VPC packet loss"
+    ],
+    "resolved": true
+  }
+}

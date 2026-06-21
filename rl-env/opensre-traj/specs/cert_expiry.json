@@ -1,0 +1,342 @@
+{
+  "incident": "cert_expiry",
+  "provider": "k8s",
+  "failure_mode": "tls_cert_expired",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "billing",
+    "NS": "rlvr-target",
+    "WORKLOAD": "billing",
+    "POD": "billing-6c9f4d8b5d-lv9ld",
+    "POD2": "billing-6c9f4d8b5d-q4xkz",
+    "POD3": "billing-6c9f4d8b5d-r2m8p",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9kp7",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-c1ws",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] TLS handshake success rate < 50% — {{SVC}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "CertExpired",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{SVC}} TLS handshake success ratio collapsed below SLO (0.99) in {{NS}}",
+      "description": "app_tls_handshake_success ratio for {{SVC}} fell to 0.04 (only 4% of handshakes succeeding), far under the 0.99 SLO. Clients connecting to {{SVC}} pods ({{POD}}, {{POD2}}) are aborting with x509 errors and billing calls are being rejected at the TLS layer.",
+      "error": "x509: certificate has expired or is not yet valid",
+      "suspected_symptom": "tls_handshake_success_ratio < 0.50",
+      "k8s_failure_mode": "tls_cert_expired",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,k8s_events,prometheus_metrics"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "{{SVC}} rolled out a new image tag (billing:3.4.1) 7 hours ago, well before the incident window, tempting a bad_deploy conclusion — but the rollout completed cleanly and the cert material is unchanged by that deploy.",
+      "Node {{NODE}} shows a transient MemoryPressure=True->False flap in events 3 hours before the window, hinting at node_failure — but all nodes are Ready with ample headroom and the failures are TLS-layer, not scheduling.",
+      "{{SVC}} CPU and memory utilization are nominal (cpu 0.27 cores, mem 38%), so this is not resource exhaustion — pods are Running 1/1 with 0 restarts, the process is alive and rejecting handshakes, not crashing.",
+      "Downstream payments-gateway logs occasional 'connection reset by peer' to {{SVC}}, suggesting dependency_failure — but those resets are the client-side view of the same expired-cert TLS aborts, not a separate upstream outage."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "billing:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "state": { "running": { "startedAt": "2026-06-20T11:55:02Z" } },
+              "last_state": {},
+              "volumeMounts": [
+                { "name": "tls-certs", "mountPath": "/etc/billing", "readOnly": true }
+              ]
+            }
+          ],
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "container healthy and serving; failures are at the TLS handshake layer (expired cert), not the pod lifecycle"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "billing:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "state": { "running": { "startedAt": "2026-06-20T11:55:02Z" } },
+              "last_state": {},
+              "volumeMounts": [
+                { "name": "tls-certs", "mountPath": "/etc/billing", "readOnly": true }
+              ]
+            }
+          ],
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "TLSHandshakeError",
+          "object": "pod/{{POD}}",
+          "source": "kubelet, {{NODE}}",
+          "count": 211,
+          "first_seen": "2026-06-20T18:30:04Z",
+          "last_seen": "2026-06-20T18:36:51Z",
+          "message": "Readiness probe (HTTPS) failed: tls: failed to verify certificate: x509: certificate has expired or is not yet valid (notAfter=2026-06-20T18:29:00Z)"
+        },
+        {
+          "type": "Warning",
+          "reason": "TLSHandshakeError",
+          "object": "pod/{{POD2}}",
+          "source": "kubelet, {{NODE2}}",
+          "count": 198,
+          "first_seen": "2026-06-20T18:30:07Z",
+          "last_seen": "2026-06-20T18:36:49Z",
+          "message": "Readiness probe (HTTPS) failed: tls: failed to verify certificate: x509: certificate has expired or is not yet valid (notAfter=2026-06-20T18:29:00Z)"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/{{WORKLOAD}}",
+          "source": "deployment-controller",
+          "count": 1,
+          "first_seen": "2026-06-20T11:55:00Z",
+          "last_seen": "2026-06-20T11:55:00Z",
+          "message": "Scaled up replica set {{WORKLOAD}}-6c9f4d8b5d to 2 (image billing:3.4.1) — rollout complete 7h before incident (adversarial)"
+        },
+        {
+          "type": "Warning",
+          "reason": "NodeMemoryPressureFlap",
+          "object": "node/{{NODE}}",
+          "source": "kubelet, {{NODE}}",
+          "count": 1,
+          "first_seen": "2026-06-20T15:22:10Z",
+          "last_seen": "2026-06-20T15:22:19Z",
+          "message": "Node {{NODE}} reported MemoryPressure=True for 9s then cleared (adversarial — predates TLS window by 3h)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "{{NS}}",
+      "pod": "{{POD}}",
+      "container": "{{SVC}}",
+      "lines": [
+        "2026-06-20T18:30:04Z INFO  billing serving TLS on :8443 (rev billing:3.4.1) certPath=/etc/billing/cert.pem",
+        "2026-06-20T18:30:04Z ERROR tls: handshake error from 10.4.2.18:51544: x509: certificate has expired or is not yet valid",
+        "2026-06-20T18:30:05Z ERROR x509: certificate has expired or is not yet valid: current time 2026-06-20T18:30:05Z is after 2026-06-20T18:29:00Z",
+        "2026-06-20T18:30:05Z WARN  serving cert /etc/billing/cert.pem CN=billing notBefore=2025-06-20T18:29:00Z notAfter=2026-06-20T18:29:00Z — EXPIRED",
+        "2026-06-20T18:30:06Z ERROR rejecting handshake: peer aborted, returning tls alert certificate_expired (45)",
+        "2026-06-20T18:36:51Z ERROR tls: handshake error from 10.4.2.31:42210: x509: certificate has expired or is not yet valid"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 24,
+          "pods": "13/110",
+          "note": "Ready; momentary MemoryPressure flap at 15:22 cleared and predates the TLS window by 3h (adversarial)"
+        },
+        {
+          "name": "{{NODE2}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 21,
+          "pods": "10/110"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "image": "billing:3.4.1",
+      "strategy": "RollingUpdate",
+      "desired_replicas": 2,
+      "available_replicas": 2,
+      "ready_replicas": 2,
+      "unavailable_replicas": 0,
+      "current_revision": 12,
+      "previous_revision": 11,
+      "previous_image": "billing:3.4.0",
+      "rollout_status": "Complete",
+      "last_rollout": "2026-06-20T11:55:00Z",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "rollout to billing:3.4.1 completed cleanly 7h before the incident and all replicas are Available — rules out bad_deploy; the TLS cert material is mounted from a secret/file and is independent of the image revision"
+    },
+    "prometheus_metrics.json": {
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "query": "sum(rate(app_tls_handshake_success_total{namespace=\"rlvr-target\",app=\"billing\"}[1m])) / sum(rate(app_tls_handshake_total{namespace=\"rlvr-target\",app=\"billing\"}[1m]))",
+      "primary_metric": "app_tls_handshake_success_total",
+      "slo_threshold": 0.99,
+      "direction": "higher",
+      "current_value": 0.04,
+      "unit": "ratio",
+      "samples": [
+        { "t": "2026-06-20T18:28:00Z", "value": 0.998 },
+        { "t": "2026-06-20T18:29:00Z", "value": 0.71 },
+        { "t": "2026-06-20T18:30:00Z", "value": 0.09 },
+        { "t": "2026-06-20T18:31:00Z", "value": 0.04 }
+      ],
+      "series": [
+        { "metric": "app_tls_handshake_success_ratio", "value": 0.04, "slo_threshold": 0.99, "breached": true, "unit": "ratio" },
+        { "metric": "app_tls_handshake_total_rate_1m", "value": 142.0, "unit": "handshakes_per_s" },
+        { "metric": "app_tls_handshake_failure_total_rate_1m", "value": 136.3, "unit": "failures_per_s" },
+        { "metric": "cert_not_after_seconds", "value": 1781980140, "unit": "unix_seconds", "note": "notAfter=2026-06-20T18:29:00Z — already in the past relative to current time" },
+        { "metric": "cert_seconds_to_expiry", "value": -71, "unit": "seconds", "note": "negative = certificate is past its notAfter; this is the smoking gun" },
+        { "metric": "http_request_error_rate", "value": 0.95, "unit": "ratio", "note": "client-facing failures tracking the TLS aborts 1:1" },
+        { "metric": "cpu_cores", "value": 0.27, "unit": "cores", "note": "nominal — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 38.0, "unit": "percent", "note": "nominal — not resource_exhaustion" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "CertExpired",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{SVC}} TLS handshake success ratio < 50% (cert expired)",
+            "description": "app_tls_handshake_success ratio 0.04 < 0.99 SLO; serving cert notAfter=2026-06-20T18:29:00Z is in the past",
+            "error": "x509: certificate has expired or is not yet valid"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:30:00Z",
+          "value": "0.04"
+        },
+        {
+          "labels": {
+            "alertname": "TLSHandshakeFailure",
+            "severity": "warning",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "pod": "{{POD2}}"
+          },
+          "annotations": {
+            "summary": "{{SVC}} TLS handshake failures spiking on {{POD2}}",
+            "description": "app_tls_handshake_failure_total rate 136/s, x509 expired on serving cert"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:30:10Z",
+          "value": "136.3"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "config_error",
+    "required_keywords": [
+      "x509",
+      "certificate has expired",
+      "notAfter",
+      "TLS handshake",
+      "certificate_expired",
+      "app_tls_handshake_success",
+      "/etc/billing/cert.pem"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "node_failure",
+      "dependency_failure",
+      "network_fault"
+    ],
+    "ruling_out_keywords": [
+      "rollout Complete 7h prior",
+      "image billing:3.4.1 unchanged cert material",
+      "nodes Ready",
+      "MemoryPressure flap cleared 15:22",
+      "cpu 0.27 cores",
+      "memory 38%",
+      "0 restarts",
+      "connection reset is client view of TLS abort"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events"
+    ],
+    "max_investigation_loops": 3,
+    "model_response": "ROOT_CAUSE: The {{SVC}} serving TLS certificate at /etc/billing/cert.pem (CN=billing) expired at notAfter=2026-06-20T18:29:00Z. Once current time passed that instant, every TLS handshake to {{SVC}} pods ({{POD}}, {{POD2}}) fails with 'x509: certificate has expired or is not yet valid', so the server returns tls alert certificate_expired (45) and clients abort. app_tls_handshake_success ratio collapsed from 0.998 to 0.04 (SLO 0.99). The pods are otherwise healthy (Running 1/1, 0 restarts) — this is an expired-cert config/secret-material problem, a missed rotation, not a code or capacity fault.\nROOT_CAUSE_CATEGORY: config_error\nVALIDATED_CLAIMS:\n- app_tls_handshake_success ratio = 0.04 vs 0.99 SLO, dropping from 0.998 at 18:28 to 0.04 at 18:31 [evidence: prometheus_metrics]\n- cert_seconds_to_expiry = -71 (certificate is past its notAfter=2026-06-20T18:29:00Z) [evidence: prometheus_metrics]\n- Pod logs show 'x509: certificate has expired or is not yet valid' and 'serving cert /etc/billing/cert.pem ... notAfter=2026-06-20T18:29:00Z — EXPIRED' then tls alert certificate_expired (45) [evidence: k8s_pod_logs]\n- Events report TLSHandshakeError x509 expired on {{POD}} and {{POD2}}, count >190 each, starting 18:30 [evidence: k8s_events]\n- CertExpired alert firing since 18:30:00 with value 0.04 [evidence: prometheus_alerts]\nNON_VALIDATED_CLAIMS:\n- Not a bad deploy: rollout to billing:3.4.1 completed cleanly 7h earlier, all replicas Available, and the cert is mounted material independent of the image revision [evidence: k8s_deployments, k8s_events]\n- Not resource exhaustion: cpu 0.27 cores and memory 38% are nominal; pods Running 1/1 with 0 restarts [evidence: prometheus_metrics, k8s_pods]\n- Not node failure: all nodes Ready; the {{NODE}} MemoryPressure flap cleared at 15:22, 3h before the TLS window [evidence: k8s_node_health]\n- Not dependency_failure: downstream 'connection reset by peer' is the client-side view of the same expired-cert TLS abort, not a separate upstream outage [evidence: k8s_pod_logs]\nCAUSAL_CHAIN:\n- The {{SVC}} serving certificate reaches its notAfter=2026-06-20T18:29:00Z (rotation missed) and becomes expired\n- Every inbound TLS handshake fails x509 verification and the server emits tls alert certificate_expired (45)\n- app_tls_handshake_success ratio collapses 0.998 -> 0.04 and the CertExpired alert fires\n- Billing calls are rejected at the TLS layer and client-facing error rate climbs to 0.95\n- Restoring valid cert material and restarting {{SVC}} re-establishes handshakes and drives the success ratio back above the 0.99 SLO"
+  },
+  "remediation": {
+    "fix_tool": "renew_certificate",
+    "canonical_fix": "kubectl exec -n rlvr-target deploy/billing -- bash -c 'cp /etc/billing/cert.pem.bak /etc/billing/cert.pem 2>/dev/null; kubectl rollout restart deployment/billing -n rlvr-target'",
+    "trust_tier": "approval",
+    "primary_metric": "app_tls_handshake_success_total",
+    "direction": "higher",
+    "state_before": { "app_tls_handshake_success_total": 0.04 },
+    "state_after": { "app_tls_handshake_success_total": 0.999 },
+    "recovery_check": "app_tls_handshake_success_total >= 0.99",
+    "resolved": true
+  }
+}

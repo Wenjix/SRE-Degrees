@@ -1,0 +1,146 @@
+# CIDG scenario — reconstruction of a real post-mortem as an emergent-cascade topology.
+#
+# Incident #6: AWS US-EAST-1 DynamoDB DNS automation race (Oct 20 2025).
+# A DNS Planner/Enactor race in the DynamoDB endpoint-management automation published an
+# empty/stale DNS record for the regional DynamoDB endpoint -> DynamoDB became
+# unresolvable -> AWS-internal CONTROL services that depend on DynamoDB (instance/lease
+# state, NLB health-manager) were impaired -> EC2 launches and NLB health checks failed
+# for hours, cascading to customer workloads. The initiating dependency (DynamoDB's DNS
+# record) was OBSCURED by a wall of downstream AWS-service 5xx. The naive fix (scale or
+# fail over the EC2/NLB VICTIMS) does nothing while the DNS state is still broken and
+# instead piles MORE control-plane backlog -> prolongs the outage.
+#
+# Maps onto the 4-criteria pattern:
+#   cascade            -> discovery (dynamodb->dns) + required edges fan failure out to ec2/nlb
+#   misleading symptom -> loudest alerts are 5xx on EC2/NLB VICTIMS, not the dns control node
+#   multi-step diag    -> the empty-DNS-answer smoking gun is buried in dns logs/traces;
+#                         the health-monitor is itself in the blast radius (observes)
+#   naive fix worsens  -> scale/failover ec2/nlb -> control-plane backlog herds -> worse
+
+meta:
+  id: aws-dynamodb-dns
+  title: "AWS DynamoDB DNS automation race (US-EAST-1)"
+  source: "AWS Post-Event Summary, US-EAST-1 service disruption (Oct 20 2025)"
+  urls:
+    - https://aws.amazon.com/message/101925/
+  failure_class: dns-automation-race + control-plane-dependency + backlog-hysteresis
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: dns                       # endpoint DNS automation (Planner/Enactor): root cause
+      kind: control_plane
+      resources: { replicas: 3 }
+      limits: { empty_record_published: true }
+    - name: dynamodb                  # regional datastore; unresolvable when DNS is empty
+      kind: datastore
+      resources: { pool_size: 120 }
+    - name: control-services          # internal control plane (instance/lease state, health mgr)
+      kind: control_plane
+      resources: { replicas: 4 }
+    - name: ec2                       # EC2 launch plane — customer-facing victim
+      kind: service
+      resources: { replicas: 4 }
+    - name: nlb                       # network load balancer health/manager — victim
+      kind: lb
+      resources: { replicas: 4 }
+    - name: app-frontend              # customer application riding EC2/NLB — loudest breach
+      kind: service
+      resources: { replicas: 3 }
+    - name: health-monitor            # health/status monitoring; itself in the blast radius
+      kind: monitoring
+      resources: { replicas: 2 }
+  edges:
+    # services / control-plane resolve DynamoDB; DynamoDB's reachability is gated by DNS.
+    - { from: dynamodb, to: dns, type: discovery, weight: 1.0 }
+    - { from: control-services, to: dynamodb, type: required, latency_add_ms: 8, retry: 0.5 }
+    - { from: ec2, to: dynamodb, type: required, latency_add_ms: 8, retry: 0.4 }
+    # the customer cascade: ec2/nlb hard-depend on the control plane's state/health.
+    - { from: ec2, to: control-services, type: required, latency_add_ms: 6, retry: 0.5 }
+    - { from: nlb, to: control-services, type: required, latency_add_ms: 6, retry: 0.5 }
+    - { from: app-frontend, to: ec2, type: required, latency_add_ms: 5, retry: 0.4 }
+    - { from: app-frontend, to: nlb, type: required, latency_add_ms: 5, retry: 0.4 }
+    # health monitor reads the data plane it is supposed to watch -> degrades when DNS is down.
+    - { from: health-monitor, to: dynamodb, type: observes }
+    - { from: health-monitor, to: control-services, type: observes }
+
+root_cause:
+  location: dynamodb->dns            # the race is in the DNS automation feeding DynamoDB discovery
+  kind: dns_race                     # Planner/Enactor race published an empty endpoint record
+  severity: 0.9
+  hidden: true
+  persistent: true                   # control-plane backlogs persist after DNS is fixed (hysteresis)
+  reset_by: [restart_pod, restart_service]   # must drain/reset the control-plane backlog counters
+  rate_law:
+    var: control_plane_backlog       # queued instance/lease/health work piles up while DNS is empty
+    per_tick: 25
+    driver: request_rate             # more retrying callers -> faster backlog growth
+    driver_gain: 0.6
+    cap: 100                         # past the cap the control plane is saturated and self-throttles
+    worsened_by: [scale_deployment, failover_service, restart_pod]  # poking victims adds backlog
+  params:
+    backlog_per_failover: 30         # each victim failover dumps this much extra control-plane work
+    dns_ttl_stale_s: 300             # empty record stays cached until DNS state is repaired
+
+fault:
+  chaos_kind: networkchaos
+  exec_cmd: "publish empty DNS answer for the dynamodb regional endpoint (Planner/Enactor race)"
+  sim: { set: { dns_empty_answer: true, dynamodb_unresolvable: true } }
+  duration_s: 180
+
+observation:
+  alerting: uniform                  # loudness is emergent: it surfaces on the EC2/NLB victims
+  monitoring_degrades: true          # health-monitor observes dynamodb/control-services in blast radius
+  smoking_guns:
+    - tool: get_logs
+      node: dns
+      signature: "NXDOMAIN: empty answer for dynamodb.<region>.amazonaws.com endpoint"
+      buried_under: 60
+    - tool: query_traces
+      node: dynamodb
+      signature: "resolve failed: 0 A records for dynamodb endpoint"
+      buried_under: 45
+
+slo:
+  - { metric: error_rate_pct, node: app-frontend,     direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: ec2,              direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: nlb,              direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: control-services, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+
+# INTENDED traps: tempting to scale / fail over the loud EC2/NLB victims, but the DNS
+# control dependency is still broken -> these only add control-plane backlog and prolong it.
+trap_actions:
+  - { tool: scale_deployment, args: { target: ec2, replicas: 12 } }       # scale the victim
+  - { tool: failover_service, args: { target: nlb } }                     # fail over the victim
+  - { tool: scale_deployment, args: { target: nlb, replicas: 12 } }
+
+canonical_fix:
+  ordering_notes: >
+    Repair the DNS state FIRST (re-publish a correct record / unblock the bad path on the
+    dns node and restart it) so DynamoDB resolves again. ONLY THEN drain the control-plane
+    backlog (restart its pods) — doing this before the DNS fix just re-fills the backlog.
+    Stabilize LB health LAST, after the control plane is healthy. Touching EC2/NLB before
+    DNS is repaired adds backlog and prolongs the outage (hysteresis).
+  steps:
+    - { tool: modify_network_policy, args: { target: dns, action: restore_endpoint_record } }  # fix DNS state
+    - { tool: restart_service, args: { target: dns } }                                         # reset after path restored
+    - { tool: restart_pod, args: { target: control-services } }                                # drain backlog
+    - { tool: scale_deployment, args: { target: control-services, replicas: 6 } }              # absorb drained work
+    - { tool: restart_pod, args: { target: nlb } }                                             # stabilize LB health last
+
+paired_positive: leaf-cpu-saturation-positive   # a sibling where scale/failover IS the right fix
+
+assertions:
+  cascades: true
+  loudest_alert_not_cause: true
+  fix_resolves: true
+  buried_gun_exists: true
+  hysteresis: true
+  monitoring_degrades: true
+
+chance:
+  flap_prob: 0.12          # endpoint flaps as the empty record is partially re-cached
+  jitter: 0.05
+  partial_recovery_prob: 0.1
+
+seed: 1020

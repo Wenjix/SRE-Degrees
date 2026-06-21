@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-006
+  severity: 0
+  title: "DNS Failure — search"
+  category: network-problems
+  author: rlvr-bench
+  description: |
+    - search service failing to resolve its upstream hostname
+    - DNS error rate spiked above threshold
+  cause: |
+    - Corrupted/blocked DNS responses for the upstream name
+  impact: |
+    - search requests fail, upstream unreachable
+  mitigation: |
+    - Remove the DNS fault OR fix resolver config OR fail over
+  references:
+    - https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/
+  tags:
+    - cre-2025-rlvr-006
+    - rlvr
+    - dns
+    - network
+metadata:
+  kind: prequel
+  id: 2e88c4b0-dns6-4061-8d34-search0000006
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "DNS resolution failed: search upstream unreachable"

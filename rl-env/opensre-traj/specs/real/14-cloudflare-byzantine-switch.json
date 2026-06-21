@@ -1,0 +1,446 @@
+{
+  "incident": "cloudflare_byzantine_switch",
+  "provider": "k8s",
+  "source_company": "Cloudflare",
+  "source_url": "https://blog.cloudflare.com/a-byzantine-failure-in-the-real-world/",
+  "failure_mode": "byzantine_asymmetric_partition",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "SVC": "control-plane-api",
+    "NS": "control-plane",
+    "WORKLOAD": "control-plane-api",
+    "POD": "control-plane-api-7b9d4c6f8d-q4m2x",
+    "DB_NODE_A": "cluster-db-0",
+    "DB_NODE_B": "cluster-db-1",
+    "DB_NODE_C": "cluster-db-2",
+    "NODE_A": "gke-rlvr-bench-cp-pool-aa11bb22-a0kq",
+    "NODE_B": "gke-rlvr-bench-cp-pool-bb33cc44-b7nm",
+    "NODE_C": "gke-rlvr-bench-cp-pool-cc55dd66-c3vp",
+    "SWITCH": "tor-switch-cp-rack3",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] Control-plane API errors + cluster has no DB leader — control-plane-api",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "ControlPlaneWritesBlocked",
+      "severity": "critical",
+      "service": "control-plane-api",
+      "namespace": "control-plane",
+      "workload_type": "deployment",
+      "workload_name": "control-plane-api",
+      "cluster_name": "rlvr-bench"
+    },
+    "commonAnnotations": {
+      "summary": "control-plane API success rate dropped to ~75% and the cluster-db consensus group has NO elected leader",
+      "description": "API/dashboard write requests are failing or timing out (success rate dipped to ~75%, dashboard ~80x slower). The cluster-db consensus group is stuck with no leader: every member is reachable on SOME paths but the layer's own health endpoints all report 'degraded' rather than 'failed', and a top-of-rack switch (tor-switch-cp-rack3) is flapping ping alerts. Looks like a flaky switch or an overloaded primary database.",
+      "error": "leader election timed out: no candidate reached a quorum of votes (split vote persists)",
+      "suspected_symptom": "switch_unreachable_and_db_primary_overload",
+      "k8s_failure_mode": "leader_election_stall",
+      "context_sources": "prometheus_alerts,prometheus_metrics,k8s_pod_logs,k8s_events,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "tor-switch-cp-rack3 is firing 'host unreachable to ping' alerts — it LOOKS fully dead, tempting a switch control-plane restart; but its data-plane is still forwarding traffic, so it is only PARTIALLY failed (the asymmetry is the real problem, not a clean failure)",
+      "every redundancy layer (switch HA pair, cluster-db members, API replicas) reports 'degraded' rather than 'failed' — each component self-attests it is mostly fine, so no single component looks guilty",
+      "cluster-db primary shows elevated CPU and connection pressure, tempting an 'overloaded primary database' diagnosis or a scale-up / failover to a replica — but the load is a SYMPTOM of writes piling up behind a stalled election, not the cause",
+      "all three cluster-db pods are Running 1/1 with 0 restarts and nominal memory — there is no crash, OOM, or resource_exhaustion on the DB processes themselves",
+      "the API deployment image and revision are unchanged for 8 days — rules out a bad deploy / code regression",
+      "node-to-node pings SUCCEED on some links and FAIL on others (A can reach B, B can reach C, but A cannot consistently reach C) — looks like flaky intermittent networking rather than a single coherent partition"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "control-plane",
+      "pods": [
+        {
+          "name": "cluster-db-0",
+          "node": "gke-rlvr-bench-cp-pool-aa11bb22-a0kq",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "cluster-db:5.4.1",
+          "started": "2026-06-12T09:00:00Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "node A. Process healthy, 0 restarts. It can see B but NOT C, so it votes for itself and refuses to acknowledge any candidate it cannot reach (adversarial: looks healthy, is a victim of asymmetric reachability)"
+        },
+        {
+          "name": "cluster-db-1",
+          "node": "gke-rlvr-bench-cp-pool-bb33cc44-b7nm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "cluster-db:5.4.1",
+          "started": "2026-06-12T09:00:01Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "node B. Sits behind the partially-failed switch on rack3 — it can reach BOTH A and C, but A and C cannot reach each other through it. B votes for C. Healthy process, 0 restarts."
+        },
+        {
+          "name": "cluster-db-2",
+          "node": "gke-rlvr-bench-cp-pool-cc55dd66-c3vp",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "cluster-db:5.4.1",
+          "started": "2026-06-12T09:00:01Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "node C. Can see B but NOT A. Receives B's vote but only has 1/2 reachable peers acknowledging it — cannot reach the quorum of 2/3 because A is unreachable. No coherent majority forms."
+        },
+        {
+          "name": "control-plane-api-7b9d4c6f8d-q4m2x",
+          "node": "gke-rlvr-bench-cp-pool-aa11bb22-a0kq",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "control-plane-api:2.18.0",
+          "started": "2026-06-12T09:00:05Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "API pod is up; its write requests block because cluster-db has no leader to accept writes. The API 5xx/timeout rate is the LOUD downstream victim symptom, not the cause."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "control-plane",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "SwitchUnreachableToPing",
+          "object": "node/gke-rlvr-bench-cp-pool-bb33cc44-b7nm",
+          "count": 18,
+          "first_seen": "2026-06-20T22:42:00Z",
+          "last_seen": "2026-06-20T23:05:00Z",
+          "message": "tor-switch-cp-rack3 management/control-plane is NOT responding to pings (host unreachable), BUT data-plane counters show frames are still being forwarded through it — switch is in a PARTIALLY-OPERATING state, not cleanly down (the key signal)"
+        },
+        {
+          "type": "Warning",
+          "reason": "AsymmetricReachability",
+          "object": "service/cluster-db",
+          "count": 1,
+          "first_seen": "2026-06-20T22:42:30Z",
+          "last_seen": "2026-06-20T22:42:30Z",
+          "message": "cluster-db peer probes: A<->B OK, B<->C OK, A<->C FAIL. Connectivity is asymmetric/non-transitive — each node has a DIFFERENT view of which peers are alive (textbook Byzantine condition)"
+        },
+        {
+          "type": "Warning",
+          "reason": "LeaderElectionFailed",
+          "object": "service/cluster-db",
+          "count": 9,
+          "first_seen": "2026-06-20T22:42:35Z",
+          "last_seen": "2026-06-20T23:05:00Z",
+          "message": "no leader elected after 9 election rounds: cluster-db-0 self-votes, cluster-db-1 votes cluster-db-2, cluster-db-2 cannot gather 2/3 because A is unreachable — split vote never resolves"
+        },
+        {
+          "type": "Warning",
+          "reason": "WritesBlocked",
+          "object": "pod/control-plane-api-7b9d4c6f8d-q4m2x",
+          "count": 240,
+          "first_seen": "2026-06-20T22:43:00Z",
+          "last_seen": "2026-06-20T23:05:00Z",
+          "message": "API write transactions rejected/timed out: no DB leader available to accept writes (downstream victim of the stalled election)"
+        },
+        {
+          "type": "Warning",
+          "reason": "PrimaryLoadHigh",
+          "object": "pod/cluster-db-0",
+          "count": 1,
+          "first_seen": "2026-06-20T22:50:00Z",
+          "last_seen": "2026-06-20T23:05:00Z",
+          "message": "connection backlog and CPU on the last-known-good primary rising as clients retry into a leaderless cluster — secondary symptom, NOT a runaway query (adversarial: looks like DB overload)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "cluster-db-1",
+      "container": "cluster-db",
+      "lines": [
+        "2026-06-20T22:42:00Z WARN  raft: heartbeat path to peer cluster-db-0 (A) intermittent via tor-switch-cp-rack3; mgmt-plane of switch not responding to ICMP but frames still forwarding",
+        "2026-06-20T22:42:30Z WARN  raft: peer view INCONSISTENT — local node (B) reachable to A and C, but A reports C unreachable and C reports A unreachable (non-transitive connectivity)",
+        "2026-06-20T22:42:35Z INFO  raft: starting election term=212; voted for cluster-db-2 (C)",
+        "2026-06-20T22:42:36Z WARN  raft: cluster-db-0 (A) started a COMPETING election term=212, voted for itself — it cannot see C so it will not accept C as leader",
+        "2026-06-20T22:42:40Z WARN  raft: candidate cluster-db-2 (C) has 2/3 votes claimed (self + B) but cannot confirm A's view; A's vote unreachable — quorum NOT satisfiable",
+        "2026-06-20T22:42:45Z ERROR raft: election term=212 FAILED, no node reached a clean majority; nodes disagree on who is alive (Byzantine: conflicting node views, no leader)",
+        "2026-06-20T22:43:00Z ERROR raft: writes BLOCKED — no leader; this will not self-resolve because the switch is partially up (asymmetry persists across election rounds)",
+        "2026-06-20T22:48:00Z WARN  raft: a NODE restart would rejoin into the SAME asymmetric topology — A still can't see C — election will stall again (restarting members does not help)"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "gke-rlvr-bench-cp-pool-aa11bb22-a0kq",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "node A (cluster-db-0). Kubelet Ready; NetworkUnavailable=False because the node's primary uplink is fine — the break is the PARTIAL switch on the cluster-db peer path, which k8s node conditions do not capture. A cannot reach C."
+        },
+        {
+          "name": "gke-rlvr-bench-cp-pool-bb33cc44-b7nm",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "node B (cluster-db-1) sits on tor-switch-cp-rack3 whose mgmt-plane is dark but data-plane forwards — B can reach both A and C, which is exactly why it cannot detect a clean failure and the cluster never agrees."
+        },
+        {
+          "name": "gke-rlvr-bench-cp-pool-cc55dd66-c3vp",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "node C (cluster-db-2). Ready; healthy resources. Cannot reach A. All three nodes are individually 'Ready' — the failure is in the FABRIC between them, invisible to per-node health."
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "control-plane",
+      "deployment": "control-plane-api",
+      "kind": "deployment",
+      "desired": 4,
+      "updated": 4,
+      "ready": 4,
+      "available": 4,
+      "current_revision": 31,
+      "image": "control-plane-api:2.18.0",
+      "last_rollout": "2026-06-12T09:00:00Z",
+      "rollout_status": "Complete",
+      "note": "API deployment unchanged for 8 days, all replicas Ready — rules out bad_deploy. The API is healthy; it is blocked downstream of a leaderless DB cluster."
+    },
+    "prometheus_metrics.json": {
+      "service": "control-plane-api",
+      "namespace": "control-plane",
+      "samples": [
+        {
+          "metric": "api_success_rate",
+          "query": "sum(rate(api_requests_total{namespace=\"control-plane\",code=~\"2..\"}[5m]))/sum(rate(api_requests_total{namespace=\"control-plane\"}[5m]))",
+          "value": 0.75,
+          "slo_threshold": 0.999,
+          "breached": true,
+          "unit": "ratio",
+          "note": "loud symptom — API success dipped to ~75% because writes have nowhere to land"
+        },
+        {
+          "metric": "clusterdb_leader_count",
+          "value": 0,
+          "unit": "count",
+          "note": "SMOKING GUN: the consensus group has ZERO leaders — election cannot complete"
+        },
+        {
+          "metric": "clusterdb_failed_elections_total",
+          "value": 9,
+          "unit": "count",
+          "note": "SMOKING GUN: 9 consecutive failed election rounds — a persistent split vote, not a one-off blip"
+        },
+        {
+          "metric": "clusterdb_peer_reachability_asymmetry",
+          "query": "min over node-pairs of bidirectional reachability",
+          "value": 1,
+          "unit": "bool",
+          "note": "SMOKING GUN: connectivity is non-transitive (A<->B up, B<->C up, A<->C down) — Byzantine asymmetric partition caused by a partially-failed switch"
+        },
+        {
+          "metric": "switch_mgmt_plane_ping_up",
+          "value": 0,
+          "unit": "bool",
+          "note": "tor-switch-cp-rack3 control/management plane is DOWN (no ICMP response)"
+        },
+        {
+          "metric": "switch_data_plane_frames_forwarded_rate",
+          "value": 184000,
+          "unit": "frames_per_second",
+          "note": "SMOKING GUN: the SAME switch is still forwarding ~184k fps on the data plane — it is PARTIALLY operating, NOT cleanly down. This is why the cluster sees an ambiguous (Byzantine) failure instead of a clean partition."
+        },
+        {
+          "metric": "clusterdb_primary_cpu_cores",
+          "value": 3.1,
+          "unit": "cores",
+          "note": "elevated on the last-known-good primary from retry backlog — a SYMPTOM of the stall, not a runaway query (adversarial: 'DB overload'). Process is not OOM (memory nominal)."
+        },
+        {
+          "metric": "clusterdb_memory_util_pct",
+          "value": 41.0,
+          "unit": "percent",
+          "note": "nominal across all DB pods — rules out OOM / resource_exhaustion on the DB itself"
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "ControlPlaneWritesBlocked",
+            "severity": "critical",
+            "service": "control-plane-api",
+            "namespace": "control-plane",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "API success ~75%; cluster-db has no leader",
+            "error": "leader election timed out: persistent split vote"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:43:00Z",
+          "value": "0.75"
+        },
+        {
+          "labels": {
+            "alertname": "SwitchUnreachable",
+            "severity": "warning",
+            "service": "tor-switch-cp-rack3",
+            "namespace": "control-plane",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "tor-switch-cp-rack3 not responding to ping (management plane)",
+            "error": "ICMP host unreachable — but data-plane still forwarding (partial failure)"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:42:00Z",
+          "value": "1"
+        },
+        {
+          "labels": {
+            "alertname": "ClusterDBNoLeader",
+            "severity": "critical",
+            "service": "cluster-db",
+            "namespace": "control-plane",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "cluster-db consensus group has no elected leader after 9 election rounds",
+            "error": "raft: nodes disagree on liveness (asymmetric reachability)"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:42:35Z",
+          "value": "0"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "control-plane-api",
+      "namespace": "control-plane",
+      "spans": [
+        {
+          "trace_id": "c4a91e07",
+          "operation": "api.write_zone_setting",
+          "target": "cluster-db (leader lookup)",
+          "status": "error",
+          "duration_ms": 30000,
+          "error": "no leader available — write timed out waiting for cluster-db quorum",
+          "ts": "2026-06-20T22:55:10Z"
+        },
+        {
+          "trace_id": "c4a91e07",
+          "operation": "clusterdb.find_leader",
+          "target": "cluster-db-0,cluster-db-1,cluster-db-2",
+          "status": "error",
+          "duration_ms": 30000,
+          "note": "each member returns a DIFFERENT current-leader candidate (A->self, B->C, C->none) — no consistent leader to route the write to",
+          "ts": "2026-06-20T22:55:10Z"
+        },
+        {
+          "trace_id": "d8b330ac",
+          "operation": "clusterdb.peer_probe",
+          "target": "cluster-db-0 -> cluster-db-2",
+          "status": "error",
+          "duration_ms": 5000,
+          "note": "A->C probe times out while A->B and B->C succeed — confirms non-transitive (Byzantine) reachability through the partially-failed switch",
+          "ts": "2026-06-20T22:55:11Z"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "network_fault",
+    "root_cause_subtype": "partially-failed switch (control-plane down / data-plane up) causing Byzantine asymmetric, non-transitive partition that stalls cluster-db leader election",
+    "required_keywords": [
+      "partially operating switch",
+      "control-plane down data-plane up",
+      "asymmetric reachability",
+      "non-transitive",
+      "Byzantine",
+      "split vote",
+      "no leader elected",
+      "writes blocked"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "bad_deploy",
+      "saturation",
+      "node_failure",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "cluster-db pods Running 1/1 0 restarts",
+      "clusterdb_memory_util_pct 41 (not OOM)",
+      "primary CPU elevated is retry-backlog symptom not runaway query",
+      "API deployment revision unchanged 8 days",
+      "all nodes Ready / NetworkUnavailable=False",
+      "switch data-plane still forwarding 184k fps (not cleanly down)"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_events",
+      "get_logs",
+      "query_traces",
+      "describe_pod",
+      "get_node_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_events",
+      "get_logs"
+    ],
+    "max_investigation_loops": 5,
+    "causal_chain": "partial switch failure (control-plane down, data-plane up) -> asymmetric/non-transitive reachability A<->B<->C -> cluster-db nodes hold conflicting liveness views -> leader election ties (A self-votes, B votes C, C can't reach quorum) -> no leader -> writes block -> control-plane API failures + retry load on primary",
+    "model_response": "ROOT_CAUSE: A top-of-rack switch (tor-switch-cp-rack3) became a PARTIALLY OPERATING SWITCH (partially operating switch): its control/management plane is dark (no ICMP response) while its data plane keeps forwarding frames (~184k fps) — i.e. control-plane down data-plane up. That ambiguous half-failure created ASYMMETRIC REACHABILITY (asymmetric reachability) that is NON-TRANSITIVE between the cluster-db consensus members: A can reach B, B can reach C, but A cannot reach C. Each node therefore holds a DIFFERENT view of which peers are alive (a textbook Byzantine fault). cluster-db-0 (A) self-votes, cluster-db-1 (B) votes for cluster-db-2 (C), and C cannot gather a 2/3 quorum because A is unreachable — so leader election ties round after round in a persistent split vote (9 failed elections, leader_count=0, no leader elected). With no leader, the cluster cannot accept writes — writes blocked — so the control-plane API's write path fails/times out (success ~75%) and clients retry, pushing CPU/connection load onto the last-known-good primary. The 'switch is dead' and 'primary database overloaded' signals are LOUD symptoms; the actual fault is the switch's PARTIAL failure producing a Byzantine partition. This is a network_fault, not a DB, resource, or deploy fault.\nROOT_CAUSE_CATEGORY: network_fault\nVALIDATED_CLAIMS:\n- tor-switch-cp-rack3 mgmt plane is down (switch_mgmt_plane_ping_up=0) yet its data plane is STILL forwarding (switch_data_plane_frames_forwarded_rate=184000) — it is partially failed, not cleanly down [evidence: prometheus_metrics, k8s_events]\n- cluster-db peer reachability is non-transitive: A<->B OK, B<->C OK, A<->C FAIL (clusterdb_peer_reachability_asymmetry=1) [evidence: k8s_events, prometheus_metrics, traces]\n- leader election fails persistently: clusterdb_leader_count=0 and clusterdb_failed_elections_total=9; logs show A self-votes, B votes C, C cannot reach quorum [evidence: prometheus_metrics, k8s_pod_logs, k8s_events]\n- API writes block because there is no DB leader to accept them (success_rate=0.75, 30s write timeouts; find_leader returns different leaders per member) [evidence: prometheus_metrics, traces, k8s_events]\nNON_VALIDATED_CLAIMS:\n- NOT a cleanly-dead switch to restart: the switch is still forwarding data-plane traffic; restarting its control plane just lets it re-enter the same degraded/partial state and the asymmetry persists [evidence: prometheus_metrics]. Restarting the switch CP is a TRAP.\n- NOT a stuck process to bounce: all cluster-db pods are Running 1/1 with 0 restarts; restarting/cordoning the DB nodes rejoins them into the SAME asymmetric topology and the election stalls again [evidence: k8s_pods, k8s_pod_logs]. Restarting cluster nodes is a TRAP.\n- NOT a DB overload / runaway query: primary CPU (3.1 cores) is elevated only from retry backlog behind the stalled election; memory is nominal (41%), no OOM — scaling or failing over the DB does not create a leader [evidence: prometheus_metrics, k8s_events].\n- NOT resource_exhaustion / OOM: clusterdb_memory_util_pct=41, pods 0 restarts [evidence: prometheus_metrics, k8s_pods].\n- NOT a bad deploy: API deployment revision unchanged for 8 days, all replicas Ready [evidence: k8s_deployments].\n- NOT a node failure: all three nodes are Ready with NetworkUnavailable=False — the break is in the fabric between them, invisible to per-node health [evidence: k8s_node_health].\nCAUSAL_CHAIN:\n- tor-switch-cp-rack3 partially fails: control plane goes dark but data plane keeps forwarding\n- this yields asymmetric, non-transitive reachability among cluster-db members (A<->B up, B<->C up, A<->C down)\n- each node forms a conflicting view of peer liveness (Byzantine condition)\n- leader election ties indefinitely: A self-votes, B votes C, C cannot reach a 2/3 quorum -> no leader\n- with no leader the cluster cannot accept writes -> control-plane API write failures and timeouts\n- clients retry, loading the last-known-good primary (secondary symptom)\nFIX: Convert the ambiguous Byzantine failure into a CLEAN failure the cluster can reason about: forcibly hard-down the partially-failed switch (tor-switch-cp-rack3) — i.e. isolate/fence the affected path — so the cluster observes a clean partition, a quorum re-forms, and a leader is elected. Do NOT restart the switch control plane (it re-enters the degraded state) and do NOT restart/cordon the DB nodes (they rejoin the same asymmetry). After a leader is elected and members async-catch-up, re-introduce the repaired switch/capacity gradually and tune promotion timing so it does not promote too quickly post-recovery. This is a network-fabric change — escalate / get approval before fencing the switch path."
+  },
+  "remediation": {
+    "fix_tool": "modify_network_policy",
+    "canonical_fix": "Forcibly take the partially-failed switch (tor-switch-cp-rack3) hard-down / fence its path so the cluster-db consensus group sees a CLEAN partition instead of a Byzantine asymmetric one; a quorum re-forms and elects a leader, writes resume. Then re-introduce the repaired switch capacity only after async catch-up, and tune leader-promotion timing to avoid promoting too quickly post-recovery.",
+    "trust_tier": "blocked",
+    "primary_metric": "clusterdb_leader_count",
+    "direction": "higher",
+    "state_before": { "clusterdb_leader_count": 0, "clusterdb_failed_elections_total": 9, "api_success_rate": 0.75 },
+    "state_after": { "clusterdb_leader_count": 1, "clusterdb_failed_elections_total": 9, "api_success_rate": 0.999 },
+    "recovery_check": "clusterdb_leader_count == 1 and api_success_rate >= 0.999",
+    "trap_actions": [
+      "restart_service",
+      "restart_pod",
+      "failover_service",
+      "scale_deployment"
+    ],
+    "resolved": true
+  }
+}

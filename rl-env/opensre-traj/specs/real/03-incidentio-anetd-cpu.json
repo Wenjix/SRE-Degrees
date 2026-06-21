@@ -1,0 +1,438 @@
+{
+  "incident": "incidentio_anetd_cpu",
+  "provider": "k8s",
+  "source_company": "incident.io",
+  "source_url": "https://incident.io/blog/clouds-caches-and-connection-conundrums",
+  "failure_mode": "cni_agent_cpu_saturation",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] memcached read i/o timeout + Postgres conn timeouts — api",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "BackendConnectionTimeouts",
+      "severity": "critical",
+      "service": "api",
+      "namespace": "production",
+      "workload_type": "deployment",
+      "workload_name": "api",
+      "cluster_name": "incidentio-gke-prod"
+    },
+    "commonAnnotations": {
+      "summary": "api pods intermittently failing memcached reads ('read i/o timeout') and Postgres connection acquisition with no consistent user or node pattern",
+      "description": "Over the last ~1h, api pods log sporadic 'memcached: read i/o timeout' and 'failed to acquire database connection: context deadline exceeded' against the cache and Postgres. Errors come and go, affect different requests each time, and do not correlate to a single user, endpoint, or replica. memcached and Postgres themselves report healthy. This has recurred intermittently for about a week.",
+      "error": "memcached read i/o timeout; pgx: context deadline exceeded acquiring connection",
+      "suspected_symptom": "backend_connection_timeouts",
+      "k8s_failure_mode": "connection_pool_or_stale_tcp",
+      "context_sources": "prometheus_metrics,k8s_pods,k8s_pod_logs,k8s_deployments,k8s_events,k8s_node_health,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The errors LOOK like an app-layer connection-pool / stale-TCP problem ('definitely looked more like connection timeouts'): Postgres connection-acquire deadlines plus memcached 'read i/o timeout'. This is the loud red herring — both Postgres and memcached are themselves healthy (low CPU, low connection count, p99 server-side latency normal), so the timeouts are NOT caused by the datastores being slow or out of connections.",
+      "A prior fix doubled max DB connection lifetime and switched to a static pool to chase a suspected dead-pg-conn race; it only partially helped and the timeouts returned — pool tuning is benign here, it does not address the cause.",
+      "memcached idle-connection churn was suspected and MaxIdleConns was bumped 2->20, which briefly helped then regressed — another benign pool knob, not the root cause.",
+      "GKE-managed memcached was blamed and the workload was migrated to a self-hosted in-cluster memcached; this had NO effect, ruling out the cache provider / managed-memcached as the cause.",
+      "An unrelated change that fixed a runaway external-API caller landed around the same time the errors briefly vanished, so it was almost MIS-CREDITED as the fix; correlation in time only — it does not explain the cache/DB timeouts and they recurred.",
+      "The node hosting the affected pods reports Ready=True, MemoryPressure=False, DiskPressure=False and node CPU is moderate, so node-level OOM / memory pressure / node_failure is ruled out."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "k8s_node_health",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "production",
+      "pods": [
+        {
+          "name": "api-6f9c84d7b5-2td4r",
+          "workload": "api",
+          "node": "gke-incidentio-prod-pool-a-3f21",
+          "phase": "Running",
+          "ready": true,
+          "restart_count": 0,
+          "note": "Victim: emits memcached 'read i/o timeout' and Postgres acquire deadlines. Healthy resource usage.",
+          "containers": [
+            {
+              "name": "api",
+              "ready": true,
+              "state": "running",
+              "resources": {
+                "requests": { "cpu": "500m", "memory": "512Mi" },
+                "limits": { "cpu": "2000m", "memory": "1Gi" }
+              },
+              "usage": { "cpu": "430m", "memory": "560Mi" },
+              "last_state": "none"
+            }
+          ]
+        },
+        {
+          "name": "egress-worker-857db6c69f-rm8nq",
+          "workload": "egress-worker",
+          "node": "gke-incidentio-prod-pool-a-3f21",
+          "phase": "Running",
+          "ready": true,
+          "restart_count": 0,
+          "note": "CO-LOCATED culprit on the SAME node: opens and closes a very high rate of short-lived outbound TCP connections (no keep-alive / no pooling). Itself looks fine.",
+          "containers": [
+            {
+              "name": "egress-worker",
+              "ready": true,
+              "state": "running",
+              "resources": {
+                "requests": { "cpu": "250m", "memory": "256Mi" },
+                "limits": { "cpu": "1000m", "memory": "512Mi" }
+              },
+              "usage": { "cpu": "380m", "memory": "240Mi" },
+              "tcp_connections_opened_per_sec": 2100,
+              "tcp_connections_closed_per_sec": 2080,
+              "keep_alive": false,
+              "last_state": "none"
+            }
+          ]
+        },
+        {
+          "name": "anetd-8wq4c",
+          "workload": "anetd",
+          "node": "gke-incidentio-prod-pool-a-3f21",
+          "phase": "Running",
+          "ready": true,
+          "restart_count": 0,
+          "note": "BURIED ROOT SIGNAL: GKE Dataplane V2 Cilium agent DaemonSet pod (kube-system, eBPF datapath). On this node it is CPU-saturated at ~2.6 vCPU, far above its baseline of ~0.2 vCPU, driven by connection-tracking churn from egress-worker. Not surfaced by the api/memcached/Postgres dashboards.",
+          "namespace_actual": "kube-system",
+          "containers": [
+            {
+              "name": "cilium-agent",
+              "ready": true,
+              "state": "running",
+              "resources": {
+                "requests": { "cpu": "100m", "memory": "256Mi" },
+                "limits": { "cpu": "0", "memory": "0" }
+              },
+              "usage": { "cpu": "2640m", "memory": "410Mi" },
+              "baseline_usage_cpu": "210m",
+              "last_state": "none"
+            }
+          ]
+        },
+        {
+          "name": "api-6f9c84d7b5-h7zpx",
+          "workload": "api",
+          "node": "gke-incidentio-prod-pool-b-9c07",
+          "phase": "Running",
+          "ready": true,
+          "restart_count": 0,
+          "note": "Control: api replica on a DIFFERENT node (no high-churn neighbor) — no memcached/Postgres timeouts. Confirms the problem is node-local, not app-global.",
+          "containers": [
+            {
+              "name": "api",
+              "ready": true,
+              "state": "running",
+              "resources": {
+                "requests": { "cpu": "500m", "memory": "512Mi" },
+                "limits": { "cpu": "2000m", "memory": "1Gi" }
+              },
+              "usage": { "cpu": "410m", "memory": "540Mi" },
+              "last_state": "none"
+            }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "production",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "Unhealthy",
+          "object": "pod/api-6f9c84d7b5-2td4r",
+          "count": 7,
+          "age": "44m",
+          "message": "Readiness probe failed: Get \"http://10.40.3.21:8080/healthz\": context deadline exceeded — intermittent, recovers on its own"
+        },
+        {
+          "type": "Warning",
+          "reason": "BackOff",
+          "object": "pod/api-6f9c84d7b5-2td4r",
+          "count": 2,
+          "age": "40m",
+          "message": "Readiness flapping; pod removed from and re-added to Service endpoints twice"
+        },
+        {
+          "type": "Warning",
+          "reason": "SystemOOM",
+          "object": "node/gke-incidentio-prod-pool-a-3f21",
+          "count": 0,
+          "age": "n/a",
+          "message": "No SystemOOM, MemoryPressure, or eviction events on the node — ruling out node memory/resource exhaustion"
+        },
+        {
+          "type": "Normal",
+          "reason": "Pulled",
+          "object": "pod/api-6f9c84d7b5-2td4r",
+          "count": 1,
+          "age": "6d",
+          "message": "Successfully pulled image (no recent deploy / rollout near the alert window) — not a bad_deploy"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "api-6f9c84d7b5-2td4r",
+      "container": "api",
+      "lines": [
+        { "ts": "2023-09-26T11:02:14Z", "level": "ERROR", "msg": "memcached: read i/o timeout (key=org:settings:cache shard=2) after 250ms" },
+        { "ts": "2023-09-26T11:02:14Z", "level": "WARN", "msg": "pgx: failed to acquire connection: context deadline exceeded after 1500ms; pool stats: total=18 idle=11 acquired=7 (pool not exhausted)" },
+        { "ts": "2023-09-26T11:02:31Z", "level": "INFO", "msg": "memcached read recovered; subsequent reads to same shard succeed in 3ms (server-side memcached latency normal)" },
+        { "ts": "2023-09-26T11:03:09Z", "level": "ERROR", "msg": "memcached: read i/o timeout (key=user:perms shard=0) — different key/shard than before, no consistent pattern" },
+        { "ts": "2023-09-26T11:03:10Z", "level": "WARN", "msg": "tcp: connection reset / packet appears dropped to 10.40.0.0/16 (in-cluster) — retried request succeeded immediately" }
+      ],
+      "neighbor_logs": {
+        "pod": "anetd-8wq4c (kube-system, GKE Dataplane V2 / Cilium agent)",
+        "container": "cilium-agent",
+        "lines": [
+          { "ts": "2023-09-26T11:02:10Z", "level": "warning", "msg": "Conntrack table churn high: 4.1M CT events/min on this node; GC running continuously" },
+          { "ts": "2023-09-26T11:02:12Z", "level": "warning", "msg": "BPF endpoint policy map updates lagging; datapath regeneration queue depth rising under connection open/close rate" },
+          { "ts": "2023-09-26T11:02:15Z", "level": "info", "msg": "cilium-agent CPU 2.6 vCPU (baseline ~0.2 vCPU); sustained high TCP connection setup/teardown from local endpoint 10.40.3.40 (egress-worker)" }
+        ]
+      }
+    },
+    "k8s_deployments.json": {
+      "namespace": "production",
+      "deployment": "api",
+      "desired_replicas": 6,
+      "ready_replicas": 6,
+      "available_replicas": 6,
+      "updated_replicas": 6,
+      "unavailable_replicas": 0,
+      "current_revision": 311,
+      "rollout_status": "complete",
+      "last_rollout_age": "6d",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "No deploy in the alert window; rollout 6 days old and clean. Rules out bad_deploy."
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "gke-incidentio-prod-pool-a-3f21",
+          "ready": true,
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "allocatable": { "cpu": "4000m", "memory": "15000Mi" },
+          "allocated": { "cpu": "1280m", "memory": "5400Mi" },
+          "cpu_commit_ratio": 0.32,
+          "node_cpu_util_pct": 41,
+          "dataplane": "GKE Dataplane V2 (Cilium/eBPF)",
+          "note": "Node CPU only 41% overall and far from committed — but the anetd/cilium-agent DaemonSet pod on THIS node is itself pegged at ~2.6 vCPU due to TCP connection churn. The aggregate-node view hides the per-agent saturation. This is the node hosting the victim api pod AND the high-churn egress-worker."
+        },
+        {
+          "name": "gke-incidentio-prod-pool-b-9c07",
+          "ready": true,
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "allocatable": { "cpu": "4000m", "memory": "15000Mi" },
+          "allocated": { "cpu": "1150m", "memory": "5100Mi" },
+          "cpu_commit_ratio": 0.29,
+          "node_cpu_util_pct": 38,
+          "dataplane": "GKE Dataplane V2 (Cilium/eBPF)",
+          "anetd_cpu": "0.19 vCPU (baseline)",
+          "note": "Control node: no high-churn neighbor, anetd at baseline, the api replica here has NO timeouts."
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "metric_query": "rate(container_cpu_usage_seconds_total{namespace=\"kube-system\",pod=~\"anetd-.*\",container=\"cilium-agent\"}[1m])",
+      "primary_metric": "anetd_cilium_agent_cpu_cores",
+      "unit": "vCPU",
+      "slo_threshold": 0.5,
+      "direction": "lower",
+      "current_value": 2.64,
+      "samples": [
+        { "t": "-30m", "value": 0.21, "node": "pool-a-3f21" },
+        { "t": "-20m", "value": 0.95, "node": "pool-a-3f21" },
+        { "t": "-10m", "value": 1.9, "node": "pool-a-3f21" },
+        { "t": "-2m", "value": 2.5, "node": "pool-a-3f21" },
+        { "t": "0m", "value": 2.64, "node": "pool-a-3f21" }
+      ],
+      "supporting": {
+        "node_tcp_connection_open_rate_pool_a_3f21": 2100,
+        "node_tcp_connection_open_rate_pool_b_9c07": 60,
+        "anetd_cilium_agent_cpu_pool_b_9c07": 0.19,
+        "cilium_conntrack_gc_events_per_min_pool_a": 4100000,
+        "memcached_server_p99_latency_ms": 1.7,
+        "memcached_current_connections": 240,
+        "memcached_cpu_cores": 0.3,
+        "postgres_active_connections": 41,
+        "postgres_max_connections": 200,
+        "postgres_server_p99_query_ms": 4.2,
+        "postgres_cpu_cores": 0.6,
+        "api_pgx_pool_acquired_max": 7,
+        "api_pgx_pool_size": 18,
+        "in_cluster_packet_drop_rate_pps_pool_a_3f21": 850,
+        "in_cluster_packet_drop_rate_pps_pool_b_9c07": 0
+      },
+      "interpretation": "anetd (Cilium agent) CPU on pool-a tracks 1:1 with the node TCP connection open rate (2100/s) and conntrack GC churn (4.1M/min), climbing 0.2->2.64 vCPU. Datastores are healthy (memcached p99 1.7ms / 240 conns / 0.3 vCPU; Postgres p99 4.2ms / 41 of 200 conns / 0.6 vCPU) and the api pgx pool is not exhausted (7 of 18). In-cluster packet drops occur ONLY on pool-a, exactly where anetd is saturated. The 'connection timeouts' are dropped packets in the eBPF datapath, not slow datastores or empty pools."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "BackendConnectionTimeouts",
+            "severity": "critical",
+            "service": "api",
+            "namespace": "production",
+            "workload_name": "api",
+            "cluster_name": "incidentio-gke-prod"
+          },
+          "annotations": {
+            "summary": "api: intermittent memcached read i/o timeout + Postgres connection-acquire deadlines",
+            "description": "Sporadic backend connection timeouts on api pods, no consistent user/endpoint/replica pattern; datastores report healthy"
+          },
+          "state": "firing",
+          "activeAt": "2023-09-26T10:18:11Z"
+        },
+        {
+          "labels": {
+            "alertname": "CiliumAgentHighCPU",
+            "severity": "warning",
+            "service": "anetd",
+            "namespace": "kube-system",
+            "workload_name": "anetd",
+            "cluster_name": "incidentio-gke-prod"
+          },
+          "annotations": {
+            "summary": "Dataplane V2 cilium-agent (anetd) CPU 2.64 vCPU on node gke-incidentio-prod-pool-a-3f21 (baseline ~0.2)",
+            "description": "anetd cilium-agent CPU correlates with node TCP connection open/close rate (2100/s) and conntrack GC churn — the buried root signal"
+          },
+          "state": "firing",
+          "activeAt": "2023-09-26T10:51:02Z"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "api",
+      "note": "Traces show the slow/failed spans are the CLIENT-SIDE network legs to memcached and Postgres (connect/read), with negligible server-side time at the datastore. The slowness lives in the datapath between co-located pods on pool-a, not inside memcached or Postgres.",
+      "spans": [
+        {
+          "trace_id": "a1f3c9d2e7b40015",
+          "span": "GET /api/v1/incidents",
+          "duration_ms": 1543,
+          "status": "error",
+          "node": "gke-incidentio-prod-pool-a-3f21",
+          "children": [
+            { "span": "memcached.read org:settings:cache", "duration_ms": 250, "status": "timeout", "server_processing_ms": 1.6, "note": "client read timed out; memcached server side fast" },
+            { "span": "postgres.acquire_conn", "duration_ms": 1500, "status": "timeout", "server_processing_ms": 0, "note": "never reached server; SYN/connect packets dropped, retried" }
+          ]
+        },
+        {
+          "trace_id": "b7e2110a4c9d8830",
+          "span": "GET /api/v1/incidents",
+          "duration_ms": 22,
+          "status": "ok",
+          "node": "gke-incidentio-prod-pool-b-9c07",
+          "children": [
+            { "span": "memcached.read org:settings:cache", "duration_ms": 3, "status": "ok", "server_processing_ms": 1.6 },
+            { "span": "postgres.query", "duration_ms": 5, "status": "ok", "server_processing_ms": 4.1 }
+          ],
+          "note": "Same code path on the control node (pool-b) succeeds fast — confirms node-local datapath cause."
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "saturation",
+    "root_cause_subtype": "GKE Dataplane V2 CNI agent (anetd / cilium-agent) CPU saturation from per-node TCP connection churn",
+    "required_keywords": [
+      "anetd",
+      "Dataplane V2",
+      "cilium",
+      "CNI agent",
+      "CPU saturation",
+      "TCP connection churn",
+      "dropped packets",
+      "same node",
+      "connection pooling",
+      "keep-alive"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "dependency_failure",
+      "node_failure",
+      "config_error",
+      "data_quality",
+      "network_fault",
+      "healthy",
+      "unknown"
+    ],
+    "ruling_out_keywords": [
+      "memcached server p99 1.7ms healthy",
+      "Postgres 41 of 200 connections healthy",
+      "pgx pool not exhausted (7 of 18)",
+      "self-hosting memcached had no effect",
+      "doubling DB conn lifetime only partial",
+      "MaxIdleConns 2->20 briefly helped then regressed",
+      "no deploy in window / rollout 6 days old",
+      "node MemoryPressure False / no OOM",
+      "control replica on pool-b has no timeouts",
+      "runaway-external-API fix only correlated in time"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_logs",
+      "query_traces",
+      "get_metrics",
+      "describe_pod",
+      "get_node_status",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "query_traces",
+      "describe_pod",
+      "get_node_status"
+    ],
+    "max_investigation_loops": 7,
+    "causal_chain": "bursty short-lived outbound TCP from one co-located pod (egress-worker, no keep-alive) -> GKE Dataplane V2 agent (anetd/cilium-agent) CPU saturates on that node from conntrack/datapath churn -> eBPF datapath drops packets for unrelated cache/DB connections of pods on the SAME node -> api sees memcached 'read i/o timeout' and Postgres connection-acquire deadlines + flapping readiness -> intermittent downstream timeouts with no consistent pattern",
+    "model_response": "ROOT_CAUSE: The GKE Dataplane V2 CNI agent (anetd / cilium-agent DaemonSet pod) is in CPU saturation on node gke-incidentio-prod-pool-a-3f21, pegged at ~2.64 vCPU vs a ~0.2 vCPU baseline (CPU-saturated). It is driven by TCP connection churn — a very high rate of short-lived outbound TCP connections (~2100 open/close per second, no keep-alive / no pooling) from a co-located workload (egress-worker) on the same node, which floods the eBPF conntrack/datapath (4.1M CT GC events/min). The saturated agent drops packets for unrelated connections from OTHER pods on the same node, so the co-located api pod experiences memcached 'read i/o timeout' and Postgres connection-acquire deadlines. The datastores are healthy; this is node-local CNI-agent saturation, not an app connection-pool problem.\nROOT_CAUSE_CATEGORY: saturation\nVALIDATED_CLAIMS:\n- anetd/cilium-agent CPU = 2.64 vCPU (baseline ~0.2) on pool-a, climbing in lockstep with node TCP open rate (2100/s) and conntrack GC churn (4.1M/min) [evidence: prometheus_metrics]\n- The high-churn neighbor egress-worker (2100 conn/s, keep_alive=false) is co-located with the victim api pod on pool-a [evidence: k8s_pods]\n- cilium-agent logs report high conntrack churn, lagging BPF policy-map updates, and CPU 2.6 vCPU attributed to local endpoint 10.40.3.40 (egress-worker) [evidence: k8s_pod_logs]\n- Traces show the failing legs are CLIENT-SIDE connect/read to memcached and Postgres with ~0ms server processing; the same code path on control node pool-b succeeds in milliseconds [evidence: traces]\n- In-cluster packet drops occur only on pool-a (850 pps) and 0 on pool-b, exactly tracking where anetd is saturated [evidence: prometheus_metrics]\n- Node pool-a is Ready, MemoryPressure=False, overall CPU 41% — the saturation is the per-agent DaemonSet, not the node as a whole [evidence: k8s_node_health]\nNON_VALIDATED_CLAIMS:\n- App-layer connection-pool / stale-TCP problem: WRONG. memcached server p99 is 1.7ms with 240 conns / 0.3 vCPU; Postgres p99 4.2ms with 41 of 200 conns / 0.6 vCPU; the api pgx pool is not exhausted (7 of 18 acquired). Doubling DB conn lifetime, switching to a static pool, and raising MaxIdleConns 2->20 only briefly helped — pool tuning does not address dropped packets.\n- GKE-managed memcached at fault: WRONG. Self-hosting memcached in-cluster had no effect, ruling out the cache provider.\n- The runaway-external-API fix that landed when errors vanished: NOT the cause — correlation in time only; the timeouts recurred.\n- bad_deploy / node OOM / node_failure: WRONG. No deploy in the window (rollout 6 days old, clean), no SystemOOM/MemoryPressure, node Ready.\n- TRAP - disabling Dataplane V2: WRONG and harmful. That is a full cluster rebuild for what is a per-node workload connection-churn problem; it does not fix the churn and risks broad disruption.\nCAUSAL_CHAIN:\n- egress-worker opens/closes ~2100 short-lived outbound TCP conns/sec on pool-a with no keep-alive\n- The GKE Dataplane V2 agent (anetd/cilium-agent) CPU-saturates handling conntrack/datapath churn (2.64 vCPU)\n- The saturated eBPF datapath drops packets for unrelated connections of OTHER pods on the same node\n- The co-located api pod's memcached reads time out and Postgres connection acquisition deadlines, readiness flaps\n- Errors are intermittent with no user/endpoint/replica pattern; the api replica on pool-b (no churny neighbor) is unaffected\nFIX: Constrain the offending workload's outbound connection concurrency and reuse connections via HTTP keep-alives / connection pooling so anetd CPU returns to baseline; monitor node-wide TCP connection rate (not just per-pod app metrics). Do NOT disable Dataplane V2 and do NOT keep tuning DB/cache pools."
+  },
+  "remediation": {
+    "fix_tool": "restart_service",
+    "canonical_fix": "Reconfigure the high-churn workload (egress-worker) to use HTTP keep-alives and connection pooling so it stops opening/closing ~2100 TCP conns/sec, capping its outbound connection concurrency, then roll it out; add node-wide TCP-connection-rate and anetd/cilium-agent CPU monitoring. anetd CPU drops back to baseline and the co-located api pod's memcached/Postgres timeouts clear.",
+    "trust_tier": "approval",
+    "primary_metric": "anetd_cilium_agent_cpu_cores",
+    "direction": "lower",
+    "state_before": { "anetd_cilium_agent_cpu_cores": 2.64, "node_tcp_connection_open_rate_pool_a_3f21": 2100, "in_cluster_packet_drop_rate_pps_pool_a_3f21": 850 },
+    "state_after": { "anetd_cilium_agent_cpu_cores": 0.22, "node_tcp_connection_open_rate_pool_a_3f21": 70, "in_cluster_packet_drop_rate_pps_pool_a_3f21": 0 },
+    "recovery_check": "anetd_cilium_agent_cpu_cores < 0.5",
+    "trap_actions": [
+      "Disable GKE Dataplane V2 (rebuild the cluster off Dataplane V2) — a cluster-wide rebuild to fix a single workload's connection-churn problem; does not address the churn and risks broad disruption.",
+      "Endless DB/cache connection-pool tuning — doubling max DB connection lifetime + static pool, raising memcached MaxIdleConns 2->20 — only briefly helps and regresses; never addresses the dropped packets.",
+      "Migrate to self-hosted in-cluster memcached blaming the GKE-managed cache — had no effect.",
+      "Credit the unrelated runaway-external-API fix and close the incident — it only correlated in time; timeouts recur."
+    ],
+    "resolved": true
+  }
+}

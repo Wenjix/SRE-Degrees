@@ -1,0 +1,310 @@
+{
+  "incident": "disk_pressure",
+  "provider": "k8s",
+  "failure_mode": "disk_pressure",
+  "default_severity": "critical",
+  "scenario_difficulty": 3,
+  "placeholder_defaults": {
+    "SVC": "media-upload",
+    "NS": "rlvr-target",
+    "WORKLOAD": "media-upload",
+    "POD": "media-upload-6c9f8d7b54-q4r2n",
+    "POD2": "media-upload-6c9f8d7b54-tz8kx",
+    "POD3": "media-upload-6c9f8d7b54-h7m5p",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9wlq",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-c1d4",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] NodeFilesystemAlmostOutOfSpace — {{NODE}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "NodeFilesystemAlmostOutOfSpace",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}",
+      "node": "{{NODE}}",
+      "mountpoint": "/mnt/stateful_partition"
+    },
+    "commonAnnotations": {
+      "summary": "Node {{NODE}} filesystem /mnt/stateful_partition almost out of space (0.6GB avail, SLO 2GB)",
+      "description": "node_filesystem_avail_bytes on {{NODE}} (/mnt/stateful_partition) fell to 644MB, below the 1GB alert floor and the 2GB SLO. The node has begun reporting DiskPressure and is at risk of evicting {{WORKLOAD}} pods scheduled on it.",
+      "error": "DiskPressure: media-upload filesystem filling up",
+      "suspected_symptom": "node filesystem on /mnt/stateful_partition exhausted; kubelet raising DiskPressure on {{NODE}}",
+      "k8s_failure_mode": "disk_pressure",
+      "context_sources": "prometheus_metrics,k8s_node_health,k8s_events,k8s_pod_logs"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "container_memory_working_set_bytes for {{POD}} sits at 410MB against a 768MB limit — elevated but not OOM territory, a benign red herring that points away from memory.",
+      "A 'BackOff' event appears on {{POD2}} from a single image-pull retry 14m ago that already succeeded; it predates the incident and is unrelated.",
+      "{{NODE2}} shows MemoryPressure=False/DiskPressure=False with 11GB avail — a healthy peer node that could tempt a 'reschedule elsewhere' conclusion rather than fixing the disk on {{NODE}}."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "app": "{{SVC}}",
+          "containers": [
+            {
+              "name": "media-upload",
+              "image": "rlvr/media-upload:v1.8.2",
+              "memory_limit": "768Mi",
+              "ephemeral_storage_request": "1Gi",
+              "ephemeral_storage_limit": "4Gi"
+            }
+          ],
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "DiskPressure", "status": "True", "reason": "EvictionThreshold", "message": "node {{NODE}} has disk pressure; pod is a candidate for eviction" }
+          ],
+          "note": "writing upload buffers to local emptyDir / node /mnt/stateful_partition"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "app": "{{SVC}}",
+          "containers": [
+            {
+              "name": "media-upload",
+              "image": "rlvr/media-upload:v1.8.2",
+              "memory_limit": "768Mi",
+              "ephemeral_storage_request": "1Gi",
+              "ephemeral_storage_limit": "4Gi"
+            }
+          ],
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "DiskPressure", "status": "False" }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "EvictionThresholdMet",
+          "object": "node/{{NODE}}",
+          "count": 4,
+          "age": "90s",
+          "message": "Attempting to reclaim ephemeral-storage; node {{NODE}} nodefs.available 644Mi is below eviction threshold (imagefs/nodefs)"
+        },
+        {
+          "type": "Warning",
+          "reason": "FreeDiskSpaceFailed",
+          "object": "node/{{NODE}}",
+          "count": 3,
+          "age": "75s",
+          "message": "Failed to garbage collect required amount of images; nodefs still below threshold on /mnt/stateful_partition"
+        },
+        {
+          "type": "Warning",
+          "reason": "Evicted",
+          "object": "pod/{{POD3}}",
+          "count": 1,
+          "age": "40s",
+          "message": "The node was low on resource: ephemeral-storage. Container media-upload was using 3502Mi which exceeds its request of 1Gi."
+        },
+        {
+          "type": "Normal",
+          "reason": "BackOff",
+          "object": "pod/{{POD2}}",
+          "count": 1,
+          "age": "14m",
+          "message": "Back-off pulling image rlvr/media-upload:v1.8.2 (retry succeeded)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{POD}}",
+      "container": "media-upload",
+      "lines": [
+        "2026-06-20T19:50:02Z INFO  media-upload buffering inbound upload chunk to /tmp/fill (local node fs)",
+        "2026-06-20T19:50:33Z WARN  disk usage on /mnt/stateful_partition at 92% (3.5Gi written to /tmp/fill, temp buffers not reaped)",
+        "2026-06-20T19:50:48Z ERROR DiskPressure: media-upload filesystem filling up",
+        "2026-06-20T19:50:49Z ERROR write /tmp/fill: no space left on device",
+        "2026-06-20T19:50:51Z ERROR DiskPressure: media-upload filesystem filling up"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "True", "reason": "KubeletHasDiskPressure", "message": "kubelet has disk pressure" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "filesystem": {
+            "mountpoint": "/mnt/stateful_partition",
+            "avail_bytes": 644000000,
+            "capacity_bytes": 19000000000,
+            "used_pct": 96.6
+          }
+        },
+        {
+          "name": "{{NODE2}}",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "filesystem": {
+            "mountpoint": "/mnt/stateful_partition",
+            "avail_bytes": 11200000000,
+            "capacity_bytes": 19000000000,
+            "used_pct": 41.1
+          }
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "queries": [
+        {
+          "metric": "node_filesystem_avail_bytes",
+          "query": "min(node_filesystem_avail_bytes{mountpoint=\"/mnt/stateful_partition\"})",
+          "labels": { "node": "{{NODE}}", "mountpoint": "/mnt/stateful_partition" },
+          "value": 644000000,
+          "unit": "bytes",
+          "slo_threshold": 2000000000,
+          "direction": "higher",
+          "breached": true
+        },
+        {
+          "metric": "node_filesystem_avail_bytes",
+          "query": "node_filesystem_avail_bytes{node=\"{{NODE2}}\",mountpoint=\"/mnt/stateful_partition\"}",
+          "labels": { "node": "{{NODE2}}", "mountpoint": "/mnt/stateful_partition" },
+          "value": 11200000000,
+          "unit": "bytes",
+          "breached": false
+        },
+        {
+          "metric": "container_memory_working_set_bytes",
+          "query": "max(container_memory_working_set_bytes{namespace=\"{{NS}}\",pod=~\"media-upload-.*\"})",
+          "labels": { "pod": "{{POD}}" },
+          "value": 410000000,
+          "unit": "bytes",
+          "note": "768Mi limit; elevated but well under OOM — adversarial",
+          "breached": false
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "NodeFilesystemAlmostOutOfSpace",
+            "severity": "critical",
+            "node": "{{NODE}}",
+            "mountpoint": "/mnt/stateful_partition",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}"
+          },
+          "annotations": {
+            "summary": "Filesystem on {{NODE}} (/mnt/stateful_partition) has only 644MB available",
+            "description": "node_filesystem_avail_bytes 644000000 < 1GB floor; kubelet raised DiskPressure"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:50:48Z"
+        },
+        {
+          "labels": {
+            "alertname": "DiskPressure",
+            "severity": "critical",
+            "node": "{{NODE}}",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}"
+          },
+          "annotations": {
+            "summary": "Node {{NODE}} reporting DiskPressure condition",
+            "description": "kube_node_status_condition{condition=\"DiskPressure\",status=\"true\"} == 1 for {{NODE}}"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:50:49Z"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "resource_exhaustion",
+    "required_keywords": [
+      "disk",
+      "ephemeral-storage",
+      "/mnt/stateful_partition",
+      "node_filesystem_avail_bytes",
+      "DiskPressure",
+      "/tmp/fill",
+      "media-upload",
+      "{{NODE}}"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "dependency_failure",
+      "network_fault",
+      "config_error",
+      "data_quality",
+      "node_failure",
+      "healthy",
+      "unknown"
+    ],
+    "ruling_out_keywords": [
+      "memory working set 410MB under 768Mi limit, not OOM",
+      "BackOff on {{POD2}} predates incident by 14m and already recovered",
+      "{{NODE2}} DiskPressure=False with 11.2GB avail — node hardware healthy, only {{NODE}} disk is full",
+      "node {{NODE}} Ready=True and MemoryPressure=False — not node_failure"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_node_status",
+      "get_events",
+      "get_logs",
+      "get_metrics"
+    ],
+    "required_queries": [
+      "get_node_status",
+      "get_logs",
+      "get_metrics"
+    ],
+    "max_investigation_loops": 3,
+    "model_response": "ROOT_CAUSE: The media-upload workload wrote ~3.5GB of unbounded temp upload buffers to /tmp/fill on node {{NODE}}'s /mnt/stateful_partition, driving node_filesystem_avail_bytes down to 644MB (below the 2GB SLO and 1GB alert floor). The kubelet raised DiskPressure on {{NODE}}, began evicting media-upload pods ({{POD3}} evicted for ephemeral-storage), and writes now fail with 'no space left on device'. This is local disk/ephemeral-storage exhaustion on the node, not a memory, deploy, or node-hardware fault.\nROOT_CAUSE_CATEGORY: resource_exhaustion\nVALIDATED_CLAIMS:\n- Node {{NODE}} filesystem /mnt/stateful_partition is 96.6% full with only 644MB avail, below the 2GB SLO [evidence: k8s_node_health]\n- node_filesystem_avail_bytes = 644000000 < 2000000000 SLO threshold, breached=true [evidence: prometheus_metrics]\n- media-upload logged 'DiskPressure: media-upload filesystem filling up' and 'write /tmp/fill: no space left on device' after buffering 3.5Gi to /tmp/fill [evidence: k8s_pod_logs]\n- Kubelet raised EvictionThresholdMet and evicted {{POD3}} for using 3502Mi ephemeral-storage vs its 1Gi request [evidence: k8s_events]\n- NodeFilesystemAlmostOutOfSpace and DiskPressure alerts are firing for {{NODE}} [evidence: prometheus_alerts]\n- Pod {{POD}} carries condition DiskPressure=True, candidate for eviction [evidence: k8s_pods]\nNON_VALIDATED_CLAIMS:\n- Memory exhaustion: container_memory_working_set_bytes is 410MB under a 768Mi limit — not OOM [evidence: prometheus_metrics]\n- Image-pull failure: the BackOff on {{POD2}} is 14m old and already recovered, unrelated to current disk pressure [evidence: k8s_events]\n- Node hardware failure: {{NODE}} is Ready=True with MemoryPressure=False; peer {{NODE2}} is fully healthy with 11.2GB free, so this is disk fill on one node, not a node failure [evidence: k8s_node_health]\nCAUSAL_CHAIN:\n- media-upload buffers unbounded upload data to /tmp/fill on the node-local /mnt/stateful_partition\n- 3.5Gi of temp files are never reaped, filling the filesystem to 96.6%\n- node_filesystem_avail_bytes drops to 644MB, crossing the 1GB alert floor and 2GB SLO\n- kubelet on {{NODE}} reports DiskPressure and begins ephemeral-storage eviction\n- {{POD3}} is evicted and {{POD}} writes fail with ENOSPC, degrading media-upload\n- Fix: free the disk (remove /tmp/fill temp buffers) and restart the workload so avail_bytes recovers above the 2GB SLO"
+  },
+  "remediation": {
+    "fix_tool": "rotate_logs",
+    "canonical_fix": "kubectl exec -n rlvr-target deploy/media-upload -- rm -f /tmp/fill; kubectl rollout restart deployment/media-upload -n rlvr-target",
+    "trust_tier": "autonomous",
+    "primary_metric": "node_filesystem_avail_bytes",
+    "direction": "higher",
+    "state_before": { "node_filesystem_avail_bytes": 644000000 },
+    "state_after": { "node_filesystem_avail_bytes": 16988848128 },
+    "recovery_check": "node_filesystem_avail_bytes > 2000000000",
+    "resolved": true
+  }
+}
