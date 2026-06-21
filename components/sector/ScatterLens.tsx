@@ -15,6 +15,13 @@ const VB = { w: 760, h: 440 };
 const PAD = { l: 52, r: 20, t: 20, b: 40 };
 const MAX_LAT = 600;
 
+// Reference thresholds — ink/hairline, not health color.
+const SLO_LATENCY_MS = 200; // p95 latency SLO boundary
+const EB_THRESHOLD_PCT = 25; // error-budget danger floor
+
+// Two agents are "overlapping" if their plot positions are within this radius.
+const OVERLAP_RADIUS = 18;
+
 export function ScatterLens({ className }: { className?: string }) {
 	const { state, select, open } = useLens();
 	const svgRef = useRef<SVGSVGElement>(null);
@@ -82,6 +89,19 @@ export function ScatterLens({ className }: { className?: string }) {
 		select(worst.id);
 	};
 
+	// Compute which agents have overlapping neighbours so we can suppress their
+	// at-rest labels. Two points are "overlapping" if another point sits within
+	// OVERLAP_RADIUS SVG units of them in plot space.
+	const plotPositions = state.agents.map((a) => ({ id: a.id, x: px(a.latencyMs), y: py(a.errorBudget.remainingPct) }));
+	const hasNeighbour = (id: string, cx: number, cy: number) =>
+		plotPositions.some(
+			(p) => p.id !== id && Math.hypot(p.x - cx, p.y - cy) < OVERLAP_RADIUS,
+		);
+
+	// Reference line positions in SVG space.
+	const sloX = px(SLO_LATENCY_MS);
+	const ebY = py(EB_THRESHOLD_PCT);
+
 	return (
 		<div className={cn("relative h-full w-full p-3", className)}>
 			<svg
@@ -112,6 +132,39 @@ export function ScatterLens({ className }: { className?: string }) {
 						</text>
 					</g>
 				))}
+
+				{/* SLO latency reference line — vertical hairline at p95 SLO boundary */}
+				<line
+					x1={sloX} y1={PAD.t}
+					x2={sloX} y2={VB.h - PAD.b}
+					stroke="var(--ret-border-strong)"
+					strokeWidth={1}
+					strokeDasharray="4,4"
+				/>
+				<text
+					x={sloX + 4} y={PAD.t + 10}
+					textAnchor="start"
+					className="fill-[var(--ret-text-muted)] font-mono text-[9px] uppercase"
+				>
+					SLO {SLO_LATENCY_MS}ms
+				</text>
+
+				{/* Error-budget threshold line — horizontal hairline at danger floor */}
+				<line
+					x1={PAD.l} y1={ebY}
+					x2={VB.w - PAD.r} y2={ebY}
+					stroke="var(--ret-border-strong)"
+					strokeWidth={1}
+					strokeDasharray="4,4"
+				/>
+				<text
+					x={VB.w - PAD.r - 4} y={ebY - 4}
+					textAnchor="end"
+					className="fill-[var(--ret-text-muted)] font-mono text-[9px] uppercase"
+				>
+					EB {EB_THRESHOLD_PCT}%
+				</text>
+
 				{/* axis titles */}
 				<text x={PAD.l + plotW / 2} y={VB.h - 4} textAnchor="middle" className="fill-[var(--ret-text-dim)] font-mono text-[10px] uppercase">
 					latency (ms)
@@ -144,17 +197,22 @@ export function ScatterLens({ className }: { className?: string }) {
 				) : null}
 
 				{/* points */}
-				{state.agents.map((a) => (
-					<ScatterPoint
-						key={a.id}
-						agent={a}
-						cx={px(a.latencyMs)}
-						cy={py(a.errorBudget.remainingPct)}
-						selected={state.selectedId === a.id}
-						onSelect={() => select(a.id)}
-						onOpen={() => open(a.id)}
-					/>
-				))}
+				{state.agents.map((a) => {
+					const cx = px(a.latencyMs);
+					const cy = py(a.errorBudget.remainingPct);
+					return (
+						<ScatterPoint
+							key={a.id}
+							agent={a}
+							cx={cx}
+							cy={cy}
+							selected={state.selectedId === a.id}
+							suppressLabel={hasNeighbour(a.id, cx, cy)}
+							onSelect={() => select(a.id)}
+							onOpen={() => open(a.id)}
+						/>
+					);
+				})}
 			</svg>
 		</div>
 	);
@@ -165,6 +223,7 @@ function ScatterPoint({
 	cx,
 	cy,
 	selected,
+	suppressLabel,
 	onSelect,
 	onOpen,
 }: {
@@ -172,10 +231,14 @@ function ScatterPoint({
 	cx: number;
 	cy: number;
 	selected: boolean;
+	suppressLabel: boolean;
 	onSelect: () => void;
 	onOpen: () => void;
 }) {
+	const [hovered, setHovered] = useState(false);
 	const color = STATUS_COLOR_VAR[agent.status];
+	// Show label at rest only if not overlapping; always show on hover or selection.
+	const showLabel = !suppressLabel || hovered || selected;
 	return (
 		<g
 			transform={`translate(${cx} ${cy})`}
@@ -184,13 +247,17 @@ function ScatterPoint({
 				e.stopPropagation();
 				onSelect();
 			}}
+			onPointerEnter={() => setHovered(true)}
+			onPointerLeave={() => setHovered(false)}
 			onDoubleClick={onOpen}
 		>
 			{selected ? <circle r={9} fill="none" stroke="var(--ret-border-strong)" strokeWidth={1} /> : null}
 			<circle r={selected ? 5.5 : 4.5} fill={color} fillOpacity={agent.status === "idle" ? 0.4 : 0.9} />
-			<text x={8} y={3} className="fill-[var(--ret-text-dim)] font-mono text-[10px]">
-				{agent.name}
-			</text>
+			{showLabel ? (
+				<text x={8} y={3} className="fill-[var(--ret-text-dim)] font-mono text-[10px]">
+					{agent.name}
+				</text>
+			) : null}
 		</g>
 	);
 }

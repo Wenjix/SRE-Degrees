@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { Maximize2 } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { Sparkline } from "@/components/dashboard/Sparkline";
@@ -169,14 +170,13 @@ function AgentCardImpl({
 			<span
 				aria-hidden="true"
 				className={cn(
-					"pointer-events-none absolute right-0 top-0 flex items-center gap-0.5 border-b border-l border-[var(--ret-border)] bg-[var(--ret-bg)] px-1 py-px",
-					"font-mono text-[8px] uppercase tracking-widest text-[var(--ret-text-muted)]",
+					"pointer-events-none absolute right-0 top-0 flex items-center justify-center border-b border-l border-[var(--ret-border)] bg-[var(--ret-bg)] p-0.5",
 					"opacity-0 transition-opacity duration-0",
 					"group-hover:opacity-100",
 					selected && "opacity-100",
 				)}
 			>
-				⤢
+				<Maximize2 size={10} strokeWidth={1.75} className="text-[var(--ret-text-muted)]" />
 			</span>
 		</ReticleFrame>
 	);
