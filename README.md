@@ -1,7 +1,7 @@
 # SRE-Degrees — Reticle Console
 
 A spatial SRE operations console where autonomous agents are first-class, living
-objects. Two hero surfaces sit on one shared store:
+objects. **Seven lenses project one shared store.** Two are the hero surfaces:
 
 1. **SECTOR** — a blueprint mission-control board where agents are Dedalus-grade
    cards arranged by service zone, with proximity grouping, semantic zoom, and a
@@ -10,6 +10,19 @@ objects. Two hero surfaces sit on one shared store:
    visualizes an agent earning its way from **HARNESSED** (human-in-the-loop on
    every action) to **FULLY AUTONOMOUS** by accumulating verifiable evidence in
    progressively riskier proving environments. Trust is earned — and can be lost.
+
+The rest turn that model into an operator's and a VP's working surfaces:
+
+3. **On-call cockpit** — `// INCIDENTS` (the 3am triage view, severity-sorted)
+   + `// QUEUE` (the human approval worklist that makes "human-in-the-loop" a
+   real list, not a label). An active-incident banner + an "N need you" badge
+   keep both one click away from any lens.
+4. **VP telescope** — `// FLEET`, the Risk & Economics board read from orbit:
+   spend + week-over-week, the oversight distribution, **correlated authority**
+   (concentration risk), owner attribution, and the error-budget portfolio.
+5. **Authority & Blast-Radius map** — `// MAP`: pick an agent and see the
+   transitive blast of one bad call (`dependsOn × tools × tier × env`) and what
+   oversight actually contains it.
 
 > This README is written for AI agents working in the repo. It is a map +
 > conventions reference, not marketing copy. Paths are relative to repo root.
@@ -57,18 +70,25 @@ pure projection of it, so selection/data/autonomy stay coherent across lenses.
 ```
 app/dashboard/page.tsx
   └─ <LensProvider>                      components/sector/LensProvider.tsx
-       └─ <SectorWorkspace>              header (FleetSummary + ViewModeSwitch + SoundToggle)
-            ├─ activeView "canvas"  → <SectorCanvas>   (spatial board, L1/L2 + drag)
-            ├─ activeView "list"    → <ListLens>       (keyboard/SR triage table)
-            ├─ activeView "scatter" → <ScatterLens>    (latency × error-budget)
-            ├─ activeView "promote" → <PromoteLens>    (autonomy launch track)
+       └─ <SectorWorkspace>              header: active-incident banner + "N need you" badge
+            │                                    + FleetSummary + ViewModeSwitch + SoundToggle
+            ├─ activeView "canvas"    → <SectorCanvas>   (spatial board, L1/L2 + drag)
+            ├─ activeView "list"      → <ListLens>       (keyboard/SR triage table)
+            ├─ activeView "scatter"   → <ScatterLens>    (latency × error-budget)
+            ├─ activeView "promote"   → <PromoteLens>    (autonomy launch track)
+            ├─ activeView "incidents" → <IncidentLens>   (active incidents, severity-sorted)
+            ├─ activeView "queue"     → <QueueLens>      (agent actions awaiting human approval)
+            ├─ activeView "fleet"     → <FleetLens>      (Risk & Economics board)
+            ├─ activeView "blast"     → <BlastLens>      (authority + blast-radius map)
             ├─ rail: <GroupLedger> (canvas/scatter) | <EvidenceLedger> (promote)
             └─ overlay: <AgentDossier>  (L3 slide-over)
 ```
 
 The store ticks a single `setInterval` (`stepTelemetry`, every 1600ms) that
-mutates metrics, status, and autonomy evidence immutably. **Do not add a second
-timer** — extend `stepTelemetry`.
+mutates metrics, status, autonomy evidence, **and ages incidents + the approval
+queue** — all immutably. **Do not add a second timer** — extend `stepTelemetry`.
+The Fleet and Blast lenses derive everything live from `state.agents` via
+`useMemo`; they add no state of their own.
 
 ---
 
@@ -84,11 +104,17 @@ app/
   design-system/page.tsx Component showcase (incl. a SECTOR primitives section)
 
 lib/
-  sre-data.ts            DOMAIN MODEL: SreAgent type + ~14 seeded agents + zones[] +
-                         spatial constants (CELL=48, CARD_W=288, CARD_H=240, WORLD) +
+  sre-data.ts            DOMAIN MODEL: SreAgent type + ~14 seeded agents (work signals,
+                         cost, owned service, eval/coverage) + Incident & PendingAction
+                         types + seeds + zones[] + spatial constants (CELL=48, WORLD) +
                          autonomy seeds + fleetOverview + agentCommandEntities
   promotion.ts           PROMOTION ENGINE (pure, no React): TIERS, GATES, computeReadiness,
                          gateProgress, eligible, blockingReason, nextTier/prevTier
+  fleet.ts               VP TELESCOPE (pure): fleetEconomics, fleetGovernance,
+                         correlatedAuthority, ownershipRollup, budgetPortfolio +
+                         FLEET_PRIOR_WEEK / TEAM_LEAD baselines
+  blast.ts               BLAST RADIUS (pure): blastRadius (reverse-dependency BFS over
+                         dependsOn × tools × tier × env) + topBlastRadii ranking
   navigation.ts          Nav sections, StatusTone + STATUS_TONE_CLASS, Cmd+K command builder
   demo-data.ts           Legacy DemoProject data (projects/settings pages only)
   cn.ts                  classnames join
@@ -101,6 +127,10 @@ components/sector/        THE PRODUCT. See "Core concepts".
   AgentCard.tsx          One renderer, L1 glyph tile / L2 full Dedalus card
   HealthSpine / ErrorBudgetArc / HeartbeatDot / ToolsRail / TerminalTail   card sub-parts
   ListLens / ScatterLens / GroupLedger / FleetSummary / ViewModeSwitch     other lenses + chrome
+  IncidentLens.tsx       On-call: active incidents, severity→age sorted, burn sparkline
+  QueueLens.tsx          On-call: human approval worklist (Approve/Deny/Escalate, SLA countdown)
+  FleetLens.tsx          VP telescope: Economics / Oversight / Correlated authority / Ownership / Budget
+  BlastLens.tsx          Authority & blast-radius SVG map (select origin → cascade highlight)
   AgentDossier.tsx       L3 detail slide-over (incl. a PROMOTION section)
   TemperatureField / HealthRing   ambient sensory overlays
   SoundToggle.tsx + useAmbientSound.ts   Web Audio sonifier (off by default)
@@ -122,8 +152,12 @@ components/ui/            Skeleton, BrailleSpinner
 
 test/
   promotion.test.ts      Engine unit tests (readiness weighting, hard-cap, eligibility, gates)
+  fleet.test.ts          Fleet derivations + guards on the seeded demo narrative
+  blast.test.ts          Blast-radius BFS, containment, ranking (+ seeded-fleet assertions)
   navigation.test.ts     Nav/command tests
 ```
+(`pnpm test` enumerates these explicitly — add new files to the `test` script in
+`package.json`. Currently **33 tests** across 4 files; all pure, no DOM.)
 
 ---
 
@@ -133,9 +167,14 @@ test/
 `useLens()` returns `{ state, ...actions, worstStatus }`. State:
 `agents`, `selectedId`, `openAgentId` (dossier), `activeView`, `focusZone`/`focusNonce`
 (canvas framing intent), `soundOn`, `groupNames` (sticky cluster renames),
-`promoteSelectedId`, `promotingId`/`demotingId` (transient ceremony flags), `ledger`.
+`promoteSelectedId`, `promotingId`/`demotingId` (transient ceremony flags), `ledger`,
+plus the on-call cockpit's `incidents` + `pendingActions`. Actions include
+`select`, `open`/`close`, `setView`, `focusZone`, `promote`/`hold`/`rollback`, and
+`resolveAction(id, 'approve'|'deny'|'escalate')` (drops a queue item + logs it).
 Action creators are stable (`useCallback([])`) so consumers don't re-bind every tick.
-`stepTelemetry()` is where all live evolution happens (metrics + autonomy evidence).
+`stepTelemetry()` is where all live evolution happens (metrics + autonomy evidence +
+incident/queue aging). The `selectedId` is shared, so picking an agent in the Blast
+map or a Fleet callout re-roots every other lens to it.
 
 ### 2. SECTOR spatial board — `SectorCanvas.tsx`
 - **Camera**: one `translate+scale` transform on a single wrapper, driven by a
@@ -152,9 +191,12 @@ Action creators are stable (`useCallback([])`) so consumers don't re-bind every 
 ### 3. The Promotion Engine — `lib/promotion.ts` + `PromoteLens.tsx`
 - **Tiers** (autonomy ladder): `harnessed → supervised → guarded → autonomous`.
   Position on the track = autonomy level.
-- **Gates** (`GATES`): each promotion requires 6 **verifiable** criteria — verified
-  runs, SLO adherence, override-rate→0 (inverted), zero-criticals soak, dwell time,
-  and proving-ground graduation (`sandbox→shadow→canary→production`). Targets ramp by tier.
+- **Gates** (`GATES`): each promotion requires **8 verifiable** criteria —
+  verified runs, **owned-service SLO** (fails if the service is burning, even when
+  the agent is green), **decision-quality eval**, override-rate→0 (inverted),
+  **review coverage** (the override denominator — a low correction rate is
+  meaningless if little is reviewed), zero-criticals soak, dwell time, and
+  proving-ground graduation (`sandbox→shadow→canary→production`). Targets ramp by tier.
 - **Readiness** (`computeReadiness`): weighted 0–100, **slew-limited** so it creeps.
   Hits exactly 100 only when every criterion passes (= `eligible`). A critical
   **hard-caps readiness ≈60** → trust visibly collapses and can trigger auto-demote.
@@ -175,7 +217,27 @@ Motion is CSS `@keyframes` (`ret-hb` heartbeat, `ret-sonar`, `ret-health-ring`,
 **Web Audio** (`useAmbientSound`): OFF by default, the mute toggle is the gesture
 that resumes the `AudioContext`; panned earcons on status + promote/demote events.
 
-### 5. Color discipline (important invariant)
+### 5. Operations & governance lenses (newer surfaces)
+All four read the same store; none add a timer.
+- **On-call cockpit** — `IncidentLens` (declared `Incident`s, sorted severity→age,
+  with trend glyph, responders/IC, owned-service burn sparkline) and `QueueLens`
+  (the `PendingAction` worklist, sorted overdue→mutating→largest-blast, with risk
+  badge, blast radius, confidence, SLA countdown, and `resolveAction` controls).
+  `SectorWorkspace` raises an active-incident banner (any SEV ≤ 2) + an
+  "N need you" badge.
+- **VP telescope** — `FleetLens` over `lib/fleet.ts`: spend + WoW, the autonomy
+  ladder as a monochrome ink distribution, **correlated authority** (dependency
+  hubs, autonomous-upstream, clustered mutate power), owner attribution, and the
+  burning-vs-within-budget portfolio. "1 autonomous in production" is the headline
+  governance number.
+- **Authority & Blast-Radius map** — `BlastLens` over `lib/blast.ts`: an SVG of the
+  spatial world (zones labelled with their service-criticality tier, `CORE·T0`).
+  Node **shape** = authority (■ can mutate / ● read-only), **fill** = health,
+  **inner ink** = autonomy, **dashed ring** = production; edges = `dependsOn`.
+  Select an origin → its transitive downstream cascade lights up and the panel
+  flags when blast exceeds oversight ("blast 6 at SUPERVISED — widen review").
+
+### 6. Color discipline (important invariant)
 **Saturated color (`--ret-green/amber/red/blue`) means exactly one thing: agent
 HEALTH.** Status is never color-only (always paired with a dot + text label).
 **Autonomy** is a separate, deliberately non-color language: lane **position** +
@@ -194,21 +256,40 @@ type SreAgent = {
   status: 'healthy'|'degraded'|'critical'|'idle';  tone: StatusTone;
   pos: {x,y};                                       // world coords, CELL-quantized
   slo: {burnRate,target};  errorBudget: {remainingPct};
-  cpu|mem|disk: MetricSeries;  latencyMs;  heartbeat;  tools; mcpServers; cron; dependsOn;
-  terminalLines: string[];  uptime;
+  // --- agent-native work signals (golden signals for an AGENT, not a VM) ---
+  actions; toolSuccess; decisionMs; cost: MetricSeries;  tokensPerMin;
+  // the SERVICE this agent OWNS — its budget is INDEPENDENT of agent health
+  service: {name, sloTarget, burnRate, errorBudgetPct};
+  cpu|mem|disk: MetricSeries;                       // relegated host vitals (L3 only)
+  latencyMs; heartbeat; tools; mcpServers; cron; dependsOn; terminalLines; uptime;
   // --- autonomy / promotion ---
   autonomyTier: 'harnessed'|'supervised'|'guarded'|'autonomous';
   readiness: number;                                // 0-100, recomputed + slew-limited
   provingEnv: 'sandbox'|'shadow'|'canary'|'production';
-  verifiedRuns; successRate; overrideRate; incidents; soakMs;
-  critStreak; cooldown;                             // simulator bookkeeping
+  verifiedRuns; successRate; overrideRate;
+  evalPassRate; humanAgreementRate; reviewSamplingRate;  // decision quality + oversight integrity
+  critsInWindow; soakMs; critStreak; cooldown;      // simulator bookkeeping
 };
+
+// on-call cockpit (lib/sre-data.ts)
+type Incident = { id; severity:1|2|3|4; title; service; zones; customerImpact;
+                  agentIds; trigger; burnTrend; lastAction; trend; commander; ageMs };
+type PendingAction = { id; agentId; action; risk:'read'|'mutate'; blastServices;
+                       blastInstances; blastScope; reasoning; confidence; ageMs; slaMs };
 ```
 
-Seed narrative: **Atlas** (critical, harnessed, RDY ~22 = the jailed cautionary
-tale), **Pan** (supervised, near the guarded gate = demo hero), **Hera** (guarded,
-primed for REMOVE OVERSIGHT), **Hermes** (already autonomous, anchors the right edge),
-batch agents idle/harnessed.
+Seed narrative (the cast that makes each surface tell a story):
+- **Atlas** — critical, harnessed, RDY ~22; owns a burning `control-plane-api` and
+  is a dependency hub. The jailed cautionary tale.
+- **Pan** — supervised, one criterion under the guarded gate. The promotion hero.
+- **Hera** — guarded in production, primed for the REMOVE OVERSIGHT ceremony.
+- **Hermes** — already autonomous in production, positionally upstream of the core.
+  The "no human in any loop" governance + blast story.
+- **Zeus** — a **healthy** agent sitting over a **burning** `payments-ledger`, barely
+  reviewed (the agent/service split + the unwatched-gate fix).
+- **Vela** — green but silently burning money ($52/hr runaway, the cost story).
+- **Iris** — the **widest blast radius** in the fleet (6 agents) yet only supervised
+  — under-watched for its reach. The credibility story on the Blast map.
 
 ---
 
@@ -240,7 +321,8 @@ infinite canvas"* (spatial cognition, ambient senses); Dedalus Labs machine-card
 (the dark blueprint card aesthetic).
 
 ## Not yet built (intentional follow-ons)
-Dependency connector lines at L3, a minimap / off-screen edge-alert layer, persisted
-per-operator board layouts, and a tuned demo "sim clock". The `/dashboard/projects`
-and `/dashboard/settings` routes are legacy starter pages still backed by
+Dependency edges inside the L3 dossier (the **Blast map** now carries them at the
+fleet level), a minimap / off-screen edge-alert layer, persisted per-operator board
+layouts, and a tuned demo "sim clock". The `/dashboard/projects` and
+`/dashboard/settings` routes are legacy starter pages still backed by
 `lib/demo-data.ts`.
