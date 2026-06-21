@@ -484,7 +484,7 @@ export function SectorCanvas({ className }: { className?: string }) {
 								aria-label={`${agent.name}, ${agent.status}, ${agent.zone} zone, ${agent.region}, ${agent.uptime}. Enter to open dossier; arrow keys to navigate; Shift plus arrow keys to move the agent.`}
 								onKeyDown={(e) => onCellKeyDown(e, agent)}
 								className={cn(
-									"ret-cell absolute outline-none transition-shadow",
+									"ret-cell group absolute outline-none transition-shadow",
 									"focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
 								)}
 								style={{ left: agent.pos.x, top: agent.pos.y, width: CARD_W, height: CARD_H }}
@@ -522,7 +522,7 @@ export function SectorCanvas({ className }: { className?: string }) {
 				<span className="border border-[var(--ret-border)] bg-[var(--ret-bg)]/80 px-1.5 py-0.5">
 					{level === "L1" ? "L1 · SECTOR" : "L2 · ZONE"}
 				</span>
-				<span className="hidden sm:inline">scroll to zoom · drag a card to regroup</span>
+				<span className="hidden sm:inline">scroll to zoom · drag a card to regroup · click a card to open</span>
 			</div>
 		</div>
 	);

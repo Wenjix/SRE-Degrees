@@ -8,6 +8,7 @@ import { eligible, TIER_LABEL, TIER_RANK, TIERS } from "@/lib/promotion";
 import { AgentCard } from "./AgentCard";
 import { AutonomyChip } from "./AutonomyChip";
 import { CandidateDossier } from "./CandidateDossier";
+import { ConferralSeal } from "./ConferralSeal";
 import { useLens } from "./LensProvider";
 import { TierLane } from "./TierLane";
 import { STATUS_COLOR_VAR } from "./visual";
@@ -66,7 +67,8 @@ export function PromoteLens({ className }: { className?: string }) {
 	// auto-clear a ceremony after it plays
 	useEffect(() => {
 		if (!promotingId && !demotingId) return;
-		const t = window.setTimeout(() => clearCeremony(), 950);
+		// promotion lingers a beat longer so the degree conferral reads
+		const t = window.setTimeout(() => clearCeremony(), promotingId ? 1500 : 950);
 		return () => window.clearTimeout(t);
 	}, [promotingId, demotingId, clearCeremony]);
 
@@ -169,23 +171,37 @@ export function PromoteLens({ className }: { className?: string }) {
 							})()
 						: null}
 
-					{/* demotion ceremony — health-colored ring (a real health event) */}
+					{/* demotion ceremony — health-colored ring + label (a real health event).
+					    The ring carries color; the label carries the WORD + reason, so the
+					    event never reads by color alone (One-Color-One-Meaning Rule). */}
 					{demotingId && ceremonyAgent
 						? (() => {
 								const pos = slots.get(ceremonyAgent.id);
 								if (!pos) return null;
+								const color = STATUS_COLOR_VAR[ceremonyAgent.status];
+								// match THIS agent's tier-change entry (not ledger[0], which an operator
+							// action during the ~950ms ceremony can displace); auto live-fire
+							// entries keep the same tier, so fromTier !== toTier isolates the demotion.
+							const reason = state.ledger.find((e) => e.agentId === ceremonyAgent.id && e.fromTier !== e.toTier)?.reason ?? "trust revoked";
 								return (
-									<span
+									<div
 										key={`demote-${demotingId}`}
-										className="ret-health-ring pointer-events-none absolute z-30 block h-28 w-28 border-2"
+										className="pointer-events-none absolute z-30"
 										style={{
-											left: `calc(${pos.ti} * 25% + 12%)`,
+											left: `calc(${pos.ti} * 25% + 12.5%)`,
 											top: `${TOP0 + pos.slot * GAP + TOKEN_H / 2}px`,
 											transform: "translate(-50%, -50%)",
-											borderColor: STATUS_COLOR_VAR[ceremonyAgent.status],
 										}}
 										aria-hidden="true"
-									/>
+									>
+										<span className="ret-health-ring block h-28 w-28 border-2" style={{ borderColor: color }} />
+										<span
+											className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap border border-[var(--ret-border)] bg-[var(--ret-bg)] px-1.5 py-0.5 font-mono text-[10px]"
+											style={{ color }}
+										>
+											DEMOTED · {reason}
+										</span>
+									</div>
 								);
 							})()
 						: null}
@@ -204,7 +220,7 @@ export function PromoteLens({ className }: { className?: string }) {
 									>
 										<span className="ret-bracket-dissolve absolute -left-0.5 bottom-3 top-3 w-2 border-y border-l border-[var(--ret-accent)]" />
 										<span className="ret-bracket-dissolve absolute -right-0.5 bottom-3 top-3 w-2 border-y border-r border-[var(--ret-accent)]" />
-										<span className="ret-shatter absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--ret-accent)]">
+										<span className="ret-shatter absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--ret-accent)]">
 											oversight removed
 										</span>
 									</div>
@@ -213,6 +229,14 @@ export function PromoteLens({ className }: { className?: string }) {
 						: null}
 				</div>
 			</div>
+
+			{/* degree conferral — the SRE Degrees moment, centered over the track */}
+			{promotingId && ceremonyAgent ? (
+				<ConferralSeal
+					agent={ceremonyAgent}
+					liveFire={state.incidents.some((i) => i.resolved && i.agentIds.includes(ceremonyAgent.id))}
+				/>
+			) : null}
 
 			{/* docked candidate dossier */}
 			<CandidateDossier

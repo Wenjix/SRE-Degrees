@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-20T00:00:00Z",
+  "title": "Design System: Reticle Console",
+  "extensions": {
+    "colorMeta": {
+      "bg": { "role": "neutral", "displayName": "Blueprint Black", "canonical": "#09090b", "tonalRamp": ["#050506", "#09090b", "#111113", "#1a1a1e", "#27272b", "#3f3f46", "#71717a", "#a1a1aa"] },
+      "surface": { "role": "neutral", "displayName": "Raised Surface", "canonical": "#111113", "tonalRamp": ["#09090b", "#111113", "#1a1a1e", "#27272b", "#3f3f46", "#52525b", "#71717a", "#a1a1aa"] },
+      "ink": { "role": "neutral", "displayName": "Console Ink (text)", "canonical": "rgba(255,255,255,0.9)", "tonalRamp": ["#3f3f46", "#52525b", "#71717a", "#a1a1aa", "#d4d4d8", "#ededed", "#f4f4f5", "#fafafa"] },
+      "accent": { "role": "primary", "displayName": "Console Ink (accent)", "canonical": "#ededed", "tonalRamp": ["#3f3f46", "#52525b", "#71717a", "#a1a1aa", "#d4d4d8", "#ededed", "#f4f4f5", "#fafafa"] },
+      "health-healthy": { "role": "tertiary", "displayName": "Healthy", "canonical": "#4ade80", "tonalRamp": ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0"] },
+      "health-degraded": { "role": "tertiary", "displayName": "Degraded", "canonical": "#fbbf24", "tonalRamp": ["#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a"] },
+      "health-critical": { "role": "tertiary", "displayName": "Critical", "canonical": "#f87171", "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca"] },
+      "signal-blue": { "role": "secondary", "displayName": "Signal Blue", "canonical": "#60a5fa", "tonalRamp": ["#1e3a8a", "#1e40af", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display / Data", "purpose": "Headline metrics only (fleet $/hr, headcount, blast counts). Geist Mono, tabular. The only large type in the system." },
+      "headline": { "displayName": "System Marker", "purpose": "Tracked uppercase section markers (RETICLE // SECTOR). Not big — tracked." },
+      "title": { "displayName": "Title", "purpose": "Agent names, incident titles, panel headers." },
+      "body": { "displayName": "Body", "purpose": "Prose, reasoning lines, descriptions. 65–75ch measure." },
+      "label": { "displayName": "Mono Label", "purpose": "Data labels, units, column heads. Mono uppercase tracked, muted." }
+    },
+    "shadows": [
+      { "name": "crit-state-lift", "value": "0 14px 36px var(--ret-accent-glow)", "purpose": "The single shadow in the system: a critical card lifts (translateY -4px) to win the visual fight — a response to state, never ambient." }
+    ],
+    "motion": [
+      { "name": "ret-heartbeat", "value": "ret-hb 1.8s ease-in-out infinite (warn) / 0.95s (crit)", "purpose": "A status dot that breathes on a degrading agent and races on a critical one. Health-paced, not decorative." },
+      { "name": "ret-sonar", "value": "ret-sonar 1.6s ease-out infinite", "purpose": "Critical agents ping outward as peripheral bait — the only thing that draws the eye across the board." },
+      { "name": "ret-promote-pulse", "value": "ret-promote-pulse 900ms ease-out", "purpose": "Accent (ink) release pulse when an agent earns autonomy. Never an alarm color." },
+      { "name": "ret-pulse", "value": "ret-hb 1.6s ease-in-out infinite", "purpose": "The active-incident banner dot. Reduced-motion → static." },
+      { "name": "ret-health-ring", "value": "ret-health-ring 900ms ease-out forwards", "purpose": "One-shot expanding ring (in the health color) on a fleet status transition / auto-demotion." },
+      { "name": "ret-bracket-dissolve + ret-shatter", "value": "800ms ease-out + 700ms ease-in forwards", "purpose": "The REMOVE OVERSIGHT signature beat: the guardrail bracket dissolves and the last chain link shatters as an agent goes fully autonomous." },
+      { "name": "ret-tool-flash", "value": "ret-tool-flash 2.2s ease-in-out infinite", "purpose": "An active capability in the tool rail flashes gently." },
+      { "name": "sonifier", "value": "55Hz drone (gain tracks aggregate health) + panned earcons — rising [392,523,659] recover/promote, falling [330,247] degrade/demote", "purpose": "Opt-in ambient sound, off by default: health as a low drone, transitions as discrete panned earcons. Always a redundant cue, never the sole signal." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce){ animation:none; transition:none }", "purpose": "Non-negotiable: every ceremony degrades to an instant state change + ledger/aria-live announcement." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The committing action (Approve / Promote). Solid ink fill, square, mono.",
+      "html": "<button class=\"ds-btn-primary\">Approve</button>",
+      "css": ".ds-btn-primary{background:#ededed;color:#09090b;font:400 11px/1 'Geist Mono',ui-monospace,monospace;border:1px solid #ededed;border-radius:0;padding:4px 10px;cursor:pointer;transition:filter .15s}.ds-btn-primary:hover{filter:brightness(1.1)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 2px #ededed}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action (Deny / Escalate). Transparent, hairline border, dim mono label.",
+      "html": "<button class=\"ds-btn-ghost\">Deny</button>",
+      "css": ".ds-btn-ghost{background:transparent;color:rgba(255,255,255,0.62);font:400 11px/1 'Geist Mono',ui-monospace,monospace;border:1px solid rgba(255,255,255,0.16);border-radius:0;padding:4px 8px;cursor:pointer;transition:color .15s,border-color .15s}.ds-btn-ghost:hover{color:rgba(255,255,255,0.9);border-color:rgba(255,255,255,0.26)}.ds-btn-ghost:focus-visible{outline:none;box-shadow:0 0 0 2px #ededed}"
+    },
+    {
+      "name": "Filter Chips",
+      "kind": "chip",
+      "refersTo": "chip-active",
+      "description": "The Causal Search / view filter chips. Mono uppercase, square; active = ink fill + aria-pressed.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip ds-chip-on\" aria-pressed=\"true\">all</button><button class=\"ds-chip\" aria-pressed=\"false\">agent</button><button class=\"ds-chip\" aria-pressed=\"false\">service</button></div>",
+      "css": ".ds-chips{display:flex;gap:4px}.ds-chip{background:transparent;color:rgba(255,255,255,0.62);font:400 10px/1 'Geist Mono',ui-monospace,monospace;letter-spacing:.04em;text-transform:uppercase;border:none;border-radius:0;padding:3px 7px;cursor:pointer;transition:color .15s}.ds-chip:hover{color:rgba(255,255,255,0.9)}.ds-chip-on{background:#ededed;color:#09090b}.ds-chip:focus-visible{outline:none;box-shadow:0 0 0 2px #ededed}"
+    },
+    {
+      "name": "Lens Tab Strip",
+      "kind": "nav",
+      "refersTo": "chip-active",
+      "description": "The view-mode tab strip over the shared store. One hairline-bordered strip; active tab = ink fill + aria-selected.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button class=\"ds-tab ds-tab-on\" role=\"tab\" aria-selected=\"true\">Canvas</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">List</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Fleet</button></div>",
+      "css": ".ds-tabs{display:inline-flex;border:1px solid rgba(255,255,255,0.16)}.ds-tab{background:transparent;color:rgba(255,255,255,0.62);font:400 11px/1 'Geist Mono',ui-monospace,monospace;border:none;border-right:1px solid rgba(255,255,255,0.16);border-radius:0;padding:4px 10px;cursor:pointer;transition:background .15s,color .15s}.ds-tab:last-child{border-right:none}.ds-tab:hover{background:#1a1a1e;color:rgba(255,255,255,0.9)}.ds-tab-on{background:#ededed;color:#09090b}.ds-tab:focus-visible{outline:none;box-shadow:0 0 0 2px #ededed inset}"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "The Causal Search input. Hairline container, mono text, ink focus ring; leading search glyph.",
+      "html": "<div class=\"ds-search\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"rgba(255,255,255,0.5)\" stroke-width=\"2\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path></svg><input class=\"ds-search-in\" placeholder=\"ask: what depends on Atlas?\"></div>",
+      "css": ".ds-search{display:flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,0.16);background:transparent;padding:8px 10px}.ds-search-in{flex:1;background:transparent;border:none;outline:none;color:rgba(255,255,255,0.9);font:400 12px/1 'Geist Mono',ui-monospace,monospace}.ds-search-in::placeholder{color:rgba(255,255,255,0.5)}.ds-search:focus-within{box-shadow:0 0 0 1px #ededed}"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "The color=health pairing: a health dot is ALWAYS accompanied by a text label — status is never color-only.",
+      "html": "<span class=\"ds-status\"><span class=\"ds-dot\"></span>critical</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.62);font:400 11px/1 'Geist Mono',ui-monospace,monospace}.ds-dot{width:8px;height:8px;border-radius:50%;background:#f87171}"
+    },
+    {
+      "name": "Severity Badge",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Incident severity marker. Square, hairline, health-colored by severity; the color carries the alarm, the text carries the level.",
+      "html": "<span class=\"ds-sev\">SEV1</span> <span class=\"ds-sev ds-sev-3\">SEV3</span>",
+      "css": ".ds-sev{display:inline-block;border:1px solid #f87171;color:#f87171;font:400 10px/1 'Geist Mono',ui-monospace,monospace;padding:2px 5px}.ds-sev-3{border-color:#fbbf24;color:#fbbf24}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Blueprint Control Room",
+    "overview": "Reticle is a drafting-table blueprint you operate from a calm control room. The world is a 48px dot-grid plane; agents, services, incidents and the production estate are plotted on it as instruments, not cards. Structure is drawn with 1px hairlines and square corners; nothing is rounded, nothing is shadowed, nothing decorates. The surface stays deliberately quiet — a near-black field under mono readouts — so that the one thing allowed to be loud, agent health, is the only saturated color on screen. It is dual-theme (a true light blueprint exists), but dark is its face: a control room at 3am. Motion is reserved — a heartbeat on a degrading agent, a sonar ping on a critical one, a release pulse when an agent earns autonomy — never ambient decoration, always reduced-motion-gated. Its sensory layer follows Amelia Wattenberger's thesis ('Our interfaces have lost their senses', 'Evolving the infinite canvas'): health reaches the operator through peripheral warmth, motion, sound, and spatial memory — each a redundant cue, never the sole signal.",
+    "keyCharacteristics": [
+      "Square corners (--ret-card-radius: 0), 1px hairlines, zero shadows — flat by construction.",
+      "Saturated color = agent health, and nothing else; the accent is an ink, never a hue.",
+      "Mono data everywhere: numbers are tabular Geist Mono; labels are mono uppercase tracked.",
+      "A 48px dot-grid world with drafting guides (rail/cross) as the spatial substrate.",
+      "Calm by default; motion signals real state change and is always reduced-motion-gated.",
+      "Ambient senses (after Wattenberger): temperature, breathing/sonar motion, and an opt-in sonifier as redundant health cues — never the sole signal."
+    ],
+    "rules": [
+      { "name": "The One-Color-One-Meaning Rule", "body": "Saturated color means agent health — full stop. It is always paired with a text label + a shape/position cue; status is never conveyed by color alone.", "section": "colors" },
+      { "name": "The Ink-Accent Rule", "body": "--ret-accent is an ink (near-white #ededed dark / near-black #18181b light), not a hue. It carries active / primary / autonomy and must never read as a fifth status color.", "section": "colors" },
+      { "name": "The Ink-Not-Hue Autonomy Rule", "body": "Autonomy is encoded by left→right position + a monochrome ink fill bar + a chain/shackle icon + a mono label — never by color.", "section": "colors" },
+      { "name": "The Mono-Data Rule", "body": "Every number is Geist Mono with tabular-nums so live-ticking columns never reflow; labels and units are mono uppercase tracked and muted so the value reads first.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest and stay flat. If you reach for a box-shadow to separate two things, use a 1px hairline or a tonal step instead. Square corners only (lone exception: the critical card's state-lift).", "section": "elevation" },
+      { "name": "The Senses Rule", "body": "Health reaches the operator through redundant ambient channels — temperature, motion (a breathing/pinging status dot), and an opt-in sonifier (drone + panned earcons) — each layered on the text label, never replacing it. Every channel obeys prefers-reduced-motion; sound is off until asked.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep saturated color for agent health only (#4ade80 / #fbbf24 / #f87171), always paired with a text label and a shape/position cue.",
+      "Do use --ret-accent as an ink for the active control, the primary action, and the autonomy fill — never as a status color.",
+      "Do set every number in Geist Mono with tabular-nums; set labels in mono uppercase tracked and muted.",
+      "Do separate regions with 1px hairlines and the tonal ladder (bg → surface → surface-hover); keep corners square.",
+      "Do gate every animation behind prefers-reduced-motion, and give canvas surfaces a keyboard + screen-reader path (the List lens is the spine).",
+      "Do treat motion, temperature, and sound as redundant ambient cues for health (Wattenberger's senses) — reserved for genuine state change and layered on the text label."
+    ],
+    "donts": [
+      "Don't build the generic SaaS dashboard: no endless identical card grids, no hero-metric template, no cool-gray + single-accent monoculture (Datadog/Grafana sameness).",
+      "Don't drift into the dark hacker cliché — no neon-on-black, no matrix-rain, no terminal-as-costume.",
+      "Don't go consumer/playful (rounded friendly shapes, bright multi-color, mascots) or heavy-enterprise (dense gray tables, Bootstrap/AdminLTE chrome, modal-on-modal).",
+      "Don't use border-left/border-right > 1px as a colored side-stripe; use full borders, tints, or leading marks.",
+      "Don't use gradient text, decorative glassmorphism, or any box-shadow for elevation.",
+      "Don't convey status by color alone, and don't let the accent or signal-blue read as a fifth health state.",
+      "Don't round corners or introduce a second accent hue; square + ink is the system.",
+      "Don't autoplay sound, animate for decoration, or let any single channel (color, motion, or sound) be the only carrier of a signal."
+    ]
+  }
+}

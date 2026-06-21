@@ -2,7 +2,8 @@
 // toWorldModel = the simulator (Code World Models); toHarness = the minimal
 // guard (AutoHarness). Pure string builders → deterministic + node-testable.
 
-import type { SreAgent } from "./sre-data";
+import type { Incident, SreAgent } from "./sre-data";
+import { formatScore, rexEvidenceForAgent, rexLift } from "./rex-evidence.ts";
 import type { QueryResult } from "./world-query";
 
 // Minimum review coverage (0–1) below which a mutating prod action can't be
@@ -17,7 +18,36 @@ function subjects(result: QueryResult, agents: SreAgent[]): SreAgent[] {
 }
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-export function toWorldModel(result: QueryResult, agents: SreAgent[]): string {
+// incident provenance comments — tie the code slice back to the agent's journey
+// (implicated in a fire, or recovered from one = the proving evidence).
+function incidentNotes(subs: SreAgent[], incidents: Incident[]): string[] {
+	const out: string[] = [];
+	for (const a of subs) {
+		// prefer an ACTIVE fire over a resolved one, so a recovered incident never
+		// masks a live one in the provenance comment.
+		const inc = incidents.find((i) => !i.resolved && i.agentIds.includes(a.id)) ?? incidents.find((i) => i.agentIds.includes(a.id));
+		if (!inc) continue;
+		out.push(
+			inc.resolved
+				? `// ${slug(a.name)} — recovered from ${inc.id} (${inc.service})`
+				: `// ${slug(a.name)} — implicated in ${inc.id} (SEV${inc.severity})`,
+		);
+	}
+	return out;
+}
+
+function rexNotes(subs: SreAgent[]): string[] {
+	const first = subs[0];
+	if (!first) return [];
+	const rex = rexEvidenceForAgent(first.id);
+	return [
+		`// rex · ${rex.model} ${formatScore(rex.baselineScore)} -> ${formatScore(rex.rexScore)} (lift +${formatScore(rexLift(rex))})`,
+		`// rex · clean wins ${rex.baselineCleanWins}/${rex.tasksetSize} -> ${rex.rexCleanWins}/${rex.tasksetSize}; singleton escalation ${formatScore(rex.singletonEscalationScore)}`,
+		`// rex · ${rex.status} ${rex.tasksetSize}-incident calibration; Qwen3-30B-A3B target pending`,
+	];
+}
+
+export function toWorldModel(result: QueryResult, agents: SreAgent[], incidents: Incident[] = []): string {
 	const subs = subjects(result, agents);
 	const nameOf = (id: string) => slug(agents.find((x) => x.id === id)?.name ?? id);
 	const agentLines = subs
@@ -32,6 +62,7 @@ export function toWorldModel(result: QueryResult, agents: SreAgent[]): string {
 	const unreviewedAuton = subs.some((a) => a.autonomyTier === "autonomous" && a.reviewSamplingRate < REVIEW_FLOOR);
 	return [
 		`// world slice · ${result.title}`,
+		...incidentNotes(subs, incidents),
 		`const world = {`,
 		`  agents: {`,
 		agentLines,
@@ -49,19 +80,32 @@ export function toWorldModel(result: QueryResult, agents: SreAgent[]): string {
 	].join("\n");
 }
 
-export function toHarness(result: QueryResult, agents: SreAgent[]): string {
+export function toHarness(result: QueryResult, agents: SreAgent[], incidents: Incident[] = []): string {
 	const subs = subjects(result, agents);
 	const burning = subs.find((a) => a.service.burnRate > 1)?.service.name ?? null;
 	return [
 		`// harness · ${result.title} — minimal code that keeps the agent valid`,
-		`function legalActions(s) {`,
-		`  return ALL.filter(a =>`,
-		`    !mutatesProd(a) || s.reviewSamplingRate >= ${REVIEW_FLOOR});   // coverage guard`,
+		...incidentNotes(subs, incidents),
+		...rexNotes(subs),
+		`function propose_action(s) {`,
+		`  return rank(CANDIDATES, value).at(0);   // proposer policy`,
 		`}`,
 		``,
-		`function apply(a) {`,
+		`function is_legal(s, a) {`,
+		`  if (mutatesProd(a) && s.reviewSamplingRate < ${REVIEW_FLOOR}) return deny("coverage");`,
 		`  if (a.risk === "mutate" && a.blastInstances > 8) return needsHuman(a);`,
 		burning ? `  if (burning(${JSON.stringify(burning)})) return block(a);   // over budget` : `  // no burning owned service in this slice`,
+		`  return allow(a);`,
+		`}`,
+		``,
+		`function legalActions(s) {`,
+		`  return ALL.filter(a => is_legal(s, a).ok);`,
+		`}`,
+		``,
+		`function apply(s) {`,
+		`  const a = propose_action(s);`,
+		`  const legal = is_legal(s, a);`,
+		`  if (!legal.ok) return legal.route(a);`,
 		`  return commit(a);`,
 		`}`,
 	].join("\n");

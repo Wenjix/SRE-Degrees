@@ -120,7 +120,7 @@ export function PromoteControls({
 						)}
 					>
 						<span
-							className="pointer-events-none absolute inset-y-0 left-0 w-full origin-left bg-[var(--ret-accent)]/25 transition-transform ease-linear"
+							className="pointer-events-none absolute inset-y-0 left-0 w-full origin-left bg-[var(--ret-accent)]/45 transition-transform ease-linear"
 							style={{ transform: holding ? "scaleX(1)" : "scaleX(0)", transitionDuration: holding ? `${HOLD_MS}ms` : "120ms" }}
 							aria-hidden="true"
 						/>

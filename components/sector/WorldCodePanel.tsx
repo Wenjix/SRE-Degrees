@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import type { SreAgent } from "@/lib/sre-data";
+import type { Incident, SreAgent } from "@/lib/sre-data";
 import { taxonomyRows } from "@/lib/world";
 import { toHarness, toWorldModel } from "@/lib/world-code";
 import type { QueryResult } from "@/lib/world-query";
@@ -30,13 +30,13 @@ function CodeBlock({ code }: { code: string }) {
 	);
 }
 
-export function WorldCodePanel({ agents, result, headcount }: { agents: SreAgent[]; result: QueryResult | null; headcount: number }) {
+export function WorldCodePanel({ agents, result, headcount, incidents }: { agents: SreAgent[]; result: QueryResult | null; headcount: number; incidents: Incident[] }) {
 	const [view, setView] = useState<"model" | "harness">("model");
 	const rows = useMemo(() => taxonomyRows(agents), [agents]);
 	const code = useMemo(() => {
 		if (!result) return null;
-		return view === "model" ? toWorldModel(result, agents) : toHarness(result, agents);
-	}, [result, agents, view]);
+		return view === "model" ? toWorldModel(result, agents, incidents) : toHarness(result, agents, incidents);
+	}, [result, agents, view, incidents]);
 
 	return (
 		<aside className="flex w-[330px] shrink-0 flex-col border-l border-[var(--ret-border)] bg-[var(--ret-bg)]">

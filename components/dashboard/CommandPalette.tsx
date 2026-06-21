@@ -128,7 +128,7 @@ export function CommandPalette() {
 								role="dialog"
 								aria-modal="true"
 								aria-label="Command palette"
-								className="mx-auto max-w-xl border border-[var(--ret-border)] bg-[var(--ret-bg)] shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
+								className="mx-auto max-w-xl border border-[var(--ret-border)] bg-[var(--ret-bg)]"
 								onMouseDown={(event) => event.stopPropagation()}
 							>
 								<div className="flex items-center gap-2 border-b border-[var(--ret-border)] px-3 py-2">
@@ -158,6 +158,10 @@ export function CommandPalette() {
 											No commands found.
 										</p>
 									)}
+								</div>
+								<div className="flex items-center justify-between border-t border-[var(--ret-border)] px-3 py-1.5 font-mono text-[9px] uppercase tracking-wide text-[var(--ret-text-muted)]">
+									<span>↑↓ move · ↵ open · esc close</span>
+									<span>⌘K</span>
 								</div>
 							</div>
 						</div>,

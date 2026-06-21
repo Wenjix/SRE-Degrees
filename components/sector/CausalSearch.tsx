@@ -48,7 +48,7 @@ export function CausalSearch({
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 					placeholder="ask: what depends on Atlas? · what's burning? · cost"
-					className="w-full bg-transparent font-mono text-[12px] text-[var(--ret-text)] placeholder:text-[var(--ret-text-muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ret-accent)]"
+					className="w-full bg-transparent font-mono text-[12px] text-[var(--ret-text)] placeholder:text-[var(--ret-text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]"
 					aria-label="Causal search"
 				/>
 			</form>

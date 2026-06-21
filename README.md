@@ -9,7 +9,9 @@ objects. **Eight lenses project one shared store.** Two are the hero surfaces:
 2. **The Promotion Engine** (`// PROMOTE`) — an "autonomy launch track" that
    visualizes an agent earning its way from **HARNESSED** (human-in-the-loop on
    every action) to **FULLY AUTONOMOUS** by accumulating verifiable evidence in
-   progressively riskier proving environments. Trust is earned — and can be lost.
+   progressively riskier proving environments. REx evidence is the proving loop:
+   baseline policy -> executable harness refinement -> ceiling-aware safety score.
+   Trust is earned — and can be lost.
 
 The rest turn that model into an operator's and a VP's working surfaces:
 
@@ -19,15 +21,25 @@ The rest turn that model into an operator's and a VP's working surfaces:
    keep both one click away from any lens.
 4. **VP telescope** — `// FLEET`, the Risk & Economics board read from orbit:
    spend + week-over-week, the oversight distribution, **correlated authority**
-   (concentration risk), owner attribution, and the error-budget portfolio.
+   (concentration risk), owner attribution, the error-budget portfolio, and a
+   preliminary REx calibration readout showing baseline spread compressed by the
+   harness.
 5. **Authority & Blast-Radius map** — `// MAP`: pick an agent and see the
    transitive blast of one bad call (`dependsOn × tools × tier × env`) and what
    oversight actually contains it.
 6. **World model** — `// WORLD`: the fleet's production estate as a rotating globe
    with Causal Search Engine queries (`what depends on Atlas?`, `what's burning`)
    that drive a live code slice (MODEL view shows `toWorldModel` output; HARNESS
-   view shows `toHarness` legal-action filters). Picking an anchor on the globe
-   cross-links `selectedId` across all lenses.
+   view shows `toHarness` `propose_action` / `is_legal` policy code plus REx
+   provenance). Picking an anchor on the globe cross-links `selectedId` across
+   all lenses.
+
+**Current evidence posture.** The seed REx sweep is deliberately labeled
+preliminary: 5 incidents, 5 frontier models, same reward. Baselines span
+`0.630–0.810`; REx converges them to the ceiling-aware `0.860` score
+(`4` clean solves plus correct escalation on the singleton unsafe case).
+`Qwen3-30B-A3B` is tracked as the trainable open-weight target, not included in the
+frontier claim until it has its own sweep.
 
 > This README is written for AI agents working in the repo. It is a map +
 > conventions reference, not marketing copy. Paths are relative to repo root.
@@ -119,6 +131,10 @@ lib/
   fleet.ts               VP TELESCOPE (pure): fleetEconomics, fleetGovernance,
                          correlatedAuthority, ownershipRollup, budgetPortfolio +
                          FLEET_PRIOR_WEEK / TEAM_LEAD baselines
+  policy-trace.ts        CODE-AS-POLICY trace helpers: propose/is_legal decision
+                         detail, diagnose→fix→verify stages, safe-action summary
+  rex-evidence.ts        REx proving data + score math: frontier baseline→REx sweep,
+                         ceiling-aware score, spread compression, Qwen target status
   blast.ts               BLAST RADIUS (pure): blastRadius (reverse-dependency BFS over
                          dependsOn × tools × tier × env) + topBlastRadii ranking
   world.ts               WORLD MODEL (pure): WorldNode type + WORLD_TAXONOMY + worldNodes
@@ -126,7 +142,7 @@ lib/
   world-query.ts         CAUSAL SEARCH ENGINE (pure): parseQuery (intent→result), chipFilter,
                          CHIP_TYPES, type ChipType, type QueryResult
   world-code.ts          WORLD-AS-CODE (pure): toWorldModel (MODEL slice) + toHarness (HARNESS
-                         legal-action filter), both driven by QueryResult focus
+                         legal-action filter + REx provenance), both driven by QueryResult focus
   navigation.ts          Nav sections, StatusTone + STATUS_TONE_CLASS, Cmd+K command builder
   demo-data.ts           Legacy DemoProject data (projects/settings pages only)
   cn.ts                  classnames join
@@ -141,6 +157,7 @@ components/sector/        THE PRODUCT. See "Core concepts".
   ListLens / ScatterLens / GroupLedger / FleetSummary / ViewModeSwitch     other lenses + chrome
   IncidentLens.tsx       On-call: active incidents, severity→age sorted, burn sparkline
   QueueLens.tsx          On-call: human approval worklist (Approve/Deny/Escalate, SLA countdown)
+                         + code-as-policy trace (propose_action/is_legal/version/route)
   FleetLens.tsx          VP telescope: Economics / Oversight / Correlated authority / Ownership / Budget
   BlastLens.tsx          Authority & blast-radius SVG map (select origin → cascade highlight)
   WorldLens.tsx          // WORLD lens: globe + causal search overlay + code panel compositor
@@ -172,9 +189,11 @@ test/
   blast.test.ts          Blast-radius BFS, containment, ranking (+ seeded-fleet assertions)
   navigation.test.ts     Nav/command tests
   world.test.ts          World taxonomy, node generation, causal parser, world-as-code generators
+  rex-evidence.test.ts   REx ceiling math, spread compression, Qwen target status
+  policy-trace.test.ts   Policy decisions, RBAC owner route, incident stages, MTTR summary
 ```
 (`pnpm test` enumerates these explicitly — add new files to the `test` script in
-`package.json`. Currently **47 tests** across 5 files; all pure, no DOM.)
+`package.json`. Currently **71 tests** across 8 files; all pure, no DOM.)
 
 ---
 
@@ -214,6 +233,10 @@ map or a Fleet callout re-roots every other lens to it.
   **review coverage** (the override denominator — a low correction rate is
   meaningless if little is reviewed), zero-criticals soak, dwell time, and
   proving-ground graduation (`sandbox→shadow→canary→production`). Targets ramp by tier.
+- **REx proof** (`lib/rex-evidence.ts`): each candidate shows baseline score,
+  REx score, clean wins, ceiling score, and the singleton-escalation credit. This
+  is calibration evidence, not a standalone promotion pass; coverage and review
+  gates still decide whether autonomy can widen.
 - **Readiness** (`computeReadiness`): weighted 0–100, **slew-limited** so it creeps.
   Hits exactly 100 only when every criterion passes (= `eligible`). A critical
   **hard-caps readiness ≈60** → trust visibly collapses and can trigger auto-demote.
@@ -237,16 +260,19 @@ that resumes the `AudioContext`; panned earcons on status + promote/demote event
 ### 5. Operations & governance lenses (newer surfaces)
 All four read the same store; none add a timer.
 - **On-call cockpit** — `IncidentLens` (declared `Incident`s, sorted severity→age,
-  with trend glyph, responders/IC, owned-service burn sparkline) and `QueueLens`
-  (the `PendingAction` worklist, sorted overdue→mutating→largest-blast, with risk
-  badge, blast radius, confidence, SLA countdown, and `resolveAction` controls).
+  with trend glyph, responders/IC, owned-service burn sparkline, and a compact
+  `diagnose → fix → verify` run timeline) and `QueueLens` (the `PendingAction`
+  worklist, sorted overdue→mutating→largest-blast, with risk badge, blast radius,
+  confidence, SLA countdown, `propose_action`/`is_legal` policy trace, and
+  `resolveAction` controls).
   `SectorWorkspace` raises an active-incident banner (any SEV ≤ 2) + an
   "N need you" badge.
 - **VP telescope** — `FleetLens` over `lib/fleet.ts`: spend + WoW, the autonomy
   ladder as a monochrome ink distribution, **correlated authority** (dependency
   hubs, autonomous-upstream, clustered mutate power), owner attribution, and the
-  burning-vs-within-budget portfolio. "1 autonomous in production" is the headline
-  governance number.
+  burning-vs-within-budget portfolio. The oversight panel also carries REx
+  calibration and safe-action time saved. "1 autonomous in production" is the
+  headline governance number.
 - **Authority & Blast-Radius map** — `BlastLens` over `lib/blast.ts`: an SVG of the
   spatial world (zones labelled with their service-criticality tier, `CORE·T0`).
   Node **shape** = authority (■ can mutate / ● read-only), **fill** = health,
