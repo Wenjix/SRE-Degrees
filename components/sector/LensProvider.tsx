@@ -132,7 +132,9 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 		// promotion eligibility: a degraded blip ALWAYS recovers the next tick, and
 		// only healthy agents (not Atlas, the anchored fire) occasionally blip.
 		// PROVEN agents (readiness >= 85) hold steady — trust earned doesn't wobble,
-		// so a just-promoted/just-recovered candidate stays eligible on cue.
+		// so a just-promoted/just-recovered candidate stays eligible on cue. This also
+		// keeps Hera above the steep 0.995 guarded eval gate (a blip would ratchet her
+		// eval down for good via the max(current, 0.99) recovery) so REMOVE OVERSIGHT lands.
 		if (a.id !== "sre-7f2a" && a.readiness < 85) {
 			if (a.status === "degraded") status = "healthy";
 			else if (Math.random() < 0.04) status = "degraded";

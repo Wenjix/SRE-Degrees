@@ -9,6 +9,7 @@ export type IconName =
 	| "activity"
 	| "barChart"
 	| "command"
+	| "flask"
 	| "folder"
 	| "layout"
 	| "settings"
@@ -55,17 +56,25 @@ export const NAV_SECTIONS: readonly NavSection[] = [
 		],
 	},
 	{
+		id: "lab",
+		label: "Lab",
+		hint: "experiment data",
+		items: [
+			{
+				href: "/dashboard/lab",
+				label: "CIDG Lab",
+				icon: "flask",
+				keywords:
+					"cidg incident rl environment catalog leaderboard cascade trajectory reward frontier reddit research",
+				badge: "new",
+			},
+		],
+	},
+	{
 		id: "system",
 		label: "System",
 		hint: "kit and config",
 		items: [
-			{
-				href: "/design-system",
-				label: "Design System",
-				icon: "sparkles",
-				keywords: "reticle components showcase tokens",
-				badge: "new",
-			},
 			{
 				href: "/dashboard/settings",
 				label: "Settings",
