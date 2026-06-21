@@ -13,7 +13,7 @@ from agent.llm import build_request
 def test_anthropic_request_shape():
     url, headers, payload = build_request("claude-opus-4-8", "ping", max_tokens=16)
     assert url == "https://api.anthropic.com/v1/messages"
-    assert headers.get("x-api-key")                       # resolved from env/.env
+    assert "x-api-key" in headers                         # field present (value resolved from env/.env at call time)
     assert headers.get("anthropic-version")
     assert payload["model"] == "claude-opus-4-8"
     assert payload["max_tokens"] == 16

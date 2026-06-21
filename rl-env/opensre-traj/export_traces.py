@@ -60,7 +60,7 @@ def parse_trace(path, model):
     # fallback: scrape reward if not in evaluate result
     if rec["reward"] is None:
         for ev in rows:
-            m = re.search(r'"reward":\s*([0-9.]+)', json.dumps(_payload(ev)))
+            m = re.search(r'"reward":\s*(-?\d+(?:\.\d+)?)', json.dumps(_payload(ev)))
             if m:
                 rec["reward"] = float(m.group(1)); break
     if rec["scenario_id"]:
