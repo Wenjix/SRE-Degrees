@@ -401,6 +401,22 @@ textarea::placeholder {
 	animation: ret-hb 1.6s ease-in-out infinite;
 }
 
+/* Toast slide-in — bottom-center undo toast. */
+@keyframes ret-toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.ret-toast-in {
+	animation: ret-toast-in 160ms ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.ret-skeleton::after,
 	.ret-caret,
@@ -410,7 +426,8 @@ textarea::placeholder {
 	.ret-health-ring,
 	.ret-bracket-dissolve,
 	.ret-shatter,
-	.ret-pulse {
+	.ret-pulse,
+	.ret-toast-in {
 		animation: none !important;
 	}
 	.ret-cell,

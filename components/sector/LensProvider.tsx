@@ -59,7 +59,12 @@ export type LensState = {
 	// --- on-call cockpit ---
 	incidents: Incident[];
 	pendingActions: PendingAction[];
+	// --- undo toast ---
+	toast: { token: number; label: string; restore: PendingAction | null } | null;
 };
+
+// monotonic token for toast deduplication
+let _toastToken = 0;
 
 type Action =
 	| { type: "SET_VIEW"; view: ViewMode }
@@ -77,7 +82,11 @@ type Action =
 	| { type: "ROLLBACK"; id: string }
 	| { type: "HOLD"; id: string }
 	| { type: "CLEAR_CEREMONY" }
-	| { type: "RESOLVE_ACTION"; id: string; decision: "approve" | "deny" | "escalate" };
+	| { type: "RESOLVE_ACTION"; id: string; decision: "approve" | "deny" | "escalate" }
+	| { type: "ACKNOWLEDGE_INCIDENT"; id: string }
+	| { type: "ASSIGN_COMMANDER"; id: string }
+	| { type: "UNDO_TOAST" }
+	| { type: "DISMISS_TOAST" };
 
 function clamp(v: number, lo: number, hi: number) {
 	return Math.max(lo, Math.min(hi, v));
@@ -348,6 +357,7 @@ function reducer(state: LensState, action: Action): LensState {
 			const act = state.pendingActions.find((p) => p.id === action.id);
 			if (!act) return state;
 			const verb = action.decision === "approve" ? "APPROVED" : action.decision === "deny" ? "DENIED" : "ESCALATED";
+			const token = ++_toastToken;
 			return {
 				...state,
 				pendingActions: state.pendingActions.filter((p) => p.id !== action.id),
@@ -356,8 +366,35 @@ function reducer(state: LensState, action: Action): LensState {
 						? { ...a, terminalLines: [...a.terminalLines.slice(-7), `${act.id} ${act.action} → ${verb} by operator`] }
 						: a,
 				),
+				toast: { token, label: `${act.id} ${verb}`, restore: act },
 			};
 		}
+		case "ACKNOWLEDGE_INCIDENT": {
+			return {
+				...state,
+				incidents: state.incidents.map((inc) =>
+					inc.id === action.id ? { ...inc, acknowledged: true } : inc,
+				),
+			};
+		}
+		case "ASSIGN_COMMANDER": {
+			return {
+				...state,
+				incidents: state.incidents.map((inc) =>
+					inc.id === action.id && inc.commander === null ? { ...inc, commander: "you" } : inc,
+				),
+			};
+		}
+		case "UNDO_TOAST": {
+			if (!state.toast?.restore) return { ...state, toast: null };
+			return {
+				...state,
+				pendingActions: [state.toast.restore, ...state.pendingActions],
+				toast: null,
+			};
+		}
+		case "DISMISS_TOAST":
+			return { ...state, toast: null };
 		case "TOGGLE_SOUND":
 			return { ...state, soundOn: !state.soundOn };
 		case "SET_SOUND":
@@ -395,6 +432,10 @@ export type LensContextValue = {
 	hold: (id: string) => void;
 	clearCeremony: () => void;
 	resolveAction: (id: string, decision: "approve" | "deny" | "escalate") => void;
+	acknowledgeIncident: (id: string) => void;
+	assignCommander: (id: string) => void;
+	undoToast: () => void;
+	dismissToast: () => void;
 	worstStatus: AgentStatus;
 };
 
@@ -414,6 +455,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
 		ledger: [],
 		incidents: incidentsSeed,
 		pendingActions: pendingActionsSeed,
+		toast: null,
 	}));
 
 	// Restore persisted sound preference (off by default).
@@ -476,6 +518,10 @@ export function LensProvider({ children }: { children: ReactNode }) {
 	const hold = useCallback((id: string) => dispatch({ type: "HOLD", id }), []);
 	const clearCeremony = useCallback(() => dispatch({ type: "CLEAR_CEREMONY" }), []);
 	const resolveAction = useCallback((id: string, decision: "approve" | "deny" | "escalate") => dispatch({ type: "RESOLVE_ACTION", id, decision }), []);
+	const acknowledgeIncident = useCallback((id: string) => dispatch({ type: "ACKNOWLEDGE_INCIDENT", id }), []);
+	const assignCommander = useCallback((id: string) => dispatch({ type: "ASSIGN_COMMANDER", id }), []);
+	const undoToast = useCallback(() => dispatch({ type: "UNDO_TOAST" }), []);
+	const dismissToast = useCallback(() => dispatch({ type: "DISMISS_TOAST" }), []);
 
 	const value = useMemo<LensContextValue>(
 		() => ({
@@ -494,9 +540,13 @@ export function LensProvider({ children }: { children: ReactNode }) {
 			hold,
 			clearCeremony,
 			resolveAction,
+			acknowledgeIncident,
+			assignCommander,
+			undoToast,
+			dismissToast,
 			worstStatus,
 		}),
-		[state, worstStatus, setView, select, open, close, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony, resolveAction],
+		[state, worstStatus, setView, select, open, close, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony, resolveAction, acknowledgeIncident, assignCommander, undoToast, dismissToast],
 	);
 
 	return <LensContext.Provider value={value}>{children}</LensContext.Provider>;

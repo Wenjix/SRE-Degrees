@@ -162,6 +162,22 @@ function AgentCardImpl({
 
 			{/* tools rail on the right edge */}
 			<ToolsRail tools={agent.tools} className="absolute right-1.5 top-2.5" />
+
+			{/* open-dossier affordance — ink corner tag, visible on hover or when selected.
+			    Positioned at the top-right corner (above the tools rail which starts at top-2.5).
+			    aria-hidden: the aria-label on the canvas wrapper already says "Enter to open dossier". */}
+			<span
+				aria-hidden="true"
+				className={cn(
+					"pointer-events-none absolute right-0 top-0 flex items-center gap-0.5 border-b border-l border-[var(--ret-border)] bg-[var(--ret-bg)] px-1 py-px",
+					"font-mono text-[8px] uppercase tracking-widest text-[var(--ret-text-muted)]",
+					"opacity-0 transition-opacity duration-0",
+					"group-hover:opacity-100",
+					selected && "opacity-100",
+				)}
+			>
+				⤢
+			</span>
 		</ReticleFrame>
 	);
 }

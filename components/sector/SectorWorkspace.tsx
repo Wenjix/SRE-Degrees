@@ -16,6 +16,7 @@ import { ListLens } from "./ListLens";
 import { useLens } from "./LensProvider";
 import { PromoteLens } from "./PromoteLens";
 import { QueueLens } from "./QueueLens";
+import { ToastStack } from "./ToastStack";
 import { ScatterLens } from "./ScatterLens";
 import { SectorCanvas } from "./SectorCanvas";
 import { SoundToggle } from "./SoundToggle";
@@ -129,6 +130,7 @@ export function SectorWorkspace() {
 			</div>
 
 			<AgentDossier />
+			<ToastStack />
 		</div>
 	);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useMemo, useState, useId, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { cn } from "@/lib/cn";
 import { STATUS_RANK, type SreAgent } from "@/lib/sre-data";
@@ -11,17 +11,150 @@ import { useLens } from "./LensProvider";
 import { STATUS_COLOR_VAR } from "./visual";
 
 // The calm 3am triage worklist and the keyboard/screen-reader spine of SECTOR.
-// Sorted worst-first by SLO burn. A first-class projection of the same store.
-// Dense table at md+, a stacked card list below md (the mobile-friendly surface).
+// Sorted worst-first by SLO burn (default). Column headers are keyboard-operable
+// sort buttons with aria-sort. A visually-hidden aria-live region announces the
+// active sort. Dense table at md+, a stacked card list below md.
+
+type SortKey =
+	| "name"
+	| "status"
+	| "zone"
+	| "service"
+	| "autonomy"
+	| "readiness"
+	| "burn"
+	| "eb"
+	| "actions"
+	| "cost"
+	| "region"
+	| "uptime";
+
+type SortDir = "ascending" | "descending";
+
+// Autonomy tier -> numeric rank for sorting
+const AUTONOMY_RANK: Record<string, number> = {
+	harnessed: 0,
+	supervised: 1,
+	guarded: 2,
+	autonomous: 3,
+};
+
+function sortAgents(agents: SreAgent[], key: SortKey, dir: SortDir): SreAgent[] {
+	const factor = dir === "ascending" ? 1 : -1;
+	return [...agents].sort((a, b) => {
+		let cmp = 0;
+		switch (key) {
+			case "name":
+				cmp = a.name.localeCompare(b.name);
+				break;
+			case "status":
+				// ascending = least-on-fire first; descending (default) = worst first
+				cmp = STATUS_RANK[a.status] - STATUS_RANK[b.status];
+				break;
+			case "zone":
+				cmp = a.zone.localeCompare(b.zone);
+				break;
+			case "service":
+				cmp = a.service.name.localeCompare(b.service.name);
+				break;
+			case "autonomy":
+				cmp = AUTONOMY_RANK[a.autonomyTier] - AUTONOMY_RANK[b.autonomyTier];
+				break;
+			case "readiness":
+				cmp = a.readiness - b.readiness;
+				break;
+			case "burn":
+				cmp = a.slo.burnRate - b.slo.burnRate;
+				break;
+			case "eb":
+				cmp = a.errorBudget.remainingPct - b.errorBudget.remainingPct;
+				break;
+			case "actions":
+				cmp = a.actions.current - b.actions.current;
+				break;
+			case "cost":
+				cmp = a.cost.current - b.cost.current;
+				break;
+			case "region":
+				cmp = a.region.localeCompare(b.region);
+				break;
+			case "uptime":
+				cmp = a.uptime.localeCompare(b.uptime);
+				break;
+		}
+		// Secondary: worst-first by burn for stability
+		if (cmp === 0) {
+			cmp = STATUS_RANK[b.status] - STATUS_RANK[a.status] || b.slo.burnRate - a.slo.burnRate;
+		}
+		return cmp * factor;
+	});
+}
+
+// Human-readable sort announcement
+function sortAnnouncement(key: SortKey, dir: SortDir): string {
+	const labels: Record<SortKey, string> = {
+		name: "agent name",
+		status: "status / severity",
+		zone: "zone",
+		service: "owned service",
+		autonomy: "autonomy tier",
+		readiness: "readiness score",
+		burn: "burn rate",
+		eb: "error budget",
+		actions: "actions per minute",
+		cost: "cost per hour",
+		region: "region",
+		uptime: "uptime",
+	};
+	return `sorted by ${labels[key]}, ${dir}`;
+}
+
+// Sort glyph — ink/hairline only (not health color)
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+	if (!active) {
+		return (
+			<span aria-hidden className="ml-1 font-mono text-[9px] text-[var(--ret-text-muted)] opacity-40 select-none">
+				⇅
+			</span>
+		);
+	}
+	return (
+		<span aria-hidden className="ml-1 font-mono text-[9px] text-[var(--ret-text-dim)] select-none">
+			{dir === "ascending" ? "↑" : "↓"}
+		</span>
+	);
+}
+
 export function ListLens({ className }: { className?: string }) {
 	const { state, select, open } = useLens();
+	const liveId = useId();
+
+	// Default: "most-on-fire" order = status descending + burn descending (status key, descending)
+	const [sortKey, setSortKey] = useState<SortKey>("status");
+	const [sortDir, setSortDir] = useState<SortDir>("descending");
+
 	const rows = useMemo(
-		() =>
-			[...state.agents].sort(
-				(a, b) => STATUS_RANK[b.status] - STATUS_RANK[a.status] || b.slo.burnRate - a.slo.burnRate,
-			),
-		[state.agents],
+		() => sortAgents(state.agents, sortKey, sortDir),
+		[state.agents, sortKey, sortDir],
 	);
+
+	// Live announcement text (updated after sort)
+	const [announcement, setAnnouncement] = useState<string>("");
+
+	function handleSort(key: SortKey) {
+		let nextDir: SortDir;
+		if (key === sortKey) {
+			nextDir = sortDir === "ascending" ? "descending" : "ascending";
+		} else {
+			// Default direction per column: numeric cols go descending (worst first); text cols ascending
+			nextDir = (key === "name" || key === "zone" || key === "service" || key === "region" || key === "uptime" || key === "autonomy")
+				? "ascending"
+				: "descending";
+		}
+		setSortKey(key);
+		setSortDir(nextDir);
+		setAnnouncement(sortAnnouncement(key, nextDir));
+	}
 
 	const onItemKey = (e: ReactKeyboardEvent<HTMLElement>, agent: SreAgent) => {
 		if (e.key === "Enter" || e.key === " ") {
@@ -35,9 +168,20 @@ export function ListLens({ className }: { className?: string }) {
 
 	return (
 		<div className={cn("h-full overflow-auto", className)}>
+			{/* Visually-hidden aria-live region for sort announcements */}
+			<div
+				id={liveId}
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+				className="sr-only"
+			>
+				{announcement}
+			</div>
+
 			{/* mobile: stacked cards (below md) */}
 			<ul className="divide-y divide-[var(--ret-border)] md:hidden">
-				<li className="sr-only">Fleet agents sorted by SLO burn rate, worst first. Press Enter on an item to open its dossier.</li>
+				<li className="sr-only">Fleet agents. Press Enter on an item to open its dossier.</li>
 				{rows.map((a) => {
 					const selected = state.selectedId === a.id;
 					return (
@@ -51,7 +195,7 @@ export function ListLens({ className }: { className?: string }) {
 								onDoubleClick={() => open(a.id)}
 								onKeyDown={(e) => onItemKey(e, a)}
 								className={cn(
-									"cursor-pointer px-3 py-3 outline-none transition-colors",
+									"group cursor-pointer px-3 py-3 outline-none transition-colors",
 									"focus-visible:bg-[var(--ret-surface)]",
 									selected ? "bg-[var(--ret-accent-glow)]" : "hover:bg-[var(--ret-surface)]",
 								)}
@@ -66,9 +210,19 @@ export function ListLens({ className }: { className?: string }) {
 											</div>
 										</div>
 									</div>
-									<span className="shrink-0 font-mono text-[11px] uppercase" style={{ color: STATUS_COLOR_VAR[a.status] }}>
-										{a.status}
-									</span>
+									<div className="flex shrink-0 items-center gap-2">
+										{/* open affordance: shown on group hover/focus */}
+										<span
+											aria-hidden
+											className="font-mono text-[10px] text-[var(--ret-text-muted)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 select-none"
+											title="Press Enter to open dossier"
+										>
+											↵
+										</span>
+										<span className="font-mono text-[11px] uppercase" style={{ color: STATUS_COLOR_VAR[a.status] }}>
+											{a.status}
+										</span>
+									</div>
 								</div>
 
 								<div className="mt-2 flex items-center gap-2">
@@ -98,22 +252,22 @@ export function ListLens({ className }: { className?: string }) {
 			<div className="hidden overflow-x-auto md:block">
 				<table className="w-full min-w-[1060px] border-collapse text-left">
 					<caption className="sr-only">
-						Fleet agents sorted by SLO burn rate, worst first. Press Enter on a row to open its dossier.
+						Fleet agents. Press Enter on a row to open its dossier. Column headers are sortable.
 					</caption>
 					<thead className="sticky top-0 z-10 bg-[var(--ret-bg-soft)]">
 						<tr className="border-b border-[var(--ret-border)] font-mono text-[10px] uppercase text-[var(--ret-text-muted)]">
-							<th scope="col" className="px-3 py-2 font-medium">Agent</th>
-							<th scope="col" className="px-3 py-2 font-medium">Zone</th>
-							<th scope="col" className="px-3 py-2 font-medium">Status</th>
-							<th scope="col" className="px-3 py-2 font-medium">Owns service</th>
-							<th scope="col" className="px-3 py-2 font-medium">Autonomy</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">RDY</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">Burn</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">EB</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">Actions</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">$/hr</th>
-							<th scope="col" className="px-3 py-2 font-medium">Region</th>
-							<th scope="col" className="px-3 py-2 text-right font-medium">Uptime</th>
+							<SortTh col="name" active={sortKey} dir={sortDir} onSort={handleSort} align="left">Agent</SortTh>
+							<SortTh col="zone" active={sortKey} dir={sortDir} onSort={handleSort} align="left">Zone</SortTh>
+							<SortTh col="status" active={sortKey} dir={sortDir} onSort={handleSort} align="left">Status</SortTh>
+							<SortTh col="service" active={sortKey} dir={sortDir} onSort={handleSort} align="left">Owns service</SortTh>
+							<SortTh col="autonomy" active={sortKey} dir={sortDir} onSort={handleSort} align="left">Autonomy</SortTh>
+							<SortTh col="readiness" active={sortKey} dir={sortDir} onSort={handleSort} align="right">RDY</SortTh>
+							<SortTh col="burn" active={sortKey} dir={sortDir} onSort={handleSort} align="right">Burn</SortTh>
+							<SortTh col="eb" active={sortKey} dir={sortDir} onSort={handleSort} align="right">EB</SortTh>
+							<SortTh col="actions" active={sortKey} dir={sortDir} onSort={handleSort} align="right">Actions</SortTh>
+							<SortTh col="cost" active={sortKey} dir={sortDir} onSort={handleSort} align="right">$/hr</SortTh>
+							<SortTh col="region" active={sortKey} dir={sortDir} onSort={handleSort} align="left">Region</SortTh>
+							<SortTh col="uptime" active={sortKey} dir={sortDir} onSort={handleSort} align="right">Uptime</SortTh>
 						</tr>
 					</thead>
 					<tbody>
@@ -129,7 +283,7 @@ export function ListLens({ className }: { className?: string }) {
 									onDoubleClick={() => open(a.id)}
 									onKeyDown={(e) => onItemKey(e, a)}
 									className={cn(
-										"cursor-pointer border-b border-[var(--ret-border)] outline-none transition-colors last:border-0",
+										"group cursor-pointer border-b border-[var(--ret-border)] outline-none transition-colors last:border-0",
 										"focus-visible:bg-[var(--ret-surface)]",
 										selected ? "bg-[var(--ret-accent-glow)]" : "hover:bg-[var(--ret-surface)]",
 									)}
@@ -170,7 +324,19 @@ export function ListLens({ className }: { className?: string }) {
 										${Math.round(a.cost.current)}
 									</td>
 									<td className="px-3 py-2 font-mono text-[11px] text-[var(--ret-text-dim)]">{a.region}</td>
-									<td className="px-3 py-2 text-right font-mono text-[11px] text-[var(--ret-text-muted)]">{a.uptime}</td>
+									<td className="px-3 py-2">
+										<div className="flex items-center justify-end gap-2">
+											{/* open affordance: mono glyph, ink only, shown on row hover/focus */}
+											<span
+												aria-hidden
+												className="font-mono text-[10px] text-[var(--ret-text-muted)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 select-none"
+												title="Enter to open dossier"
+											>
+												↵
+											</span>
+											<span className="font-mono text-[11px] text-[var(--ret-text-muted)]">{a.uptime}</span>
+										</div>
+									</td>
 								</tr>
 							);
 						})}
@@ -180,6 +346,48 @@ export function ListLens({ className }: { className?: string }) {
 		</div>
 	);
 }
+
+// ---------------------------------------------------------------------------
+// SortTh — a <th> with an accessible sort button inside
+// ---------------------------------------------------------------------------
+type SortThProps = {
+	col: SortKey;
+	active: SortKey;
+	dir: SortDir;
+	onSort: (key: SortKey) => void;
+	align: "left" | "right";
+	children: React.ReactNode;
+};
+
+function SortTh({ col, active, dir, onSort, align, children }: SortThProps) {
+	const isActive = active === col;
+	const ariaSort: "ascending" | "descending" | "none" = isActive ? dir : "none";
+	return (
+		<th
+			scope="col"
+			aria-sort={ariaSort}
+			className={cn("px-3 py-2 font-medium", align === "right" && "text-right")}
+		>
+			<button
+				type="button"
+				onClick={() => onSort(col)}
+				className={cn(
+					"inline-flex items-center gap-0.5 font-mono text-[10px] uppercase transition-colors outline-none",
+					"focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--ret-bg-soft)]",
+					align === "right" && "flex-row-reverse",
+					isActive
+						? "text-[var(--ret-text-dim)]"
+						: "text-[var(--ret-text-muted)] hover:text-[var(--ret-text-dim)]",
+				)}
+			>
+				{children}
+				<SortIcon active={isActive} dir={dir} />
+			</button>
+		</th>
+	);
+}
+
+// ---------------------------------------------------------------------------
 
 function svcColor(svc: { burnRate: number; errorBudgetPct: number }): string {
 	if (svc.burnRate > 1) return STATUS_COLOR_VAR.critical;

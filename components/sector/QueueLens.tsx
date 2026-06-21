@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import type { PendingAction } from "@/lib/sre-data";
@@ -17,17 +17,20 @@ function fmtRemain(ms: number) {
 }
 const RISK_ORDER = { mutate: 0, read: 1 } as const;
 
+// An action is high-blast when it is mutating and has a large scope or touches prod.
+function isHighBlast(p: PendingAction): boolean {
+	return p.risk === "mutate" && (p.blastInstances > 8 || /prod/i.test(p.blastScope));
+}
+
 // The supervisor's actual work queue — the surface that makes "human-in-the-loop"
 // real. Sorted by urgency: overdue first, then mutating, then biggest blast.
 export function QueueLens({ className }: { className?: string }) {
 	const { state, resolveAction } = useLens();
-	const items = useMemo(() => {
-		return [...state.pendingActions].sort((a, b) => {
-			const aOver = a.slaMs - a.ageMs <= 0 ? 1 : 0;
-			const bOver = b.slaMs - b.ageMs <= 0 ? 1 : 0;
-			return bOver - aOver || RISK_ORDER[a.risk] - RISK_ORDER[b.risk] || b.blastInstances - a.blastInstances || b.ageMs - a.ageMs;
-		});
-	}, [state.pendingActions]);
+	const items = [...state.pendingActions].sort((a, b) => {
+		const aOver = a.slaMs - a.ageMs <= 0 ? 1 : 0;
+		const bOver = b.slaMs - b.ageMs <= 0 ? 1 : 0;
+		return bOver - aOver || RISK_ORDER[a.risk] - RISK_ORDER[b.risk] || b.blastInstances - a.blastInstances || b.ageMs - a.ageMs;
+	});
 
 	return (
 		<div className={cn("h-full overflow-y-auto px-4 py-3", className)}>
@@ -73,6 +76,68 @@ function QueueRow({
 	const rem = p.slaMs - p.ageMs;
 	const overdue = rem <= 0;
 	const mutate = p.risk === "mutate";
+	const highBlast = isHighBlast(p);
+
+	// Armed state for high-blast two-step confirm. View-local; resets on unmount
+	// or after 3s of inactivity.
+	const [armed, setArmed] = useState(false);
+	const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const clearArmTimer = useCallback(() => {
+		if (armTimerRef.current !== null) {
+			clearTimeout(armTimerRef.current);
+			armTimerRef.current = null;
+		}
+	}, []);
+
+	// Disarm when the component unmounts or when a new `p.id` arrives (row recycled).
+	useEffect(() => {
+		return () => {
+			clearArmTimer();
+		};
+	}, [clearArmTimer]);
+
+	// Also disarm when the action id changes (e.g. the list re-sorts).
+	useEffect(() => {
+		setArmed(false);
+		clearArmTimer();
+	}, [p.id, clearArmTimer]);
+
+	const handleApproveClick = useCallback(() => {
+		if (!highBlast) {
+			// Low-blast: single-click approve, unchanged behaviour.
+			onApprove();
+			return;
+		}
+		if (!armed) {
+			// First click: arm the button and start the 3s disarm timer.
+			setArmed(true);
+			clearArmTimer();
+			armTimerRef.current = setTimeout(() => {
+				setArmed(false);
+				armTimerRef.current = null;
+			}, 3000);
+		} else {
+			// Second click while armed: confirm and fire.
+			clearArmTimer();
+			setArmed(false);
+			onApprove();
+		}
+	}, [highBlast, armed, onApprove, clearArmTimer]);
+
+	// Clicking elsewhere (Deny / Escalate) must also disarm.
+	const handleDeny = useCallback(() => {
+		clearArmTimer();
+		setArmed(false);
+		onDeny();
+	}, [onDeny, clearArmTimer]);
+
+	const handleEscalate = useCallback(() => {
+		clearArmTimer();
+		setArmed(false);
+		onEscalate();
+	}, [onEscalate, clearArmTimer]);
+
 	return (
 		<li className="border border-[var(--ret-border)] bg-[var(--ret-bg)] p-3">
 			<div className="flex items-start justify-between gap-3">
@@ -115,24 +180,35 @@ function QueueRow({
 					</span>
 				</div>
 				<div className="flex items-center gap-1.5">
+					{/* Approve — two-step for high-blast, single-click otherwise */}
 					<button
 						type="button"
-						onClick={onApprove}
-						className="border border-[var(--ret-accent)] bg-[var(--ret-accent)] px-2.5 py-1 font-mono text-[11px] text-[var(--ret-bg)] transition-colors hover:brightness-110"
+						onClick={handleApproveClick}
+						aria-label={armed ? `Confirm approve ${p.id}` : `Approve ${p.id}`}
+						className={cn(
+							"px-2.5 py-1 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
+							armed
+								? // Armed state: accent emphasis to signal intent, border only (no fill)
+								  "border border-[var(--ret-accent)] text-[var(--ret-accent)] hover:bg-[var(--ret-accent)] hover:text-[var(--ret-bg)]"
+								: // Normal state: solid accent fill (the primary action)
+								  "border border-[var(--ret-accent)] bg-[var(--ret-accent)] text-[var(--ret-bg)] hover:brightness-110",
+						)}
 					>
-						Approve
+						{armed ? "Confirm?" : "Approve"}
 					</button>
 					<button
 						type="button"
-						onClick={onDeny}
-						className="border border-[var(--ret-border)] px-2 py-1 font-mono text-[11px] text-[var(--ret-text-dim)] transition-colors hover:text-[var(--ret-text)]"
+						onClick={handleDeny}
+						aria-label={`Deny ${p.id}`}
+						className="border border-[var(--ret-border)] px-2 py-1 font-mono text-[11px] text-[var(--ret-text-dim)] transition-colors hover:text-[var(--ret-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]"
 					>
 						Deny
 					</button>
 					<button
 						type="button"
-						onClick={onEscalate}
-						className="border border-[var(--ret-border)] px-2 py-1 font-mono text-[11px] text-[var(--ret-text-dim)] transition-colors hover:text-[var(--ret-text)]"
+						onClick={handleEscalate}
+						aria-label={`Escalate ${p.id}`}
+						className="border border-[var(--ret-border)] px-2 py-1 font-mono text-[11px] text-[var(--ret-text-dim)] transition-colors hover:text-[var(--ret-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]"
 					>
 						Escalate
 					</button>

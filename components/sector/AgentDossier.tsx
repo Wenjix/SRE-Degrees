@@ -84,7 +84,7 @@ export function AgentDossier() {
 				aria-label={`${agent.name} dossier`}
 				tabIndex={-1}
 				onKeyDown={onTrap}
-				className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col overflow-y-auto border-l border-[var(--ret-border)] bg-[var(--ret-bg)] shadow-[-24px_0_80px_rgba(0,0,0,0.4)] focus:outline-none"
+				className="absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col overflow-y-auto border-l border-[var(--ret-border)] bg-[var(--ret-bg)] focus:outline-none"
 			>
 				{/* header */}
 				<div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-3">

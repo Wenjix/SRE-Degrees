@@ -484,7 +484,7 @@ export function SectorCanvas({ className }: { className?: string }) {
 								aria-label={`${agent.name}, ${agent.status}, ${agent.zone} zone, ${agent.region}, ${agent.uptime}. Enter to open dossier; arrow keys to navigate; Shift plus arrow keys to move the agent.`}
 								onKeyDown={(e) => onCellKeyDown(e, agent)}
 								className={cn(
-									"ret-cell absolute outline-none transition-shadow",
+									"ret-cell group absolute outline-none transition-shadow",
 									"focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]",
 								)}
 								style={{ left: agent.pos.x, top: agent.pos.y, width: CARD_W, height: CARD_H }}
