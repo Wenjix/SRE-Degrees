@@ -1,6 +1,9 @@
 "use client";
 
+import { GraduationCap } from "lucide-react";
+
 import { cn } from "@/lib/cn";
+import { capstoneFor, credentialFor, credentialShortFor, incidentCredits } from "@/lib/credentials";
 import { blockingReason, eligible, gateProgress, GATES, nextTier, TIER_LABEL } from "@/lib/promotion";
 import { SEVERITY_LABEL, type SreAgent } from "@/lib/sre-data";
 
@@ -31,9 +34,8 @@ export function CandidateDossier({
 	const criteria = gateProgress(agent);
 	const requiredEnv = to ? GATES[agent.autonomyTier].requiredEnv : undefined;
 	const lastLine = agent.terminalLines[agent.terminalLines.length - 1];
-	const involved = state.incidents.filter((i) => i.agentIds.includes(agent.id));
-	const activeInc = involved.find((i) => !i.resolved);
-	const recoveredInc = involved.find((i) => i.resolved);
+	const cap = capstoneFor(agent);
+	const credits = incidentCredits(agent.id, state.incidents);
 
 	return (
 		<div className="shrink-0 border-t border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-2.5">
@@ -47,6 +49,14 @@ export function CandidateDossier({
 							<span className="truncate text-[var(--ret-text-muted)]">
 								{agent.id} · {TIER_LABEL[agent.autonomyTier]}
 								{to ? ` → ${TIER_LABEL[to]}` : ""}
+							</span>
+						</div>
+						{/* degree framing — current credential + the one being read for */}
+						<div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-[var(--ret-text-dim)]">
+							<GraduationCap className="h-3 w-3 shrink-0 text-[var(--ret-text-muted)]" strokeWidth={1.75} aria-hidden="true" />
+							<span className="text-[var(--ret-text)]">{credentialFor(agent.autonomyTier)}</span>
+							<span className="truncate text-[var(--ret-text-muted)]">
+								{to ? `· candidate for ${credentialFor(to)} (${credentialShortFor(to)})` : "· terminal degree conferred"}
 							</span>
 						</div>
 						<div className="mt-1 flex items-center gap-2">
@@ -80,17 +90,34 @@ export function CandidateDossier({
 				</div>
 			) : null}
 
-			{/* incident record — the "learned from incidents" thread, in ink */}
+			{/* capstone — the distinct, discipline-specific certification scenario */}
 			{to ? (
 				<div className="mt-1.5 font-mono text-[10px] text-[var(--ret-text-muted)]">
-					incident record ·{" "}
-					{activeInc
-						? `${activeInc.id} ${SEVERITY_LABEL[activeInc.severity]} ${activeInc.trend} — trust withheld`
-						: recoveredInc
-							? `recovered from ${recoveredInc.id} (${recoveredInc.service}) — live-fire proving logged`
-							: "clean — no incidents in window"}
+					<span className="text-[var(--ret-text-dim)]">capstone</span>{" "}
+					<span className="border border-[var(--ret-border)] px-1 py-0.5 text-[9px] uppercase tracking-wide text-[var(--ret-text-dim)]">{cap.discipline}</span>{" "}
+					<span className="text-[var(--ret-text)]">{cap.capstone}</span>{" "}
+					<span className="text-[var(--ret-text-muted)]">→ {credentialShortFor(to)}</span>
 				</div>
 			) : null}
+
+			{/* transcript — what this agent has learned from past incidents */}
+			<div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-[var(--ret-text-muted)]">
+				<span className="text-[var(--ret-text-dim)]">transcript</span>
+				{credits.length === 0 ? (
+					<span>clean — no incidents in window</span>
+				) : (
+					credits.map((c) => (
+						<span key={c.id} className="whitespace-nowrap">
+							{c.id}{" "}
+							{c.status === "credit" ? (
+								<span className="text-[var(--ret-text-dim)]">recovered · +live-fire credit</span>
+							) : (
+								<span>{SEVERITY_LABEL[c.severity]} active · probation</span>
+							)}
+						</span>
+					))
+				)}
+			</div>
 
 			{lastLine ? (
 				<div className="mt-1.5 truncate font-mono text-[10px] text-[var(--ret-text-muted)]">

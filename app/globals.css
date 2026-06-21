@@ -417,6 +417,66 @@ textarea::placeholder {
 	animation: ret-toast-in 160ms ease-out forwards;
 }
 
+/* Degree conferral — the SRE Degrees moment: an ink stamp + diploma card that
+   appears, holds, and fades. The seal stamps in with a quick settle. */
+@keyframes ret-confer-card {
+	0% {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+	10% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	82% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(1);
+	}
+}
+
+@keyframes ret-confer-stamp {
+	0% {
+		opacity: 0;
+		transform: scale(1.7) rotate(-7deg);
+	}
+	55% {
+		opacity: 1;
+		transform: scale(0.93) rotate(0deg);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1) rotate(0deg);
+	}
+}
+
+/* reduced-motion: opacity-only crossfade, no stamp/scale */
+@keyframes ret-confer-fade {
+	0% {
+		opacity: 0;
+	}
+	8% {
+		opacity: 1;
+	}
+	85% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+
+.ret-confer-card {
+	animation: ret-confer-card 1400ms ease-out forwards;
+}
+
+.ret-confer-seal {
+	animation: ret-confer-stamp 540ms cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.ret-skeleton::after,
 	.ret-caret,
@@ -437,6 +497,12 @@ textarea::placeholder {
 	}
 	.ret-promote-pulse {
 		display: none !important;
+	}
+	.ret-confer-seal {
+		animation: none !important;
+	}
+	.ret-confer-card {
+		animation: ret-confer-fade 1400ms ease-out forwards !important;
 	}
 }
 

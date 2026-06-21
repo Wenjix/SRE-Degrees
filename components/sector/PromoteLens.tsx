@@ -8,6 +8,7 @@ import { eligible, TIER_LABEL, TIER_RANK, TIERS } from "@/lib/promotion";
 import { AgentCard } from "./AgentCard";
 import { AutonomyChip } from "./AutonomyChip";
 import { CandidateDossier } from "./CandidateDossier";
+import { ConferralSeal } from "./ConferralSeal";
 import { useLens } from "./LensProvider";
 import { TierLane } from "./TierLane";
 import { STATUS_COLOR_VAR } from "./visual";
@@ -66,7 +67,8 @@ export function PromoteLens({ className }: { className?: string }) {
 	// auto-clear a ceremony after it plays
 	useEffect(() => {
 		if (!promotingId && !demotingId) return;
-		const t = window.setTimeout(() => clearCeremony(), 950);
+		// promotion lingers a beat longer so the degree conferral reads
+		const t = window.setTimeout(() => clearCeremony(), promotingId ? 1500 : 950);
 		return () => window.clearTimeout(t);
 	}, [promotingId, demotingId, clearCeremony]);
 
@@ -213,6 +215,14 @@ export function PromoteLens({ className }: { className?: string }) {
 						: null}
 				</div>
 			</div>
+
+			{/* degree conferral — the SRE Degrees moment, centered over the track */}
+			{promotingId && ceremonyAgent ? (
+				<ConferralSeal
+					agent={ceremonyAgent}
+					liveFire={state.incidents.some((i) => i.resolved && i.agentIds.includes(ceremonyAgent.id))}
+				/>
+			) : null}
 
 			{/* docked candidate dossier */}
 			<CandidateDossier
