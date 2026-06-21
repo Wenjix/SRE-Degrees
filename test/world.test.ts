@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { agents } from "../lib/sre-data.ts";
+import { agents, incidentsSeed } from "../lib/sre-data.ts";
 import { WORLD_TAXONOMY, taxonomyRows, worldHeadcount, worldNodes } from "../lib/world.ts";
 import { CHIP_TYPES, chipFilter, parseQuery } from "../lib/world-query.ts";
 import { toHarness, toWorldModel } from "../lib/world-code.ts";
@@ -105,6 +105,13 @@ describe("causal search parser", () => {
 
 describe("world-as-code generators", () => {
 	const atlas = parseQuery("depends on Atlas", agents);
+
+	it("surfaces incident provenance when incidents are passed", () => {
+		const code = toWorldModel(atlas, agents, incidentsSeed);
+		assert.match(code, /implicated in INC-204/);
+		const harness = toHarness(atlas, agents, incidentsSeed);
+		assert.match(harness, /implicated in INC-204/);
+	});
 
 	it("WORLD MODEL emits typed state, the owned service, and a violated invariant", () => {
 		const code = toWorldModel(atlas, agents);

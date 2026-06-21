@@ -22,7 +22,8 @@ export function IncidentLens({ className }: { className?: string }) {
 	const { state } = useLens();
 	// Last announced action for the aria-live region
 	const [liveMsg, setLiveMsg] = useState("");
-	const incidents = [...state.incidents].sort((a, b) => a.severity - b.severity || b.ageMs - a.ageMs);
+	const incidents = [...state.incidents].sort((a, b) => Number(a.resolved) - Number(b.resolved) || a.severity - b.severity || b.ageMs - a.ageMs);
+	const activeCount = incidents.filter((i) => !i.resolved).length;
 
 	return (
 		<div className={cn("h-full overflow-y-auto px-4 py-3", className)}>
@@ -37,7 +38,7 @@ export function IncidentLens({ className }: { className?: string }) {
 			</div>
 			<div className="mb-2 flex items-center justify-between">
 				<span className="font-mono text-[10px] uppercase tracking-wide text-[var(--ret-text-muted)]">Active incidents</span>
-				<span className="font-mono text-[10px] text-[var(--ret-text-muted)]">{incidents.length}</span>
+				<span className="font-mono text-[10px] text-[var(--ret-text-muted)]">{activeCount}</span>
 			</div>
 			{incidents.length === 0 ? (
 				<p className="border border-[var(--ret-border)] bg-[var(--ret-bg-soft)] px-3 py-6 text-center font-mono text-[12px] text-[var(--ret-text-muted)]">
@@ -74,7 +75,7 @@ function IncidentRow({
 	firstAgentZone: import("@/lib/sre-data").Tier | null;
 	onAnnounce: (msg: string) => void;
 }) {
-	const { acknowledgeIncident, assignCommander, open, setView, select, focusZone } = useLens();
+	const { acknowledgeIncident, assignCommander, resolveIncident, open, setView, select, focusZone } = useLens();
 	const color = STATUS_COLOR_VAR[severityTone(inc.severity)];
 
 	const handleAck = useCallback(
@@ -114,6 +115,15 @@ function IncidentRow({
 		[setView, select, firstAgentId],
 	);
 
+	const handleResolve = useCallback(
+		(e: React.MouseEvent) => {
+			e.stopPropagation();
+			resolveIncident(inc.id);
+			onAnnounce(`${inc.id} resolved — fire out`);
+		},
+		[resolveIncident, inc.id, onAnnounce],
+	);
+
 	const handleRowClick = useCallback(() => {
 		if (firstAgentId) {
 			select(firstAgentId);
@@ -129,7 +139,7 @@ function IncidentRow({
 		<li
 			className={cn(
 				"border border-[var(--ret-border)] bg-[var(--ret-bg)] transition-colors hover:border-[var(--ret-border-hover)]",
-				inc.acknowledged && "opacity-60",
+				inc.resolved ? "opacity-50" : inc.acknowledged ? "opacity-70" : null,
 			)}
 		>
 			{/* row header — selectable, maps the agent on the canvas */}
@@ -147,9 +157,14 @@ function IncidentRow({
 							{SEVERITY_LABEL[inc.severity]}
 						</span>
 						<span className="truncate text-[14px] font-semibold">{inc.title}</span>
-						{inc.acknowledged ? (
+						{inc.acknowledged && !inc.resolved ? (
 							<span className="shrink-0 border border-[var(--ret-border)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[var(--ret-text-muted)]">
 								ACK
+							</span>
+						) : null}
+						{inc.resolved ? (
+							<span className="shrink-0 border border-[var(--ret-border)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[var(--ret-text-muted)]">
+								RESOLVED
 							</span>
 						) : null}
 					</div>
@@ -186,36 +201,49 @@ function IncidentRow({
 				</div>
 			</button>
 
-			{/* action cluster — always visible, square ghost buttons */}
-			<div className="flex items-center gap-1.5 border-t border-[var(--ret-border)] px-3 py-2">
-				{/* Ack — hidden once acknowledged */}
-				{!inc.acknowledged ? (
-					<button type="button" onClick={handleAck} className={ghostBtn} aria-label={`Acknowledge ${inc.id}`}>
-						Ack
-					</button>
-				) : null}
+			{/* action cluster — square ghost buttons; replaced by a note once resolved */}
+			{inc.resolved ? (
+				<div className="border-t border-[var(--ret-border)] px-3 py-2 font-mono text-[10px] text-[var(--ret-text-muted)]">
+					resolved — {inc.service} within budget · recovery logged as proving evidence
+				</div>
+			) : (
+				<div className="flex items-center gap-1.5 border-t border-[var(--ret-border)] px-3 py-2">
+					{/* Ack — hidden once acknowledged */}
+					{!inc.acknowledged ? (
+						<button type="button" onClick={handleAck} className={ghostBtn} aria-label={`Acknowledge ${inc.id}`}>
+							Ack
+						</button>
+					) : null}
 
-				{/* Assign IC — only when commander is null */}
-				{inc.commander === null ? (
-					<button type="button" onClick={handleAssign} className={ghostBtn} aria-label={`Assign incident commander to ${inc.id}`}>
-						Assign IC
-					</button>
-				) : null}
+					{/* Assign IC — only when commander is null */}
+					{inc.commander === null ? (
+						<button type="button" onClick={handleAssign} className={ghostBtn} aria-label={`Assign incident commander to ${inc.id}`}>
+							Assign IC
+						</button>
+					) : null}
 
-				{/* Open dossier */}
-				{firstAgentId ? (
-					<button type="button" onClick={handleOpen} className={ghostBtn} aria-label={`Open dossier for ${inc.id}`}>
-						Open
-					</button>
-				) : null}
+					{/* Open dossier */}
+					{firstAgentId ? (
+						<button type="button" onClick={handleOpen} className={ghostBtn} aria-label={`Open dossier for ${inc.id}`}>
+							Open
+						</button>
+					) : null}
 
-				{/* Map — blast view */}
-				{firstAgentId ? (
-					<button type="button" onClick={handleMap} className={ghostBtn} aria-label={`Map blast radius for ${inc.id}`}>
-						Map
-					</button>
-				) : null}
-			</div>
+					{/* Map — blast view */}
+					{firstAgentId ? (
+						<button type="button" onClick={handleMap} className={ghostBtn} aria-label={`Map blast radius for ${inc.id}`}>
+							Map
+						</button>
+					) : null}
+
+					{/* Resolve — fire out: recovery becomes promotion evidence */}
+					{firstAgentId ? (
+						<button type="button" onClick={handleResolve} className={ghostBtn} aria-label={`Resolve ${inc.id}`}>
+							Resolve
+						</button>
+					) : null}
+				</div>
+			)}
 		</li>
 	);
 }

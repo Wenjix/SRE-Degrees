@@ -2,7 +2,7 @@
 // toWorldModel = the simulator (Code World Models); toHarness = the minimal
 // guard (AutoHarness). Pure string builders → deterministic + node-testable.
 
-import type { SreAgent } from "./sre-data";
+import type { Incident, SreAgent } from "./sre-data";
 import type { QueryResult } from "./world-query";
 
 // Minimum review coverage (0–1) below which a mutating prod action can't be
@@ -17,7 +17,23 @@ function subjects(result: QueryResult, agents: SreAgent[]): SreAgent[] {
 }
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-export function toWorldModel(result: QueryResult, agents: SreAgent[]): string {
+// incident provenance comments — tie the code slice back to the agent's journey
+// (implicated in a fire, or recovered from one = the proving evidence).
+function incidentNotes(subs: SreAgent[], incidents: Incident[]): string[] {
+	const out: string[] = [];
+	for (const a of subs) {
+		const inc = incidents.find((i) => i.agentIds.includes(a.id));
+		if (!inc) continue;
+		out.push(
+			inc.resolved
+				? `// ${slug(a.name)} — recovered from ${inc.id} (${inc.service})`
+				: `// ${slug(a.name)} — implicated in ${inc.id} (SEV${inc.severity})`,
+		);
+	}
+	return out;
+}
+
+export function toWorldModel(result: QueryResult, agents: SreAgent[], incidents: Incident[] = []): string {
 	const subs = subjects(result, agents);
 	const nameOf = (id: string) => slug(agents.find((x) => x.id === id)?.name ?? id);
 	const agentLines = subs
@@ -32,6 +48,7 @@ export function toWorldModel(result: QueryResult, agents: SreAgent[]): string {
 	const unreviewedAuton = subs.some((a) => a.autonomyTier === "autonomous" && a.reviewSamplingRate < REVIEW_FLOOR);
 	return [
 		`// world slice · ${result.title}`,
+		...incidentNotes(subs, incidents),
 		`const world = {`,
 		`  agents: {`,
 		agentLines,
@@ -49,11 +66,12 @@ export function toWorldModel(result: QueryResult, agents: SreAgent[]): string {
 	].join("\n");
 }
 
-export function toHarness(result: QueryResult, agents: SreAgent[]): string {
+export function toHarness(result: QueryResult, agents: SreAgent[], incidents: Incident[] = []): string {
 	const subs = subjects(result, agents);
 	const burning = subs.find((a) => a.service.burnRate > 1)?.service.name ?? null;
 	return [
 		`// harness · ${result.title} — minimal code that keeps the agent valid`,
+		...incidentNotes(subs, incidents),
 		`function legalActions(s) {`,
 		`  return ALL.filter(a =>`,
 		`    !mutatesProd(a) || s.reviewSamplingRate >= ${REVIEW_FLOOR});   // coverage guard`,

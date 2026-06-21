@@ -36,7 +36,7 @@ export function SectorWorkspace() {
 	const view = state.activeView;
 	const spatial = view === "canvas" || view === "scatter" || view === "promote";
 
-	const crises = state.incidents.filter((i) => i.severity <= 2);
+	const crises = state.incidents.filter((i) => i.severity <= 2 && !i.resolved);
 	const worst = crises.length
 		? [...crises].sort((a, b) => a.severity - b.severity || b.ageMs - a.ageMs)[0]
 		: null;

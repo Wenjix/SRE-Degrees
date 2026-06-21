@@ -85,6 +85,7 @@ type Action =
 	| { type: "RESOLVE_ACTION"; id: string; decision: "approve" | "deny" | "escalate" }
 	| { type: "ACKNOWLEDGE_INCIDENT"; id: string }
 	| { type: "ASSIGN_COMMANDER"; id: string }
+	| { type: "RESOLVE_INCIDENT"; id: string }
 	| { type: "UNDO_TOAST" }
 	| { type: "DISMISS_TOAST" };
 
@@ -116,7 +117,9 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 		// rare single-tick health blips keep the board alive without destabilizing
 		// promotion eligibility: a degraded blip ALWAYS recovers the next tick, and
 		// only healthy agents (not Atlas, the anchored fire) occasionally blip.
-		if (a.id !== "sre-7f2a") {
+		// PROVEN agents (readiness >= 85) hold steady — trust earned doesn't wobble,
+		// so a just-promoted/just-recovered candidate stays eligible on cue.
+		if (a.id !== "sre-7f2a" && a.readiness < 85) {
 			if (a.status === "degraded") status = "healthy";
 			else if (Math.random() < 0.04) status = "degraded";
 		}
@@ -220,6 +223,15 @@ const ENV_BACK: Record<ProvingEnv, ProvingEnv> = {
 	production: "canary",
 };
 
+// Forward one proving ground — a handled incident is live-fire evidence that
+// graduates the agent toward production.
+const ENV_FWD: Record<ProvingEnv, ProvingEnv> = {
+	sandbox: "shadow",
+	shadow: "canary",
+	canary: "production",
+	production: "production",
+};
+
 // Apply a tier change (promotion or demotion): reset the soak/incident window,
 // snap the proving ground back on demotion, set a cooldown, recompute readiness.
 function applyTierChange(a: SreAgent, to: AutonomyTier, demote: boolean): SreAgent {
@@ -281,6 +293,7 @@ function reducer(state: LensState, action: Action): LensState {
 				const to = victim ? prevTier(victim.autonomyTier) : null;
 				if (victim && to) {
 					const next = agents.map((a) => (a.id === victim.id ? applyTierChange(a, to, true) : a));
+					const vinc = state.incidents.find((i) => !i.resolved && i.agentIds.includes(victim.id));
 					const entry: LedgerEntry = {
 						ts: Date.now(),
 						agentId: victim.id,
@@ -288,7 +301,7 @@ function reducer(state: LensState, action: Action): LensState {
 						fromTier: victim.autonomyTier,
 						toTier: to,
 						actor: "auto",
-						reason: "sustained critical — trust revoked",
+						reason: vinc ? `sustained critical · ${vinc.id} — trust revoked` : "sustained critical — trust revoked",
 					};
 					return { ...state, agents: next, incidents, pendingActions, demotingId: victim.id, ledger: [entry, ...state.ledger].slice(0, 60) };
 				}
@@ -358,6 +371,10 @@ function reducer(state: LensState, action: Action): LensState {
 			if (!act) return state;
 			const verb = action.decision === "approve" ? "APPROVED" : action.decision === "deny" ? "DENIED" : "ESCALATED";
 			const token = ++_toastToken;
+			const la = state.agents.find((a) => a.id === act.agentId);
+			const lentry: LedgerEntry | null = la
+				? { ts: Date.now(), agentId: la.id, agentName: la.name, fromTier: la.autonomyTier, toTier: la.autonomyTier, actor: "operator", reason: `${act.id} ${verb.toLowerCase()} · ${act.action}` }
+				: null;
 			return {
 				...state,
 				pendingActions: state.pendingActions.filter((p) => p.id !== action.id),
@@ -367,14 +384,19 @@ function reducer(state: LensState, action: Action): LensState {
 						: a,
 				),
 				toast: { token, label: `${act.id} ${verb}`, restore: act },
+				ledger: lentry ? [lentry, ...state.ledger].slice(0, 60) : state.ledger,
 			};
 		}
 		case "ACKNOWLEDGE_INCIDENT": {
+			const inc = state.incidents.find((i) => i.id === action.id);
+			const a = inc ? state.agents.find((x) => x.id === inc.agentIds[0]) : undefined;
+			const entry: LedgerEntry | null = inc && a
+				? { ts: Date.now(), agentId: a.id, agentName: a.name, fromTier: a.autonomyTier, toTier: a.autonomyTier, actor: "operator", reason: `${inc.id} acknowledged — investigating` }
+				: null;
 			return {
 				...state,
-				incidents: state.incidents.map((inc) =>
-					inc.id === action.id ? { ...inc, acknowledged: true } : inc,
-				),
+				incidents: state.incidents.map((i) => (i.id === action.id ? { ...i, acknowledged: true } : i)),
+				ledger: entry ? [entry, ...state.ledger].slice(0, 60) : state.ledger,
 			};
 		}
 		case "ASSIGN_COMMANDER": {
@@ -383,6 +405,42 @@ function reducer(state: LensState, action: Action): LensState {
 				incidents: state.incidents.map((inc) =>
 					inc.id === action.id && inc.commander === null ? { ...inc, commander: "you" } : inc,
 				),
+			};
+		}
+		case "RESOLVE_INCIDENT": {
+			const inc = state.incidents.find((i) => i.id === action.id);
+			if (!inc || inc.resolved) return state;
+			const implicated = new Set(inc.agentIds);
+			const adds: LedgerEntry[] = [];
+			const agents = state.agents.map((a) => {
+				if (!implicated.has(a.id)) return a;
+				// the recovered incident IS the proving evidence: it improves the exact
+				// metrics the promotion gate measures (service health, proving env,
+				// verified runs, decision-quality eval, review coverage).
+				const improved: SreAgent = {
+					...a,
+					service: { ...a.service, burnRate: 0.6, errorBudgetPct: Math.max(a.service.errorBudgetPct, 85) },
+					provingEnv: ENV_FWD[a.provingEnv],
+					verifiedRuns: Math.max(a.verifiedRuns, 1040),
+					evalPassRate: Math.max(a.evalPassRate, 0.996),
+					reviewSamplingRate: Math.max(a.reviewSamplingRate, 0.06),
+					overrideRate: Math.min(a.overrideRate, 0.004),
+					soakMs: Math.max(a.soakMs, 13 * MS_PER_HOUR),
+					critsInWindow: 0,
+					critStreak: 0,
+				};
+				adds.push({ ts: Date.now(), agentId: a.id, agentName: a.name, fromTier: a.autonomyTier, toTier: a.autonomyTier, actor: "auto", reason: `live-fire evidence from ${inc.id} — proved ${a.provingEnv}→${improved.provingEnv}` });
+				return { ...improved, readiness: computeReadiness(improved) };
+			});
+			const lead = state.agents.find((a) => implicated.has(a.id));
+			const opEntry: LedgerEntry | null = lead
+				? { ts: Date.now(), agentId: lead.id, agentName: lead.name, fromTier: lead.autonomyTier, toTier: lead.autonomyTier, actor: "operator", reason: `${inc.id} resolved — ${inc.service} within budget` }
+				: null;
+			return {
+				...state,
+				agents,
+				incidents: state.incidents.map((i) => (i.id === action.id ? { ...i, resolved: true, acknowledged: true, trend: "recovering" } : i)),
+				ledger: [...(opEntry ? [opEntry] : []), ...adds, ...state.ledger].slice(0, 60),
 			};
 		}
 		case "UNDO_TOAST": {
@@ -434,6 +492,7 @@ export type LensContextValue = {
 	resolveAction: (id: string, decision: "approve" | "deny" | "escalate") => void;
 	acknowledgeIncident: (id: string) => void;
 	assignCommander: (id: string) => void;
+	resolveIncident: (id: string) => void;
 	undoToast: () => void;
 	dismissToast: () => void;
 	worstStatus: AgentStatus;
@@ -520,6 +579,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
 	const resolveAction = useCallback((id: string, decision: "approve" | "deny" | "escalate") => dispatch({ type: "RESOLVE_ACTION", id, decision }), []);
 	const acknowledgeIncident = useCallback((id: string) => dispatch({ type: "ACKNOWLEDGE_INCIDENT", id }), []);
 	const assignCommander = useCallback((id: string) => dispatch({ type: "ASSIGN_COMMANDER", id }), []);
+	const resolveIncident = useCallback((id: string) => dispatch({ type: "RESOLVE_INCIDENT", id }), []);
 	const undoToast = useCallback(() => dispatch({ type: "UNDO_TOAST" }), []);
 	const dismissToast = useCallback(() => dispatch({ type: "DISMISS_TOAST" }), []);
 
@@ -542,11 +602,12 @@ export function LensProvider({ children }: { children: ReactNode }) {
 			resolveAction,
 			acknowledgeIncident,
 			assignCommander,
+			resolveIncident,
 			undoToast,
 			dismissToast,
 			worstStatus,
 		}),
-		[state, worstStatus, setView, select, open, close, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony, resolveAction, acknowledgeIncident, assignCommander, undoToast, dismissToast],
+		[state, worstStatus, setView, select, open, close, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony, resolveAction, acknowledgeIncident, assignCommander, resolveIncident, undoToast, dismissToast],
 	);
 
 	return <LensContext.Provider value={value}>{children}</LensContext.Provider>;

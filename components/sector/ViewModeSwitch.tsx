@@ -23,10 +23,11 @@ const VIEWS: { id: ViewMode; label: string; Icon: typeof LayoutGrid }[] = [
 // freely, selection and data stay coherent.
 export function ViewModeSwitch({ className }: { className?: string }) {
 	const { state, setView } = useLens();
-	const sevOpen = state.incidents.some((i) => i.severity <= 2);
+	const sevOpen = state.incidents.some((i) => i.severity <= 2 && !i.resolved);
+	const activeIncidents = state.incidents.filter((i) => !i.resolved).length;
 	const overdue = state.pendingActions.some((p) => p.slaMs - p.ageMs <= 0);
 	const badgeFor = (id: ViewMode): { n: number; urgent: boolean } | null => {
-		if (id === "incidents" && state.incidents.length) return { n: state.incidents.length, urgent: sevOpen };
+		if (id === "incidents" && activeIncidents) return { n: activeIncidents, urgent: sevOpen };
 		if (id === "queue" && state.pendingActions.length) return { n: state.pendingActions.length, urgent: overdue };
 		return null;
 	};

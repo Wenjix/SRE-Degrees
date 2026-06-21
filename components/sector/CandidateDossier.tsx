@@ -2,10 +2,11 @@
 
 import { cn } from "@/lib/cn";
 import { blockingReason, eligible, gateProgress, GATES, nextTier, TIER_LABEL } from "@/lib/promotion";
-import type { SreAgent } from "@/lib/sre-data";
+import { SEVERITY_LABEL, type SreAgent } from "@/lib/sre-data";
 
 import { GateCriterion } from "./GateCriterion";
 import { HeartbeatDot } from "./HeartbeatDot";
+import { useLens } from "./LensProvider";
 import { PromoteControls } from "./PromoteControls";
 import { ProvingStepper } from "./ProvingStepper";
 
@@ -22,6 +23,7 @@ export function CandidateDossier({
 	onHold: () => void;
 	onRollback: () => void;
 }) {
+	const { state } = useLens();
 	if (!agent) return null;
 	const to = nextTier(agent.autonomyTier);
 	const ok = eligible(agent);
@@ -29,6 +31,9 @@ export function CandidateDossier({
 	const criteria = gateProgress(agent);
 	const requiredEnv = to ? GATES[agent.autonomyTier].requiredEnv : undefined;
 	const lastLine = agent.terminalLines[agent.terminalLines.length - 1];
+	const involved = state.incidents.filter((i) => i.agentIds.includes(agent.id));
+	const activeInc = involved.find((i) => !i.resolved);
+	const recoveredInc = involved.find((i) => i.resolved);
 
 	return (
 		<div className="shrink-0 border-t border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-2.5">
@@ -72,6 +77,18 @@ export function CandidateDossier({
 					{criteria.map((c) => (
 						<GateCriterion key={c.id} criterion={c} />
 					))}
+				</div>
+			) : null}
+
+			{/* incident record — the "learned from incidents" thread, in ink */}
+			{to ? (
+				<div className="mt-1.5 font-mono text-[10px] text-[var(--ret-text-muted)]">
+					incident record ·{" "}
+					{activeInc
+						? `${activeInc.id} ${SEVERITY_LABEL[activeInc.severity]} ${activeInc.trend} — trust withheld`
+						: recoveredInc
+							? `recovered from ${recoveredInc.id} (${recoveredInc.service}) — live-fire proving logged`
+							: "clean — no incidents in window"}
 				</div>
 			) : null}
 
