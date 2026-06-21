@@ -67,6 +67,20 @@ function AgentCardImpl({
 						</div>
 					))}
 				</div>
+
+				{/* open-dossier affordance — ink corner tag, visible on hover or when selected.
+				    aria-hidden: the aria-label on the canvas wrapper already says "Enter to open dossier". */}
+				<span
+					aria-hidden="true"
+					className={cn(
+						"pointer-events-none absolute right-0 top-0 flex items-center justify-center border-b border-l border-[var(--ret-border)] bg-[var(--ret-bg)] p-0.5",
+						"opacity-0 transition-opacity duration-0",
+						"group-hover:opacity-100",
+						selected && "opacity-100",
+					)}
+				>
+					<Maximize2 size={9} strokeWidth={1.75} className="text-[var(--ret-text-muted)]" />
+				</span>
 			</ReticleFrame>
 		);
 	}

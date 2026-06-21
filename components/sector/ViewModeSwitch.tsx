@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Globe, Inbox, LayoutGrid, Rocket, ScatterChart, Share2, Table2, Telescope } from "lucide-react";
+import { AlertTriangle, Gauge, Globe, Inbox, LayoutGrid, Rocket, ScatterChart, Share2, Table2, Telescope } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 
@@ -12,6 +12,7 @@ const VIEWS: { id: ViewMode; label: string; Icon: typeof LayoutGrid }[] = [
 	{ id: "list", label: "List", Icon: Table2 },
 	{ id: "scatter", label: "Scatter", Icon: ScatterChart },
 	{ id: "promote", label: "Promote", Icon: Rocket },
+	{ id: "cockpit", label: "Cockpit", Icon: Gauge },
 	{ id: "incidents", label: "Incidents", Icon: AlertTriangle },
 	{ id: "queue", label: "Queue", Icon: Inbox },
 	{ id: "fleet", label: "Fleet", Icon: Telescope },

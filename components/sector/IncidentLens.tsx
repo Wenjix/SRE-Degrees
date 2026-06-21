@@ -152,7 +152,7 @@ function IncidentRow({
 					<div className="flex min-w-0 items-center gap-2">
 						<span
 							className="shrink-0 border px-1.5 py-0.5 font-mono text-[10px]"
-							style={{ color, borderColor: color }}
+							style={inc.severity === 1 ? { backgroundColor: color, borderColor: color, color: "var(--ret-bg)" } : { color, borderColor: color }}
 						>
 							{SEVERITY_LABEL[inc.severity]}
 						</span>

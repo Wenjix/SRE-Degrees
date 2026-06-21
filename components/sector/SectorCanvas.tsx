@@ -522,7 +522,7 @@ export function SectorCanvas({ className }: { className?: string }) {
 				<span className="border border-[var(--ret-border)] bg-[var(--ret-bg)]/80 px-1.5 py-0.5">
 					{level === "L1" ? "L1 · SECTOR" : "L2 · ZONE"}
 				</span>
-				<span className="hidden sm:inline">scroll to zoom · drag a card to regroup</span>
+				<span className="hidden sm:inline">scroll to zoom · drag a card to regroup · click a card to open</span>
 			</div>
 		</div>
 	);

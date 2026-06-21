@@ -6,6 +6,7 @@ import { SEVERITY_LABEL, severityTone } from "@/lib/sre-data";
 
 import { AgentDossier } from "./AgentDossier";
 import { BlastLens } from "./BlastLens";
+import { CockpitLens } from "./CockpitLens";
 import { WorldLens } from "./WorldLens";
 import { EvidenceLedger } from "./EvidenceLedger";
 import { FleetLens } from "./FleetLens";
@@ -13,7 +14,7 @@ import { FleetSummary } from "./FleetSummary";
 import { GroupLedger } from "./GroupLedger";
 import { IncidentLens } from "./IncidentLens";
 import { ListLens } from "./ListLens";
-import { useLens } from "./LensProvider";
+import { useLens, type ViewMode } from "./LensProvider";
 import { PromoteLens } from "./PromoteLens";
 import { QueueLens } from "./QueueLens";
 import { ToastStack } from "./ToastStack";
@@ -28,6 +29,20 @@ function dur(ms: number) {
 	const m = Math.floor(ms / MIN);
 	return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
+
+// Human-readable lens names for the screen-reader view-change announcer.
+const VIEW_LABEL: Record<ViewMode, string> = {
+	canvas: "Sector canvas",
+	list: "List",
+	scatter: "Scatter",
+	promote: "Promote",
+	cockpit: "Cockpit",
+	incidents: "Incidents",
+	queue: "Queue",
+	fleet: "Fleet",
+	blast: "Blast map",
+	world: "World model",
+};
 
 // The SECTOR console: one shared store projected through Canvas / List / Scatter /
 // Promote / Incidents / Queue, with the proximity rail and the L3 dossier overlay.
@@ -44,6 +59,13 @@ export function SectorWorkspace() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
+			{/* announce lens changes to screen readers — the banner and "N need you"
+			    button move focus and switch the lens, which the tablist's own
+			    aria-selected does not convey on its own. */}
+			<div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+				{VIEW_LABEL[view]} view
+			</div>
+
 			{/* active-incident banner — health-colored, the one thing that should pull focus */}
 			{worst && view !== "incidents" ? (
 				<button
@@ -110,6 +132,7 @@ export function SectorWorkspace() {
 						{view === "list" ? <ListLens /> : null}
 						{view === "scatter" ? <ScatterLens /> : null}
 						{view === "promote" ? <PromoteLens /> : null}
+						{view === "cockpit" ? <CockpitLens /> : null}
 						{view === "incidents" ? <IncidentLens /> : null}
 						{view === "queue" ? <QueueLens /> : null}
 						{view === "fleet" ? <FleetLens /> : null}
