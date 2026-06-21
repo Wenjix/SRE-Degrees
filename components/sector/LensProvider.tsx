@@ -106,8 +106,12 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 		let status: AgentStatus = a.status;
 		// rare single-tick health blips keep the board alive without destabilizing
 		// promotion eligibility: a degraded blip ALWAYS recovers the next tick, and
-		// only healthy agents (not Atlas, the anchored fire) occasionally blip.
-		if (a.id !== "sre-7f2a") {
+		// only healthy agents occasionally blip. Two anchors never flap: Atlas
+		// (sre-7f2a, the jailed fire) and Hera (sre-4c2d, the autonomous-bound hero) —
+		// a blip would ratchet Hera's eval under the steep 0.995 guarded gate (the
+		// healthy recovery target caps at max(current, 0.99) and never climbs back),
+		// stalling the REMOVE OVERSIGHT beat. Keeping her steady lets it land.
+		if (a.id !== "sre-7f2a" && a.id !== "sre-4c2d") {
 			if (a.status === "degraded") status = "healthy";
 			else if (Math.random() < 0.04) status = "degraded";
 		}

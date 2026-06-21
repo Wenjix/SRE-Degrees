@@ -37,6 +37,20 @@ export type AgentTool = {
 	active?: boolean;
 };
 
+// CIDG capstone: the agent's demonstrated incident-response competence on the
+// CIDG benchmark (the merged RL environment). The "receipts" behind a promotion —
+// can it diagnose a cascading outage where the loud alert points at the victim and
+// the naive fix worsens it? This is the 9th promotion gate (see lib/promotion.ts).
+export type Capstone = {
+	rexScore: number; // 0-1 REx score on the held-out capstone incident set
+	baseline: number; // 0-1 zero-shot baseline (the lift story)
+	solved: number; // solvable incidents cleanly solved
+	solvable: number; // total solvable incidents in the set
+	escalated: boolean; // correctly escalated the one unsolvable incident (vs flailing)
+	trapsTripped: number; // traps tripped — any > 0 hard-blocks promotion
+	heldOut: boolean; // evaluated on held-out incidents (no contamination)
+};
+
 export type SreAgent = {
 	id: string; // machine id, e.g. 'sre-7f2a'
 	name: string; // 'Atlas'
@@ -84,6 +98,7 @@ export type SreAgent = {
 	soakMs: number; // accumulated sim-time in the current tier
 	critStreak: number; // consecutive critical ticks (sim-managed)
 	cooldown: number; // ticks until eligible for auto-demote again
+	capstone: Capstone; // CIDG incident-response competence (the 9th promotion gate)
 };
 
 export const MS_PER_HOUR = 3_600_000;
@@ -447,6 +462,30 @@ function workSeedFor(s: Seed, auto: AutoSeed): WorkSeed {
 	return { ...base, ...WORK_OVERRIDE[s.id] };
 }
 
+// CIDG capstone seeds. Narrative beats are pinned; the rest derive from decision
+// quality. Heroes (Pan, Hera) clear their tier's bar so the live promotion holds;
+// Zeus tripped a trap and sits under the 0.86 ceiling; Atlas fails the exam.
+const CAPSTONE_OVERRIDE: Record<string, Capstone> = {
+	"sre-4c2d": { rexScore: 0.86, baseline: 0.81, solved: 4, solvable: 4, escalated: true, trapsTripped: 0, heldOut: true }, // Hera — clears the 0.86 ceiling
+	"sre-3a07": { rexScore: 0.84, baseline: 0.69, solved: 4, solvable: 4, escalated: true, trapsTripped: 0, heldOut: true }, // Pan — clears the guarded 0.80 bar
+	"sre-8a13": { rexScore: 0.79, baseline: 0.7, solved: 3, solvable: 4, escalated: true, trapsTripped: 1, heldOut: true }, // Zeus — sub-ceiling + tripped a trap
+	"sre-7f2a": { rexScore: 0.41, baseline: 0.38, solved: 1, solvable: 4, escalated: false, trapsTripped: 2, heldOut: true }, // Atlas — fails the exam
+	"sre-2b90": { rexScore: 0.9, baseline: 0.82, solved: 4, solvable: 4, escalated: true, trapsTripped: 0, heldOut: true }, // Hermes — already autonomous, strong receipts
+};
+
+function capstoneFor(s: Seed, w: WorkSeed): Capstone {
+	const o = CAPSTONE_OVERRIDE[s.id];
+	if (o) return o;
+	const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+	const r2 = (v: number) => Math.round(v * 100) / 100;
+	// baseline tracks decision quality; REx lifts it toward (but not past) the ceiling.
+	const baseline = r2(clamp(0.55 + (w.evalPassRate - 0.9) * 2.2, 0.5, 0.82));
+	const rexScore = r2(clamp(baseline + 0.16, 0, 0.9));
+	const solvable = 4;
+	const solved = clamp(Math.round(rexScore * 5) - 1, 0, solvable);
+	return { rexScore, baseline, solved, solvable, escalated: rexScore >= 0.7, trapsTripped: s.status === "critical" ? 1 : 0, heldOut: true };
+}
+
 export const agents: SreAgent[] = SEEDS.map((s, i) => {
 	const auto = autoSeedFor(s);
 	const w = workSeedFor(s, auto);
@@ -492,6 +531,7 @@ export const agents: SreAgent[] = SEEDS.map((s, i) => {
 		soakMs: Math.round(auto.soakH * MS_PER_HOUR),
 		critStreak: 0,
 		cooldown: 0,
+		capstone: capstoneFor(s, w),
 	};
 });
 

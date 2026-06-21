@@ -1,5 +1,7 @@
 "use client";
 
+import { Check } from "lucide-react";
+
 import { cn } from "@/lib/cn";
 import { blockingReason, eligible, gateProgress, GATES, nextTier, TIER_LABEL } from "@/lib/promotion";
 import type { SreAgent } from "@/lib/sre-data";
@@ -63,7 +65,18 @@ export function CandidateDossier({
 					</div>
 				</div>
 
-				<PromoteControls agent={agent} onPromote={onPromote} onHold={onHold} onRollback={onRollback} />
+				<div className="flex items-center gap-2">
+					{ok && to ? (
+						<span
+							role="status"
+							className="inline-flex shrink-0 items-center gap-1.5 border border-[var(--ret-green)]/50 bg-[var(--ret-green)]/10 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-[var(--ret-green)]"
+						>
+							<Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+							all criteria met
+						</span>
+					) : null}
+					<PromoteControls agent={agent} onPromote={onPromote} onHold={onHold} onRollback={onRollback} />
+				</div>
 			</div>
 
 			{/* verifiable criteria */}

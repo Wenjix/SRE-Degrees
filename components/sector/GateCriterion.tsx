@@ -22,6 +22,8 @@ function format(c: Criterion): string {
 			return c.current === 0 ? "none in soak" : `${c.current} incident${c.current > 1 ? "s" : ""}`;
 		case "env":
 			return `${c.currentEnv} / ${c.requiredEnv}`;
+		case "score":
+			return `${c.current.toFixed(2)} / ≥${c.target.toFixed(2)}`;
 		default:
 			return "";
 	}
@@ -45,6 +47,11 @@ export function GateCriterion({ criterion, className }: { criterion: Criterion; 
 				</span>
 			</div>
 			<div className="mt-0.5 truncate font-mono text-[10px] tabular-nums text-[var(--ret-text)]">{format(c)}</div>
+			{c.detail ? (
+				<div className="mt-0.5 truncate font-mono text-[9px] text-[var(--ret-text-muted)]" title={c.detail}>
+					{c.detail}
+				</div>
+			) : null}
 			<div className="mt-1 h-[3px] w-full bg-[var(--ret-border)]/50" aria-hidden="true">
 				<span
 					className={cn("block h-full", c.pass ? "bg-[var(--ret-accent)]" : "bg-[var(--ret-text-dim)]")}
