@@ -9,3 +9,6 @@ coverage/
 *.tsbuildinfo
 pnpm-debug.log*
 .playwright-mcp/
+
+# superpowers brainstorming companion artifacts
+.superpowers/
