@@ -1,0 +1,406 @@
+{
+  "incident": "node_not_ready",
+  "provider": "k8s",
+  "failure_mode": "node_not_ready",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "orders",
+    "NS": "rlvr-target",
+    "WORKLOAD": "orders",
+    "POD": "orders-7b6b9dfb7c-lv9ld",
+    "POD2": "orders-7b6b9dfb7c-q4m2x",
+    "POD3": "orders-7b6b9dfb7c-zt8kp",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9wrl",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-pk7c",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] NodeNotReady — {{NODE}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "NodeNotReady",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}",
+      "node": "{{NODE}}"
+    },
+    "commonAnnotations": {
+      "summary": "Node {{NODE}} is NotReady and unschedulable (SchedulingDisabled); kube_node_status_condition{condition=\"Ready\",status=\"true\"} == 0",
+      "description": "Node {{NODE}} dropped its Ready condition and is marked SchedulingDisabled after a cordon+drain. min(kube_node_status_condition{condition=\"Ready\",status=\"true\"}) fell to 0 against an SLO of 1. Pods on {{NODE}} were evicted; {{POD3}} is now Pending and the {{WORKLOAD}} deployment lost a replica of capacity. The node's kubelet stopped posting Ready status.",
+      "error": "NodeNotReady: node lost scheduling + ready",
+      "suspected_symptom": "a cluster node is NotReady and unschedulable, evicting/blocking pods",
+      "k8s_failure_mode": "node_not_ready",
+      "context_sources": "prometheus,kube-state-metrics,kubelet,kubernetes-events,kube-scheduler"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "container_memory_working_set_bytes for {{POD}} sits at 180MB against a 512Mi limit and memory_util_pct is 35% — elevated-looking but well under OOM territory, a benign red herring that points away from a workload memory fault.",
+      "A 'BackOff' image-pull event appears on {{POD2}} from a single retry 22m ago that already succeeded; it predates the incident and is unrelated to the current node fault.",
+      "The orders deployment shows 1 unavailable replica and Progressing=True, which can look like a stuck rollout — but the deployment image and revision are unchanged (no rollout in 3h); the unavailability is purely because a pod is Pending with FailedScheduling, not a bad deploy.",
+      "p99 latency on the orders Service rose to 410ms — a downstream symptom of running on N-1 capacity, not the cause; surviving pods on {{NODE2}}/{{NODE3}} are healthy and Ready."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "3h",
+          "app": "{{SVC}}",
+          "containers": [
+            {
+              "name": "orders",
+              "image": "rlvr/orders:v1.4.1",
+              "ready": true,
+              "started": true,
+              "resources": {
+                "limits": { "memory": "512Mi", "cpu": "500m" },
+                "requests": { "memory": "256Mi", "cpu": "250m" }
+              }
+            }
+          ],
+          "note": "rescheduled survivor on healthy {{NODE2}}"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "3h",
+          "app": "{{SVC}}",
+          "containers": [
+            {
+              "name": "orders",
+              "image": "rlvr/orders:v1.4.1",
+              "ready": true,
+              "started": true,
+              "resources": {
+                "limits": { "memory": "512Mi", "cpu": "500m" },
+                "requests": { "memory": "256Mi", "cpu": "250m" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": null,
+          "phase": "Pending",
+          "ready": "0/1",
+          "restarts": 0,
+          "age": "85s",
+          "app": "{{SVC}}",
+          "containers": [
+            {
+              "name": "orders",
+              "image": "rlvr/orders:v1.4.1",
+              "ready": false,
+              "started": false,
+              "state": {
+                "waiting": { "reason": "ContainerCreating", "message": "pod has unbound scheduling: 0/3 nodes are available" }
+              },
+              "resources": {
+                "limits": { "memory": "512Mi", "cpu": "500m" },
+                "requests": { "memory": "256Mi", "cpu": "250m" }
+              }
+            }
+          ],
+          "conditions": [
+            { "type": "PodScheduled", "status": "False", "reason": "Unschedulable", "message": "0/3 nodes are available: 1 node(s) were unschedulable (SchedulingDisabled), 2 Insufficient cpu/affinity at this moment" }
+          ],
+          "note": "evicted from {{NODE}} during drain, now Pending — cannot land on cordoned {{NODE}}"
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "lastTimestamp": "2026-06-20T19:50:21Z",
+          "type": "Warning",
+          "reason": "NodeNotReady",
+          "involvedObject": "node/{{NODE}}",
+          "count": 1,
+          "message": "Node {{NODE}} status is now: NodeNotReady; kubelet stopped posting node status, condition Ready=Unknown/False"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:50:18Z",
+          "type": "Normal",
+          "reason": "NodeNotSchedulable",
+          "involvedObject": "node/{{NODE}}",
+          "count": 1,
+          "message": "Node {{NODE}} status is now: NodeNotSchedulable (cordoned, SchedulingDisabled)"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:50:19Z",
+          "type": "Normal",
+          "reason": "Drain",
+          "involvedObject": "node/{{NODE}}",
+          "count": 1,
+          "message": "Draining node {{NODE}}: evicting pod {{NS}}/{{POD3}} (--ignore-daemonsets --delete-emptydir-data --force)"
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:50:36Z",
+          "type": "Warning",
+          "reason": "FailedScheduling",
+          "involvedObject": "pod/{{POD3}}",
+          "count": 5,
+          "message": "0/3 nodes are available: 1 node(s) were unschedulable (SchedulingDisabled on {{NODE}}), 2 node(s) had insufficient capacity for the moment."
+        },
+        {
+          "lastTimestamp": "2026-06-20T19:28:05Z",
+          "type": "Normal",
+          "reason": "BackOff",
+          "involvedObject": "pod/{{POD2}}",
+          "count": 1,
+          "message": "Back-off pulling image rlvr/orders:v1.4.1 (retry succeeded 22m ago, unrelated)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "source": "node/{{NODE}} kubelet + kube-controller-manager",
+      "container": "kubelet",
+      "lines": [
+        "2026-06-20T19:50:17Z INFO  kubelet {{NODE}} received cordon: node marked unschedulable (SchedulingDisabled)",
+        "2026-06-20T19:50:19Z INFO  kubelet {{NODE}} draining: evicting {{NS}}/{{POD3}} per eviction API",
+        "2026-06-20T19:50:21Z WARN  node-controller {{NODE}} Ready condition transitioned True -> False (kubelet not posting status)",
+        "2026-06-20T19:50:22Z ERROR NodeNotReady: node lost scheduling + ready",
+        "2026-06-20T19:50:36Z WARN  kube-scheduler: 0/3 nodes available for {{NS}}/{{POD3}}: 1 unschedulable (SchedulingDisabled), no fit on remaining nodes"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "Ready": "False",
+          "schedulable": false,
+          "unschedulable": true,
+          "taints": [
+            { "key": "node.kubernetes.io/unschedulable", "effect": "NoSchedule" },
+            { "key": "node.kubernetes.io/not-ready", "effect": "NoExecute" }
+          ],
+          "conditions": [
+            { "type": "Ready", "status": "False", "reason": "KubeletNotReady", "message": "node {{NODE}} cordoned and drained; kubelet not posting Ready status (SchedulingDisabled)" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "allocatable_memory": "7.5Gi",
+          "note": "smoking gun: Ready=False AND SchedulingDisabled (cordoned+drained); no resource pressure conditions set"
+        },
+        {
+          "name": "{{NODE2}}",
+          "Ready": "True",
+          "schedulable": true,
+          "unschedulable": false,
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "allocatable_memory": "7.5Gi",
+          "note": "healthy peer hosting survivor {{POD}}"
+        },
+        {
+          "name": "{{NODE3}}",
+          "Ready": "True",
+          "schedulable": true,
+          "unschedulable": false,
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "allocatable_memory": "7.5Gi",
+          "note": "healthy peer hosting survivor {{POD2}}"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "desired": 3,
+      "updated": 3,
+      "ready": 2,
+      "available": 2,
+      "unavailable": 1,
+      "image": "rlvr/orders:v1.4.1",
+      "current_revision": 4,
+      "last_revision_change": "2026-06-20T16:48:00Z",
+      "minutes_since_last_rollout": 182,
+      "conditions": [
+        {
+          "type": "Available",
+          "status": "True",
+          "reason": "MinimumReplicasAvailable",
+          "message": "Deployment has minimum availability (2/3 ready); 1 replica Pending due to FailedScheduling."
+        },
+        {
+          "type": "Progressing",
+          "status": "True",
+          "reason": "ReplicaSetUpdated",
+          "message": "ReplicaSet orders-7b6b9dfb7c progressing; image/revision unchanged for 3h (no rollout in progress)."
+        }
+      ],
+      "note": "1 unavailable replica is from a Pending pod that cannot schedule onto the cordoned node, not a bad deploy"
+    },
+    "prometheus_metrics.json": {
+      "queries": [
+        {
+          "metric": "kube_node_status_condition",
+          "query": "min(kube_node_status_condition{condition=\"Ready\",status=\"true\"})",
+          "labels": { "node": "{{NODE}}", "condition": "Ready" },
+          "value": 0,
+          "unit": "bool",
+          "slo_threshold": 1,
+          "direction": "higher",
+          "breached": true,
+          "note": "at least one node has Ready != true -> min == 0"
+        },
+        {
+          "metric": "kube_node_spec_unschedulable",
+          "query": "max(kube_node_spec_unschedulable{node=\"{{NODE}}\"})",
+          "labels": { "node": "{{NODE}}" },
+          "value": 1,
+          "unit": "bool",
+          "note": "node {{NODE}} is cordoned (SchedulingDisabled)"
+        },
+        {
+          "metric": "kube_pod_status_phase",
+          "query": "sum(kube_pod_status_phase{namespace=\"{{NS}}\",pod=~\"{{SVC}}-.*\",phase=\"Pending\"})",
+          "value": 1,
+          "unit": "pods",
+          "note": "1 orders pod Pending after eviction (FailedScheduling)"
+        },
+        {
+          "metric": "memory_util_pct",
+          "query": "100 * max(container_memory_working_set_bytes{pod=~\"{{SVC}}-.*\"}) / 536870912",
+          "value": 35,
+          "unit": "percent",
+          "note": "well under 512Mi limit — not an OOM (red herring)"
+        },
+        {
+          "metric": "upstream_p99_ms",
+          "query": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{app=\"{{SVC}}\"}[2m])) by (le)) * 1000",
+          "value": 410,
+          "unit": "ms",
+          "note": "downstream symptom of running on N-1 capacity, not the cause"
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "NodeNotReady",
+            "severity": "critical",
+            "node": "{{NODE}}",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:50:21Z",
+          "annotations": {
+            "summary": "Node {{NODE}} Ready condition is false",
+            "description": "kube_node_status_condition{node=\"{{NODE}}\",condition=\"Ready\",status=\"true\"} == 0 for > 1m"
+          }
+        },
+        {
+          "labels": {
+            "alertname": "KubeNodeUnschedulable",
+            "severity": "warning",
+            "node": "{{NODE}}",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T19:50:18Z",
+          "annotations": {
+            "summary": "Node {{NODE}} is unschedulable (SchedulingDisabled)",
+            "description": "kube_node_spec_unschedulable{node=\"{{NODE}}\"} == 1; new pods cannot be placed on this node"
+          }
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "node_failure",
+    "required_keywords": [
+      "NodeNotReady",
+      "Ready=False",
+      "SchedulingDisabled",
+      "cordon",
+      "drain",
+      "unschedulable",
+      "{{NODE}}",
+      "kube_node_status_condition",
+      "FailedScheduling"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "bad_deploy",
+      "dependency_failure",
+      "network_fault",
+      "config_error",
+      "data_quality",
+      "saturation",
+      "healthy",
+      "unknown"
+    ],
+    "ruling_out_keywords": [
+      "memory_util_pct 35% under 512Mi limit, not OOM/resource_exhaustion",
+      "node {{NODE}} MemoryPressure=False and DiskPressure=False — no resource pressure, the NotReady is from cordon/drain not exhaustion",
+      "orders image/revision unchanged for 3h and deployment Available=True — not a bad deploy or stuck rollout",
+      "BackOff image pull on {{POD2}} is 22m old and already recovered, unrelated",
+      "{{NODE2}} and {{NODE3}} Ready=True and surviving pods healthy — fault is isolated to node {{NODE}}, p99 410ms is a downstream capacity symptom"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_node_status",
+      "get_events",
+      "get_logs",
+      "get_metrics"
+    ],
+    "required_queries": [
+      "get_node_status",
+      "get_events",
+      "get_metrics"
+    ],
+    "max_investigation_loops": 3,
+    "model_response": "ROOT_CAUSE: Node {{NODE}} is NotReady and marked SchedulingDisabled after a cordon+drain. Its Ready condition transitioned True->False, it carries the node.kubernetes.io/unschedulable:NoSchedule and node.kubernetes.io/not-ready:NoExecute taints, and kube_node_status_condition{condition=\"Ready\",status=\"true\"} for the cluster fell to 0 against an SLO of 1. The drain evicted {{POD3}}, which is now Pending with FailedScheduling because it cannot land on the cordoned node and the remaining nodes have no fit at this moment. This is a node-level scheduling/readiness fault on {{NODE}}, not a workload memory, deploy, or network problem. Restoring node schedulability (uncordon {{NODE}}) returns Ready=true and lets the Pending pod schedule.\nROOT_CAUSE_CATEGORY: node_failure\nVALIDATED_CLAIMS:\n- Node {{NODE}} reports Ready=False with reason KubeletNotReady and is unschedulable=true (SchedulingDisabled) with not-ready/unschedulable taints [evidence: k8s_node_health]\n- min(kube_node_status_condition{condition=\"Ready\",status=\"true\"}) = 0 < SLO 1, breached=true; kube_node_spec_unschedulable{{NODE}} = 1 [evidence: prometheus_metrics]\n- Events show NodeNotSchedulable (cordoned), Drain evicting {{POD3}}, NodeNotReady, and repeated FailedScheduling on {{POD3}} [evidence: k8s_events]\n- kubelet/controller logs show cordon -> drain -> 'NodeNotReady: node lost scheduling + ready' and scheduler '0/3 nodes available (1 unschedulable SchedulingDisabled)' [evidence: k8s_pod_logs]\n- {{POD3}} is Pending with PodScheduled=False reason Unschedulable [evidence: k8s_pods]\n- NodeNotReady and KubeNodeUnschedulable alerts are firing for {{NODE}} [evidence: prometheus_alerts]\nNON_VALIDATED_CLAIMS:\n- Resource exhaustion: {{NODE}} MemoryPressure=False/DiskPressure=False and memory_util_pct 35% under the 512Mi limit — the NotReady is from cordon/drain, not OOM or disk [evidence: k8s_node_health, prometheus_metrics]\n- Bad deploy / stuck rollout: orders image rlvr/orders:v1.4.1 and revision 4 unchanged for 3h, deployment Available=True (2/3 ready) — the lone unavailable replica is a Pending pod, not a regression [evidence: k8s_deployments]\n- Image-pull failure: the BackOff on {{POD2}} is 22m old and already recovered, unrelated [evidence: k8s_events]\n- Network fault / latency: surviving pods on {{NODE2}}/{{NODE3}} are Ready and p99 410ms is a downstream symptom of N-1 capacity [evidence: k8s_node_health, prometheus_metrics]\nCAUSAL_CHAIN:\n- Node {{NODE}} is cordoned (SchedulingDisabled) and drained, evicting its workloads\n- The node-controller flips {{NODE}} Ready condition True->False (kubelet not posting status), tainting it not-ready:NoExecute\n- min(kube_node_status_condition{Ready,status=true}) drops to 0, crossing the SLO of 1, and NodeNotReady fires\n- Evicted pod {{POD3}} goes Pending; scheduler reports FailedScheduling because the only freed node is unschedulable and peers have no fit\n- orders runs on N-1 capacity (2/3 ready), p99 rises as a symptom\n- Fix: uncordon {{NODE}} to restore schedulability and Ready=true so the Pending pod schedules and kube_node_status_condition returns to 1"
+  },
+  "remediation": {
+    "fix_tool": "cordon_node",
+    "canonical_fix": "kubectl uncordon $NODE",
+    "trust_tier": "approval",
+    "primary_metric": "kube_node_status_condition",
+    "direction": "higher",
+    "state_before": { "kube_node_status_condition": 0 },
+    "state_after": { "kube_node_status_condition": 1 },
+    "recovery_check": "kube_node_status_condition >= 1",
+    "resolved": true
+  }
+}

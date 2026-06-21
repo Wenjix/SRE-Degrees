@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-005
+  severity: 1
+  title: "Latency Spike — gateway"
+  category: network-problems
+  author: rlvr-bench
+  description: |
+    - p99 latency on the gateway crossed the SLO ceiling
+    - Injected network delay inflating tail latency
+  cause: |
+    - Upstream/network delay or saturation on the gateway path
+  impact: |
+    - Slow responses, timeouts cascade to dependent services
+  mitigation: |
+    - Remove the network fault OR reroute OR scale the gateway
+  references:
+    - https://kubernetes.io/docs/concepts/services-networking/
+  tags:
+    - cre-2025-rlvr-005
+    - rlvr
+    - latency
+    - network
+metadata:
+  kind: prequel
+  id: 5d71b3a0-late-4f55-9c23-gateway000005
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "p99 latency on gateway crossed 1500ms"

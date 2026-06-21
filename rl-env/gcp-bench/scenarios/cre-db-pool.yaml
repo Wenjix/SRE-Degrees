@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-012
+  severity: 1
+  title: "DB Pool Exhausted — cart"
+  category: database-problems
+  author: rlvr-bench
+  description: |
+    - cart database connection pool saturated at capacity
+    - New queries blocking on connection acquisition
+  cause: |
+    - Connection leak / unbounded concurrency against a fixed pool
+  impact: |
+    - cart requests stall and time out waiting for a connection
+  mitigation: |
+    - Restart to drain leaked connections OR raise pool size OR fix leak
+  references:
+    - https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+  tags:
+    - cre-2025-rlvr-012
+    - rlvr
+    - db-pool
+    - database
+metadata:
+  kind: prequel
+  id: 8d64fa30-dbpl-44c7-8394-cart00000012
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "DBPoolExhausted: cart db pool saturated 100/100"

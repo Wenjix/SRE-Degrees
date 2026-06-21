@@ -1,0 +1,405 @@
+{
+  "incident": "slack_consul_cache_db_metastable",
+  "provider": "k8s",
+  "source_company": "Slack",
+  "source_url": "https://slack.engineering/slacks-incident-on-2-22-22/",
+  "failure_mode": "discovery_churn_cache_db_metastable",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] Vitess channels keyspace overloaded — vttablet scatter-read saturation",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "VitessKeyspaceOverloaded",
+      "severity": "critical",
+      "service": "vitess-channels",
+      "namespace": "datastores",
+      "workload_type": "statefulset",
+      "workload_name": "vttablet-channels",
+      "cluster_name": "slack-prod-use1"
+    },
+    "commonAnnotations": {
+      "summary": "Vitess channels keyspace (sharded by user) overloaded; GDM-list scatter query saturating every shard",
+      "description": "vttablet_query_p99 on the channels keyspace has exploded to 9.8s (SLO 0.2s) and vttablet_query_errors are dominated by query timeouts. The load is the GDM-list 'scatter query' that fans out to all 64 shards; read QPS to the keyspace is ~6x baseline and rising. From the database's vantage point this looks like a single runaway scatter query / application bug hammering Vitess at peak Monday traffic.",
+      "error": "VitessKeyspaceOverloaded: channels keyspace scatter-read saturated, vttablet_query_p99=9.8s, timeouts climbing",
+      "suspected_symptom": "vitess_scatter_query_db_overload",
+      "k8s_failure_mode": "discovery_churn_cache_db_metastable",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,query_traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The LOUD symptom is on the victim Vitess channels keyspace: vttablet_query_p99=9.8s and the GDM-list scatter query hitting all 64 shards looks exactly like a runaway query / application bug or an organic peak-Monday traffic surge against the database. It is a downstream effect, not the driver.",
+      "The Vitess vttablet pods are healthy at the pod lifecycle level: Running, 0 restarts, deployment revision unchanged for 19 days, image vitess/vttablet:v14.0.3 stable — there was no bad_deploy to the database tier and no code change to the query before the incident.",
+      "memcached pods look healthy/benign at a glance: they are Running with 0 OOMKills and 0 crashes; the cache nodes that briefly left the ring did so via a clean Consul deregister during a rolling agent restart, NOT a crash — so 'memcached is fine' hides the churn.",
+      "mcrib (the cache control plane) is doing exactly what it was designed to do — promoting spare instances and flushing returning nodes — and reports success, so it 'looks healthy'. Its very efficiency is what amplified cache-ring churn; the postmortem notes mcrib's efficiency increased churn and contributed to severity.",
+      "DB read QPS at ~6x baseline tempts a saturation / capacity conclusion (just add Vitess capacity or shards), but read load scales superlinearly with the cache MISS RATE, not with user traffic — adding DB capacity does not address the cold cache ring.",
+      "It is peak Monday traffic, so an organic-traffic-surge / under-provisioning story looks plausible; client request_rate is only ~1.15x baseline, far below the ~6x DB read amplification."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "datastores",
+      "pods": [
+        {
+          "name": "vttablet-channels-shard-17-0",
+          "node": "ip-10-4-22-91.ec2.internal",
+          "phase": "Running",
+          "ready": "3/3",
+          "restarts": 0,
+          "age": "19d",
+          "container": {
+            "name": "vttablet",
+            "image": "vitess/vttablet:v14.0.3",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2",
+            "cpu_limit": "4",
+            "memory_request": "8Gi",
+            "memory_limit": "16Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "victim: serving the GDM-list scatter query at p99=9.8s, but pod itself is healthy (0 restarts, 19d uptime). The overload is inbound read load, not a vttablet fault."
+        },
+        {
+          "name": "memcached-gdm-0",
+          "node": "ip-10-4-30-12.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "6d",
+          "container": {
+            "name": "memcached",
+            "image": "memcached:1.6.17",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1",
+            "cpu_limit": "2",
+            "memory_request": "32Gi",
+            "memory_limit": "32Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: memcached looks fine (Running, 0 OOM, 0 restarts). The cache problem is RING-LEVEL churn driven by Consul deregistrations + mcrib reshuffles, not a memcached crash."
+        },
+        {
+          "name": "memcached-gdm-spare-3",
+          "node": "ip-10-4-31-77.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "41m",
+          "container": {
+            "name": "memcached",
+            "image": "memcached:1.6.17",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1",
+            "cpu_limit": "2",
+            "memory_request": "32Gi",
+            "memory_limit": "32Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING GUN (corroborating): a SPARE promoted into the serving ring by mcrib 41m ago — it started COLD. Promoted spares + flushed returning nodes are why ring-wide hit rate fell."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "datastores",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "ConsulAgentRestart",
+          "object": "daemonset/consul-agent",
+          "source": "consul-pbr",
+          "count": 16,
+          "first_seen": "2022-02-22T16:31:02Z",
+          "last_seen": "2022-02-22T17:48:20Z",
+          "message": "ROOT CAUSE: percentage-based rollout (PBR) upgrading consul-agent on 25% of the fleet; agents sequentially restart. On restart each memcached host DEREGISTERS from the Consul service catalog and later re-registers (this is the third 25% step; the prior two were uneventful)."
+        },
+        {
+          "type": "Warning",
+          "reason": "CacheNodeDeregistered",
+          "object": "service/memcached-gdm",
+          "source": "consul",
+          "count": 16,
+          "first_seen": "2022-02-22T16:31:05Z",
+          "last_seen": "2022-02-22T17:48:25Z",
+          "message": "memcached-gdm nodes left the Consul service catalog as their co-located consul-agent restarted (clean deregister, NOT a crash) — fed directly into mcrib reshuffling."
+        },
+        {
+          "type": "Normal",
+          "reason": "McribPromoteSpare",
+          "object": "deployment/mcrib",
+          "source": "mcrib",
+          "count": 16,
+          "first_seen": "2022-02-22T16:31:08Z",
+          "last_seen": "2022-02-22T17:48:31Z",
+          "message": "SMOKING GUN: mcrib (cache control plane watching Consul) promoted spare instances to serving state and FLUSHED nodes that left and rejoined. mcrib reports success — its efficiency increased cache-ring churn and contributed to severity."
+        },
+        {
+          "type": "Warning",
+          "reason": "CacheHitRatioLow",
+          "object": "service/memcached-gdm",
+          "source": "prometheus",
+          "count": 44,
+          "first_seen": "2022-02-22T16:33:40Z",
+          "last_seen": "2022-02-22T18:55:10Z",
+          "message": "ring-wide memcached hit rate fell from 0.992 to 0.55 as promoted spares served cold and flushed nodes lost their entries — every GDM channel missing from cache forces a scatter query across all 64 shards."
+        },
+        {
+          "type": "Warning",
+          "reason": "VitessScatterTimeout",
+          "object": "statefulset/vttablet-channels",
+          "source": "vtgate",
+          "count": 91,
+          "first_seen": "2022-02-22T16:34:55Z",
+          "last_seen": "2022-02-22T18:55:02Z",
+          "message": "GDM-list scatter queries to the channels keyspace (sharded by user) timing out; timeouts mean caches CANNOT refill, pinning the system in the failure mode (metastable)."
+        },
+        {
+          "type": "Warning",
+          "reason": "ClientBootThrottleAdjusted",
+          "object": "service/client-boot",
+          "source": "edge-throttle",
+          "count": 3,
+          "first_seen": "2022-02-22T17:20:00Z",
+          "last_seen": "2022-02-22T18:10:00Z",
+          "message": "TRAP recorded: client_boot throttle was raised too aggressively at 17:42; database read load surged again beyond sustainable limits and had to be reduced once more, then raised in small increments."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "datastores",
+      "pod": "vttablet-channels-shard-17-0",
+      "container": "vttablet",
+      "lines": [
+        "2022-02-22T16:30:50Z INFO  vttablet query OK keyspace=channels shard=17 scatter=false cache=HIT gdm_list p99=0.04s hit_rate=0.992",
+        "2022-02-22T16:33:42Z WARN  cache MISS gdm channel_id=GDM-8841 — falling through to scatter read across all 64 shards (sharded by user)",
+        "2022-02-22T16:34:55Z WARN  vtgate scatter query channels keyspace fanned to 64/64 shards; inflight_scatter=210 read_qps=6.1x_baseline",
+        "2022-02-22T16:35:10Z ERROR vttablet query TIMEOUT keyspace=channels scatter=true gdm_list deadline=10s — read load superlinear in cache miss rate",
+        "2022-02-22T16:35:11Z ERROR cache fill FAILED for channel_id=GDM-8841: backing scatter query timed out — cache cannot refill (metastable failure)",
+        "2022-02-22T17:42:08Z WARN  client_boot throttle raised 35%->90%; scatter read_qps jumped 6.1x->9.4x baseline — DB load surged beyond sustainable (throttle raised too aggressively)",
+        "2022-02-22T17:43:30Z ERROR vttablet query TIMEOUT storm keyspace=channels scatter=true — reduce client_boot throttle, raise in small increments",
+        "2022-02-22T18:54:40Z INFO  scatter query modified: read ONLY shards for channels MISSING from memcached + read from replicas (immutable GDM data tolerates staleness); hit_rate recovering 0.55->0.88"
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "datastores",
+      "deployment": "vttablet-channels",
+      "replicas": { "desired": 192, "ready": 192, "available": 192, "updated": 192 },
+      "current_revision": 7,
+      "image": "vitess/vttablet:v14.0.3",
+      "last_rollout": "19d ago",
+      "rollout_status": "complete",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "ADVERSARIAL: channels keyspace revision 7 unchanged for 19d, all 192 vttablets Available, image v14.0.3 stable. No bad_deploy and no query code change to the DB tier — the GDM-list query is long-standing and only became pathological once the cache ring went cold."
+    },
+    "prometheus_metrics.json": {
+      "service": "vitess-channels",
+      "namespace": "datastores",
+      "window": "5m",
+      "metrics": {
+        "memcached_gdm_hit_ratio": 0.55,
+        "memcached_ring_churn_events_total": 16,
+        "mcrib_spare_promotions_total": 16,
+        "mcrib_node_flushes_total": 16,
+        "vitess_channels_read_qps_ratio_vs_baseline": 6.1,
+        "vttablet_query_p99_s": 9.8,
+        "vttablet_query_timeout_rate_per_s": 88.0,
+        "vitess_scatter_query_fanout_shards": 64,
+        "client_boot_request_rate_ratio_vs_baseline": 1.15,
+        "client_boot_throttle_pct": 35,
+        "memcached_cpu_util_pct": 22,
+        "memcached_oomkill_total": 0,
+        "vttablet_cpu_util_pct": 71,
+        "vttablet_restart_count": 0
+      },
+      "baseline": {
+        "memcached_gdm_hit_ratio": 0.992,
+        "memcached_ring_churn_events_total": 0,
+        "mcrib_spare_promotions_total": 0,
+        "vitess_channels_read_qps_ratio_vs_baseline": 1.0,
+        "vttablet_query_p99_s": 0.04,
+        "vttablet_query_timeout_rate_per_s": 0.0,
+        "client_boot_request_rate_ratio_vs_baseline": 1.0,
+        "client_boot_throttle_pct": 100,
+        "vttablet_cpu_util_pct": 38
+      },
+      "samples": [
+        {
+          "metric": "memcached_gdm_hit_ratio",
+          "query": "sum(rate(memcached_get_hits{service=\"memcached-gdm\"}[1m])) / sum(rate(memcached_get_total{service=\"memcached-gdm\"}[1m]))",
+          "value": 0.55,
+          "slo_threshold": 0.95,
+          "breached": true,
+          "unit": "ratio"
+        },
+        {
+          "metric": "vitess_channels_read_qps_ratio_vs_baseline",
+          "query": "sum(rate(vttablet_queries_total{keyspace=\"channels\"}[1m])) / 1947",
+          "value": 6.1,
+          "slo_threshold": 2.0,
+          "breached": true,
+          "unit": "ratio",
+          "note": "SMOKING GUN: read QPS is 6.1x baseline while client request_rate is only 1.15x — the amplification is from cache misses, NOT user traffic. Read load scales SUPERLINEARLY with miss rate."
+        }
+      ],
+      "note": "memcached_gdm_hit_ratio fell 0.992 -> 0.55 in lockstep with 16 ring-churn events / mcrib spare promotions; vitess read QPS rose to 6.1x baseline and vttablet p99 to 9.8s as a DOWNSTREAM effect. memcached CPU 22%, 0 OOM; vttablet CPU 71% with 0 restarts; client request_rate only 1.15x. The driver is the cache ring going cold, not DB capacity or organic traffic."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "VitessKeyspaceOverloaded",
+            "severity": "critical",
+            "service": "vitess-channels",
+            "namespace": "datastores",
+            "cluster_name": "slack-prod-use1"
+          },
+          "annotations": {
+            "summary": "Vitess channels keyspace overloaded; GDM-list scatter query saturating all 64 shards",
+            "error": "VitessKeyspaceOverloaded: vttablet_query_p99=9.8s, scatter timeouts climbing"
+          },
+          "state": "firing",
+          "activeAt": "2022-02-22T16:35:30Z",
+          "value": "9.8"
+        },
+        {
+          "labels": {
+            "alertname": "CacheHitRatioLow",
+            "severity": "warning",
+            "service": "memcached-gdm",
+            "namespace": "datastores",
+            "cluster_name": "slack-prod-use1"
+          },
+          "annotations": {
+            "summary": "memcached-gdm ring hit ratio 0.55 (SLO 0.95) during consul-agent PBR restart",
+            "error": "CacheHitRatioLow: ring churn from mcrib spare promotions + flushes"
+          },
+          "state": "firing",
+          "activeAt": "2022-02-22T16:33:50Z",
+          "value": "0.55"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "vitess-channels",
+      "sampled_spans": 3,
+      "summary": "Slow client-boot requests spend nearly all their time in the GDM-list scatter query, which fans out to all 64 shards of the channels keyspace because the per-channel GDM entries are missing from memcached. The DB is slow only because it is doing a scatter read for every cache miss; the upstream cause is the cold cache ring, not a single bad query or a slow database.",
+      "spans": [
+        {
+          "trace_id": "9f2c...a1",
+          "root": "client-boot:/boot",
+          "total_ms": 9870,
+          "breakdown": [
+            { "span": "client_boot.gdm_list", "ms": 6, "note": "needs the list of users in the GDMs you are in" },
+            { "span": "memcached.get gdm channel", "ms": 2, "note": "MISS — channel not in cache after mcrib flush/promote" },
+            { "span": "vtgate.scatter channels keyspace", "ms": 9840, "note": "SMOKING GUN: scatter to 64/64 shards (sharded by user) because one channel missing from cache forces a query on every shard; TIMED OUT at 10s" },
+            { "span": "memcached.set gdm channel", "ms": 0, "note": "cache fill FAILED — backing scatter timed out, so the miss persists (metastable)" }
+          ]
+        },
+        {
+          "trace_id": "b73d...0e",
+          "root": "client-boot:/boot",
+          "total_ms": 9120,
+          "breakdown": [
+            { "span": "memcached.get gdm channel", "ms": 2, "note": "MISS (same cold ring)" },
+            { "span": "vtgate.scatter channels keyspace", "ms": 9100, "note": "duplicate full-fanout scatter for a different GDM — read load superlinear in miss rate" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "dependency_failure",
+    "root_cause_subtype": "service-discovery churn (Consul/mcrib) -> cold cache ring -> Vitess scatter overload (metastable)",
+    "required_keywords": [
+      "consul-agent",
+      "PBR",
+      "rolling restart",
+      "mcrib",
+      "promoted spares",
+      "flushed",
+      "cache hit rate",
+      "0.55",
+      "scatter query",
+      "channels keyspace",
+      "sharded by user",
+      "superlinear",
+      "metastable",
+      "client_boot throttle"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "saturation",
+      "node_failure",
+      "config_error",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "vttablet revision 7 unchanged 19d",
+      "all 192 vttablets Available",
+      "image v14.0.3 stable",
+      "memcached 0 OOM 0 restarts",
+      "clean Consul deregister not a crash",
+      "vttablet 0 restarts",
+      "memcached cpu 22%",
+      "client request_rate only 1.15x",
+      "read_qps 6.1x driven by miss rate not traffic"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs",
+      "describe_pod",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_events",
+      "query_traces",
+      "get_logs"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "Consul PBR restart -> memcached churn -> mcrib reassigns/flushes slots -> hit rate falls -> scatter expansion -> Vitess overload -> cache fills time out -> client retries amplify (metastable)",
+    "model_response": "ROOT_CAUSE: A Consul-agent rolling restart (percentage-based rollout, 3rd 25% step) sequentially deregistered memcached-gdm nodes from the Consul service catalog. mcrib (the cache control plane that watches Consul) reacted by promoting cold spare instances to serving state and flushing nodes that left and rejoined, so the ring-wide cache hit rate (these freshly promoted spares served cold) fell from 0.992 to 0.55. Because the GDM channel data is cached by channel ID but the backing Vitess channels keyspace is sharded by USER, every channel missing from cache forces a scatter query that fans out to all 64 shards. Read load on the channels keyspace therefore rose SUPERLINEARLY with the cache miss rate (read QPS 6.1x baseline while client request_rate is only 1.15x), overwhelming vttablet (p99 9.8s). Most scatter queries timed out, which meant the caches could NOT refill, pinning the system in a metastable cascading-failure state. The loud Vitess overload is the victim symptom; the root cause is the discovery-churn -> cold-cache-ring driver upstream.\nROOT_CAUSE_CATEGORY: dependency_failure\nVALIDATED_CLAIMS:\n- consul-agent PBR rolling restart fired 16 ConsulAgentRestart / CacheNodeDeregistered events; this is the 3rd 25% step (prior two uneventful) [evidence: k8s_events]\n- mcrib promoted 16 spares (these promoted spares started COLD) and flushed 16 returning nodes; memcached-gdm-spare-3 was promoted into the serving ring 41m ago and started COLD [evidence: k8s_events, k8s_pods]\n- memcached_gdm_hit_ratio fell 0.992 -> 0.55 (SLO 0.95) in lockstep with the ring churn [evidence: prometheus_metrics, prometheus_alerts]\n- vitess_channels_read_qps is 6.1x baseline while client_boot request_rate is only 1.15x — amplification is from cache misses, not user traffic (superlinear in miss rate) [evidence: prometheus_metrics]\n- Traces show client-boot spending ~9.8s in a vtgate scatter across 64/64 shards of the channels keyspace (sharded by user) for a single missing GDM channel, then the cache.set FAILS because the scatter timed out [evidence: traces]\n- Logs confirm scatter timeouts mean the cache cannot refill (metastable), and that raising the client_boot throttle too aggressively (35%->90%) surged read QPS 6.1x->9.4x [evidence: k8s_pod_logs, k8s_events]\nNON_VALIDATED_CLAIMS:\n- Runaway query / application bug on Vitess (the LOUD symptom): WRONG. The GDM-list scatter query is long-standing; the channels keyspace revision 7 is unchanged for 19d with all 192 vttablets Available and image v14.0.3 stable — no DB-tier deploy or query code change. The query only became pathological once the cache ring went cold [evidence: k8s_deployments, prometheus_metrics]\n- Database capacity / saturation (just add Vitess capacity or shards): WRONG. Read load scales superlinearly with the MISS RATE, not user traffic; adding DB capacity does not address the cold ring. vttablet CPU 71% with 0 restarts is a symptom of the scatter storm [evidence: prometheus_metrics]\n- memcached crash / OOM: WRONG. memcached pods are Running with 0 OOM and 0 restarts; the nodes left via a CLEAN Consul deregister during the agent restart, not a crash [evidence: k8s_pods, k8s_events]\n- Organic peak-Monday traffic surge: WRONG. client request_rate is only 1.15x baseline, far below the 6.1x DB read amplification [evidence: prometheus_metrics]\n- TRAP — raising the client_boot throttle aggressively to 'recover faster': WRONG / it WORSENED the incident. At 17:42 the throttle was raised 35%->90%, read QPS surged 6.1x->9.4x beyond sustainable, and it had to be reduced again then raised in small increments [evidence: k8s_pod_logs, k8s_events]\n- TRAP — restarting cache nodes / rolling back unrelated code: WRONG. Restarting cache nodes adds MORE ring churn (the very mechanism that cooled the ring); there is no code rollback to make since revision 7 is 19d old\nCAUSAL_CHAIN:\n- Consul PBR rolling restart sequentially deregisters memcached-gdm nodes from the service catalog\n- mcrib promotes cold spares to serving and flushes returning nodes -> ring-wide hit rate falls 0.992 -> 0.55\n- GDM data is cached by channel ID but Vitess channels keyspace is sharded by user, so each missing channel forces a scatter query across all 64 shards\n- Read load on the keyspace rises superlinearly with the miss rate (6.1x QPS), overwhelming vttablet (p99 9.8s)\n- Scatter queries time out, so caches cannot refill; client retries amplify -> the system is metastable (stays in cascading failure without intervention)\n- Fix: throttle client_boot FIRST to cap DB read load, then change the scatter query to read only the shards for channels MISSING from memcached and read from replicas (immutable GDM data tolerates staleness); caches refill, hit rate recovers, then lift the throttle GRADUALLY in small increments\nFIX: Throttle client_boot to cap DB load, modify the GDM-list query to read only missing shards + from replicas so caches can refill, pause the Consul rolling restart, then gradually raise the client_boot throttle back to normal."
+  },
+  "remediation": {
+    "fix_tool": "scale_consumers",
+    "canonical_fix": "Throttle client_boot first to cap DB read load, change the GDM-list scatter query to read only the shards for channels missing from memcached (and from replicas, since immutable GDM data tolerates staleness) so caches refill, then gradually lift the client_boot throttle in small increments; pause the Consul PBR rolling restart.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "Raise / lift the client_boot throttle too aggressively (35%->90%) to recover faster — surged DB read QPS 6.1x->9.4x beyond sustainable and had to be reduced again (the documented worsening)",
+      "Restart the memcached cache nodes — adds more cache-ring churn, the exact mechanism that cooled the ring",
+      "Roll back unrelated / day-of application code — no relevant change exists (channels keyspace revision 7 is 19d old); wastes time on a red herring",
+      "Add Vitess capacity / shards to fix DB 'saturation' — read load is superlinear in the cache miss rate, not user traffic, so this does not address the cold cache ring"
+    ],
+    "resolved": true
+  }
+}

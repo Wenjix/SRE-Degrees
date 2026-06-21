@@ -1,0 +1,372 @@
+{
+  "incident": "db_pool_exhaustion",
+  "provider": "k8s",
+  "failure_mode": "db_pool_exhaustion",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "cart",
+    "NS": "rlvr-target",
+    "WORKLOAD": "cart",
+    "POD": "cart-7b6b9dfb7c-lv9ld",
+    "POD2": "cart-7b6b9dfb7c-q4xkz",
+    "POD3": "cart-7b6b9dfb7c-r2m8p",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9kp7",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-c1ws",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] DB connection pool exhausted — {{SVC}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "DBPoolExhausted",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{SVC}} database connection pool saturated 100/100 in {{NS}}",
+      "description": "app_db_conn_in_use for {{SVC}} reached 100 against a max pool size of 100 (100% utilization), above the 80 SLO. New queries are blocking on connection acquisition and timing out; checked-out connections are not being returned to the pool (leak).",
+      "error": "DBPoolExhausted: cart db pool saturated 100/100",
+      "suspected_symptom": "db_conn_in_use >= 95% of pool",
+      "k8s_failure_mode": "db_pool_exhaustion",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,prometheus_metrics,query_traces,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The backing Postgres dependency (cart-db) is healthy: app_db_query_latency_p99 is 11ms and app_db_up=1, so this is not a slow or down database — connections are exhausted at the client pool, not blocked on the server.",
+      "{{SVC}} rolled out a new image tag (cart:3.4.1) 6 hours ago, well before the incident window, tempting a bad_deploy conclusion — but the rollout completed cleanly and the pool started saturating only after a traffic ramp, not at the rollout.",
+      "{{SVC}} pods log occasional 'context deadline exceeded' calling cart-db, suggesting dependency_failure — but the deadline is hit waiting to ACQUIRE a pooled connection (wait queue), not on the query itself; cart-db responds fast to the few queries that get a connection.",
+      "Node {{NODE}} and all nodes are Ready with ample CPU/memory headroom, and pod cpu (0.28 cores) and memory (44%) are nominal, so this is not resource_exhaustion or node_failure."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "cart:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "env": [
+                { "name": "DB_POOL_MAX_CONN", "value": "100" },
+                { "name": "DB_POOL_ACQUIRE_TIMEOUT_MS", "value": "2000" }
+              ],
+              "state": { "running": { "startedAt": "2026-06-20T09:00:14Z" } },
+              "last_state": {}
+            }
+          ],
+          "note": "container is Ready and not restarting — the failure is in-process pool saturation, not a crash or OOM"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "cart:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "env": [
+                { "name": "DB_POOL_MAX_CONN", "value": "100" },
+                { "name": "DB_POOL_ACQUIRE_TIMEOUT_MS", "value": "2000" }
+              ],
+              "state": { "running": { "startedAt": "2026-06-20T09:00:14Z" } },
+              "last_state": {}
+            }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "cart:3.4.1",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "env": [
+                { "name": "DB_POOL_MAX_CONN", "value": "100" },
+                { "name": "DB_POOL_ACQUIRE_TIMEOUT_MS", "value": "2000" }
+              ],
+              "state": { "running": { "startedAt": "2026-06-20T09:00:14Z" } },
+              "last_state": {}
+            }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "Unhealthy",
+          "object": "pod/{{POD}}",
+          "source": "kubelet, {{NODE}}",
+          "count": 9,
+          "first_seen": "2026-06-20T10:12:40Z",
+          "last_seen": "2026-06-20T10:18:55Z",
+          "message": "Readiness probe failed: HTTP 503 from /healthz/ready (db pool acquire timeout) — probe flapping but container still Running"
+        },
+        {
+          "type": "Warning",
+          "reason": "Unhealthy",
+          "object": "pod/{{POD2}}",
+          "source": "kubelet, {{NODE2}}",
+          "count": 7,
+          "first_seen": "2026-06-20T10:12:51Z",
+          "last_seen": "2026-06-20T10:18:49Z",
+          "message": "Readiness probe failed: HTTP 503 from /healthz/ready (db pool acquire timeout)"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/{{WORKLOAD}}",
+          "source": "deployment-controller",
+          "count": 1,
+          "first_seen": "2026-06-20T04:05:22Z",
+          "last_seen": "2026-06-20T04:05:22Z",
+          "message": "Scaled up replica set {{WORKLOAD}}-7b6b9dfb7c to 3 (image cart:3.4.1) — rollout complete 6h before incident (adversarial)"
+        },
+        {
+          "type": "Normal",
+          "reason": "DependencyHealthy",
+          "object": "service/cart-db",
+          "source": "blackbox-exporter",
+          "count": 1,
+          "first_seen": "2026-06-20T10:17:00Z",
+          "last_seen": "2026-06-20T10:17:00Z",
+          "message": "cart-db probe OK: TCP connect 1ms, SELECT 1 returned in 3ms (adversarial — backing DB is healthy)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "{{NS}}",
+      "pod": "{{POD}}",
+      "container": "{{SVC}}",
+      "lines": [
+        "2026-06-20T10:12:38Z INFO  db pool stats: in_use=92 idle=0 max=100 wait_queue=14",
+        "2026-06-20T10:12:40Z WARN  db pool near capacity: in_use=98/100 idle=0 pending_acquires=31",
+        "2026-06-20T10:12:41Z ERROR DBPoolExhausted: cart db pool saturated 100/100",
+        "2026-06-20T10:12:41Z ERROR connection acquire timed out after 2000ms: context deadline exceeded (pool=cart-db in_use=100 max=100)",
+        "2026-06-20T10:12:41Z ERROR returning 503 to client: could not obtain db connection (cart pool exhausted)",
+        "2026-06-20T10:13:05Z WARN  leaked connection detected: checked out for 47s without release, stmt=SELECT * FROM cart_items WHERE cart_id=$1",
+        "2026-06-20T10:18:55Z ERROR DBPoolExhausted: cart db pool saturated 100/100"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 27,
+          "pods": "13/110",
+          "note": "Ready with headroom — failure is application pool-scoped, not node-scoped (adversarial)"
+        },
+        {
+          "name": "{{NODE2}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 21,
+          "pods": "10/110"
+        },
+        {
+          "name": "{{NODE3}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 24,
+          "pods": "12/110"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "image": "cart:3.4.1",
+      "strategy": "RollingUpdate",
+      "desired_replicas": 3,
+      "available_replicas": 3,
+      "ready_replicas": 3,
+      "unavailable_replicas": 0,
+      "current_revision": 11,
+      "previous_revision": 10,
+      "previous_image": "cart:3.4.0",
+      "rollout_status": "Complete",
+      "last_rollout": "2026-06-20T04:05:22Z",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "rollout to cart:3.4.1 completed cleanly 6h before the incident with all 3 replicas Available — rules out bad_deploy"
+    },
+    "prometheus_metrics.json": {
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "query": "max(app_db_conn_in_use{namespace=\"rlvr-target\",app=\"cart\"})",
+      "primary_metric": "app_db_conn_in_use",
+      "slo_threshold": 80,
+      "direction": "lower",
+      "current_value": 100,
+      "unit": "connections",
+      "series": [
+        { "pod": "{{POD}}", "app_db_conn_in_use": 100, "app_db_pool_max": 100, "app_db_pool_util_pct": 100.0, "app_db_pool_wait_queue": 31 },
+        { "pod": "{{POD2}}", "app_db_conn_in_use": 100, "app_db_pool_max": 100, "app_db_pool_util_pct": 100.0, "app_db_pool_wait_queue": 24 },
+        { "pod": "{{POD3}}", "app_db_conn_in_use": 99, "app_db_pool_max": 100, "app_db_pool_util_pct": 99.0, "app_db_pool_wait_queue": 18 }
+      ],
+      "samples": [
+        { "t": "2026-06-20T10:08:00Z", "value": 47 },
+        { "t": "2026-06-20T10:10:00Z", "value": 76 },
+        { "t": "2026-06-20T10:11:00Z", "value": 94 },
+        { "t": "2026-06-20T10:12:00Z", "value": 100 }
+      ],
+      "related": [
+        { "metric": "app_db_conn_acquire_timeout_total_rate_1m", "value": 28.4, "unit": "per_s", "note": "queries timing out waiting for a pooled connection" },
+        { "metric": "app_db_query_latency_p99", "value": 0.011, "unit": "seconds", "note": "DB server responds fast for queries that get a connection — backing DB is healthy (adversarial)" },
+        { "metric": "app_db_up", "value": 1, "unit": "bool", "note": "cart-db reachable and serving (adversarial — not dependency_failure)" },
+        { "metric": "http_request_error_rate", "value": 0.41, "unit": "ratio", "note": "client 503s tracking pool-acquire timeouts" },
+        { "metric": "cpu_cores", "value": 0.28, "unit": "cores", "note": "nominal — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 44.0, "unit": "percent", "note": "nominal — not resource_exhaustion" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "DBPoolExhausted",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{SVC}} database connection pool saturated 100/100",
+            "description": "app_db_conn_in_use 100 >= 95% of max pool 100; pending_acquires>30 and acquire timeouts firing",
+            "error": "DBPoolExhausted: cart db pool saturated 100/100"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T10:12:30Z",
+          "value": "100"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "saturation",
+    "required_keywords": [
+      "DBPoolExhausted",
+      "connection pool",
+      "saturated 100/100",
+      "in_use=100",
+      "acquire timeout",
+      "leaked connection",
+      "app_db_conn_in_use",
+      "{{SVC}}"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "dependency_failure",
+      "resource_exhaustion",
+      "node_failure",
+      "network_fault"
+    ],
+    "ruling_out_keywords": [
+      "app_db_query_latency_p99 11ms",
+      "app_db_up=1",
+      "cart-db probe OK",
+      "rollout Complete 6h prior",
+      "0 restarts",
+      "nodes Ready",
+      "cpu 0.28 cores",
+      "memory 44%"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "describe_pod",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "describe_pod"
+    ],
+    "max_investigation_loops": 3,
+    "model_response": "ROOT_CAUSE: The {{SVC}} service has exhausted its database connection pool: app_db_conn_in_use is pinned at 100/100 (max pool size) across {{POD}}, {{POD2}}, and {{POD3}}, with 30+ pending acquires and a leaked connection held 47s without release. New queries block waiting for a connection and time out after 2000ms (context deadline exceeded on acquire), so {{SVC}} returns 503s. app_db_conn_in_use is at 100 vs the 80 SLO. This is connection-pool saturation (a leak / unbounded concurrency against a fixed pool), not a slow or failed backing DB.\nROOT_CAUSE_CATEGORY: saturation\nVALIDATED_CLAIMS:\n- app_db_conn_in_use=100/100 (100% pool utilization) on {{POD}} and {{POD2}}, ramping 47->76->94->100 over 4m, breaching the 80 SLO [evidence: prometheus_metrics]\n- Pod log 'DBPoolExhausted: cart db pool saturated 100/100' and 'connection acquire timed out after 2000ms: context deadline exceeded (pool=cart-db in_use=100 max=100)' [evidence: k8s_pod_logs]\n- Pod log 'leaked connection detected: checked out for 47s without release' — connections are not returned to the pool [evidence: k8s_pod_logs]\n- app_db_conn_acquire_timeout_total rate 28.4/s and wait_queue 30+, with http_request_error_rate 0.41 from acquire-timeout 503s [evidence: prometheus_metrics]\n- DBPoolExhausted alert firing since 10:12:30 with value 100 [evidence: prometheus_alerts]\n- Readiness probes on {{POD}} and {{POD2}} flapping with HTTP 503 from /healthz/ready (db pool acquire timeout) while containers stay Running — a pool acquire timeout, not a crash [evidence: k8s_events]\nNON_VALIDATED_CLAIMS:\n- Not a dependency_failure: app_db_query_latency_p99=11ms, app_db_up=1, and the cart-db probe is OK (TCP 1ms, SELECT 1 in 3ms) — the backing DB is fast; the timeout is on acquiring a pooled connection, not on the query [evidence: prometheus_metrics, k8s_events]\n- Not a bad deploy: the cart:3.4.1 rollout completed cleanly 6h before the incident and all 3 replicas are Available [evidence: k8s_deployments, k8s_events]\n- Not resource_exhaustion or node_failure: pods have 0 restarts, cpu 0.28 cores and memory 44% are nominal, and all nodes are Ready with headroom [evidence: k8s_pods, prometheus_metrics, k8s_node_health]\nCAUSAL_CHAIN:\n- A connection leak / unbounded concurrency checks out cart-db connections faster than they are released -> in_use climbs to the fixed max pool of 100 -> the pool is saturated and new requests queue for a connection -> acquires time out after 2000ms (context deadline exceeded) and {{SVC}} returns 503 -> app_db_conn_in_use breaches the 80 SLO and the DBPoolExhausted alert fires -> restarting the {{SVC}} deployment drops every leaked connection and resets in_use, bringing the pool back under SLO."
+  },
+  "remediation": {
+    "fix_tool": "restart_service",
+    "canonical_fix": "kubectl rollout restart deployment/cart -n rlvr-target",
+    "trust_tier": "approval",
+    "primary_metric": "app_db_conn_in_use",
+    "direction": "lower",
+    "state_before": { "app_db_conn_in_use": 100 },
+    "state_after": { "app_db_conn_in_use": 23 },
+    "recovery_check": "app_db_conn_in_use < 80",
+    "resolved": true
+  }
+}

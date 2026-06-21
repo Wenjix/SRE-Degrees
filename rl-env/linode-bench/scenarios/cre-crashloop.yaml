@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-004
+  severity: 0
+  title: "CrashLoopBackOff — auth"
+  category: kubernetes-problems
+  author: rlvr-bench
+  description: |
+    - auth container repeatedly exiting non-zero and restarting
+    - kubelet backing off restarts (CrashLoopBackOff)
+  cause: |
+    - Bad config / failed dependency / repeated process kill
+  impact: |
+    - auth unavailable, login and token issuance fail platform-wide
+  mitigation: |
+    - Roll back the bad revision OR restart the deployment OR fix config
+  references:
+    - https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/
+  tags:
+    - cre-2025-rlvr-004
+    - rlvr
+    - crashloop
+    - restart
+metadata:
+  kind: prequel
+  id: 9a02f7c0-crsh-4e44-8b12-auth000000004
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "CrashLoopBackOff: auth container exited code 1"

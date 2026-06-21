@@ -1,0 +1,355 @@
+{
+  "incident": "cache_stampede",
+  "provider": "k8s",
+  "failure_mode": "cache_stampede",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "catalog",
+    "NS": "rlvr-target",
+    "WORKLOAD": "catalog",
+    "POD": "catalog-6f9c8b5d74-r8k2n",
+    "POD2": "catalog-6f9c8b5d74-tq4ws",
+    "POD3": "catalog-6f9c8b5d74-zv7mp",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-8rmq",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-jc4d",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] cache hit ratio 12% on {{SVC}} — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "CacheStampede",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{SVC}} cache hit ratio collapsed to 0.12 (SLO 0.70) in {{NS}}",
+      "description": "app_cache_hit_ratio for {{WORKLOAD}} dropped from a steady 0.94 to 0.12 within seconds of a Redis FLUSHALL. The cache is cold and concurrent requests for the same keys are all missing at once, so every request falls through to the backing store (Postgres). Backend query latency and catalog p99 are climbing as the thundering herd of misses overwhelms the database. CPU, memory, replica counts and the deployment revision are all unchanged.",
+      "error": "CacheStampede: hit ratio dropped to 12% after FLUSHALL",
+      "suspected_symptom": "cache_hit_ratio_collapse",
+      "k8s_failure_mode": "cache_stampede",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,query_traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "catalog p99 latency is elevated (~880ms vs 120ms baseline) and DB query latency is high, which could look like a slow-dependency dependency_failure on Postgres rather than a cache problem",
+      "request_rate_rps on {{SVC}} is at the very top of its normal band (~210 rps), tempting a saturation / organic-traffic-surge conclusion",
+      "a redis-cache pod ({{POD2}} sidecar's backing Redis) shows one Normal 'Started' event ~3m before the incident, which could look like a Redis restart/crash that wiped the cache on its own",
+      "backend Postgres connection pool usage rose to 78% (under its 80% ceiling), which could look like db_pool_exhaustion building up"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "8d2h",
+          "container": {
+            "name": "catalog",
+            "image": "registry.rlvr/catalog:v3.1.2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "container healthy and serving; the fault is at the cache layer, not the pod lifecycle (0 restarts)"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "8d2h",
+          "container": {
+            "name": "catalog",
+            "image": "registry.rlvr/catalog:v3.1.2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "8d2h",
+          "container": {
+            "name": "catalog",
+            "image": "registry.rlvr/catalog:v3.1.2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "CacheFlushed",
+          "object": "pod/redis-0",
+          "source": "redis-cli",
+          "count": 1,
+          "first_seen": "2026-06-20T14:22:03Z",
+          "last_seen": "2026-06-20T14:22:03Z",
+          "message": "Redis FLUSHALL executed against the catalog cache keyspace (db0) — all 41,820 keys evicted in a single command"
+        },
+        {
+          "type": "Warning",
+          "reason": "CacheHitRatioLow",
+          "object": "pod/{{POD}}",
+          "source": "prometheus",
+          "count": 28,
+          "first_seen": "2026-06-20T14:22:06Z",
+          "last_seen": "2026-06-20T14:24:41Z",
+          "message": "app_cache_hit_ratio for {{WORKLOAD}} fell to 0.12 (SLO 0.70); concurrent misses for the same hot keys stampeding to Postgres"
+        },
+        {
+          "type": "Warning",
+          "reason": "BackendLatencyHigh",
+          "object": "pod/{{POD2}}",
+          "source": "catalog",
+          "count": 14,
+          "first_seen": "2026-06-20T14:22:08Z",
+          "last_seen": "2026-06-20T14:24:39Z",
+          "message": "Postgres query p99 climbed to 740ms under the miss storm; no request coalescing in front of the cache"
+        },
+        {
+          "type": "Normal",
+          "reason": "Started",
+          "object": "pod/redis-0",
+          "source": "kubelet",
+          "count": 1,
+          "first_seen": "2026-06-20T14:18:55Z",
+          "last_seen": "2026-06-20T14:18:55Z",
+          "message": "Started container redis (routine readiness probe restart 3m before incident; uptime continuous, RDB intact — adversarial, not a crash)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{POD}}",
+      "container": "catalog",
+      "lines": [
+        "2026-06-20T14:21:58Z INFO  serving request id=req-7c10 path=/api/products?id=42 cache=HIT ratio=0.94",
+        "2026-06-20T14:22:03Z WARN  cache GET miss key=product:42 (was HIT 5s ago) — backing store fetch",
+        "2026-06-20T14:22:04Z WARN  cache GET miss key=product:42 key=product:42 key=product:42 (3 concurrent misses, same key, no coalescing) — all dispatched to Postgres",
+        "2026-06-20T14:22:05Z ERROR CacheStampede: hit ratio dropped to 12% after FLUSHALL",
+        "2026-06-20T14:22:05Z WARN  Postgres pool checkout slow: 612ms (herd of cold-cache misses) inflight_db_queries=63",
+        "2026-06-20T14:22:11Z WARN  cache repopulating: 4,910/41,820 keys warm, hit ratio 0.18 and rising slowly under load",
+        "2026-06-20T14:24:41Z ERROR CacheStampede: hit ratio dropped to 12% after FLUSHALL"
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "replicas": { "desired": 3, "ready": 3, "available": 3, "updated": 3 },
+      "current_revision": 11,
+      "image": "registry.rlvr/catalog:v3.1.2",
+      "last_rollout": "8d2h ago",
+      "rollout_status": "complete",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "revision 11 unchanged, last rollout 8d2h ago, image v3.1.2 stable — rules out bad_deploy; the regression coincides with the FLUSHALL, not a deploy"
+    },
+    "prometheus_metrics.json": {
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "window": "2m",
+      "metrics": {
+        "app_cache_hit_ratio": 0.12,
+        "cache_requests_per_s": 1980,
+        "cache_misses_per_s": 1742,
+        "cache_keys_resident": 5210,
+        "db_query_p99_ms": 740,
+        "db_pool_in_use_pct": 78,
+        "p99_latency_ms": 880,
+        "error_rate_pct": 1.2,
+        "request_rate_rps": 210,
+        "cpu_util_pct": 47,
+        "cpu_throttle_pct": 3,
+        "memory_util_pct": 39,
+        "ready_replicas_pct": 100,
+        "restart_count": 0
+      },
+      "baseline": {
+        "app_cache_hit_ratio": 0.94,
+        "cache_requests_per_s": 1960,
+        "cache_misses_per_s": 118,
+        "cache_keys_resident": 41820,
+        "db_query_p99_ms": 58,
+        "db_pool_in_use_pct": 31,
+        "p99_latency_ms": 120,
+        "error_rate_pct": 0.3,
+        "request_rate_rps": 195,
+        "cpu_util_pct": 44,
+        "memory_util_pct": 38
+      },
+      "samples": [
+        {
+          "metric": "app_cache_hit_ratio",
+          "query": "sum(rate(app_cache_hits_total{namespace=\"{{NS}}\",app=\"{{SVC}}\"}[1m])) / sum(rate(app_cache_requests_total{namespace=\"{{NS}}\",app=\"{{SVC}}\"}[1m]))",
+          "value": 0.12,
+          "slo_threshold": 0.7,
+          "breached": true,
+          "unit": "ratio"
+        }
+      ],
+      "note": "cache_keys_resident collapsed from 41,820 to ~5,210 and hit ratio from 0.94 to 0.12 in lockstep; cache_misses_per_s jumped ~15x. db_query_p99 and catalog p99 rose only as a downstream effect of the miss storm. CPU 47%, memory 39%, request_rate near baseline — not resource_exhaustion or saturation."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "CacheStampede",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{SVC}} cache hit ratio collapsed to 0.12 (SLO 0.70)",
+            "error": "CacheStampede: hit ratio dropped to 12% after FLUSHALL"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T14:22:30Z",
+          "value": "0.12"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "{{SVC}}",
+      "sampled_spans": 4,
+      "summary": "Slow requests are dominated by synchronous Postgres reads caused by cache misses; the DB itself is healthy per-query, but is being hit by a herd of redundant lookups for the same hot keys because the cache is cold and there is no request coalescing.",
+      "spans": [
+        {
+          "trace_id": "c4a9...1f",
+          "root": "{{SVC}}:/api/products",
+          "total_ms": 902,
+          "breakdown": [
+            { "span": "catalog.cache_get", "ms": 4, "note": "MISS key=product:42" },
+            { "span": "catalog.db_query", "ms": 731, "note": "SELECT * FROM products WHERE id=42 — cold-cache fallthrough, queued behind 63 identical concurrent queries" },
+            { "span": "catalog.handler", "ms": 18 },
+            { "span": "catalog.cache_set", "ms": 6, "note": "repopulating key=product:42" }
+          ]
+        },
+        {
+          "trace_id": "d2b7...88",
+          "root": "{{SVC}}:/api/products",
+          "total_ms": 869,
+          "breakdown": [
+            { "span": "catalog.cache_get", "ms": 3, "note": "MISS key=product:42 (same key as concurrent traces — no coalescing)" },
+            { "span": "catalog.db_query", "ms": 702, "note": "duplicate SELECT for product:42 — thundering herd, single hot key fanned out to many DB reads" },
+            { "span": "catalog.handler", "ms": 16 }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "saturation",
+    "required_keywords": [
+      "cache stampede",
+      "FLUSHALL",
+      "cache hit ratio",
+      "0.12",
+      "cold cache",
+      "thundering herd",
+      "request coalescing",
+      "app_cache_hit_ratio"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "dependency_failure",
+      "resource_exhaustion",
+      "node_failure",
+      "config_error"
+    ],
+    "ruling_out_keywords": [
+      "revision 11 unchanged",
+      "last_rollout 8d2h ago",
+      "0 restarts",
+      "db_query_p99 downstream effect",
+      "db_pool 78% under ceiling",
+      "redis uptime continuous RDB intact",
+      "cpu 47%",
+      "memory 39%",
+      "request_rate near baseline"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "query_traces",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events"
+    ],
+    "max_investigation_loops": 4,
+    "model_response": "ROOT_CAUSE: A cache stampede on {{SVC}}: a Redis FLUSHALL at 14:22:03 evicted all 41,820 cache keys, collapsing the cache hit ratio (app_cache_hit_ratio) from 0.94 to 0.12 (SLO 0.70). With a cold cache and no request coalescing, concurrent requests for the same hot keys (e.g. product:42) all miss simultaneously and stampede the Postgres backing store with redundant queries (a thundering herd), driving db_query_p99 to 740ms and catalog p99 to 880ms until the cache re-warms. The service itself is healthy: 3/3 replicas Ready, 0 restarts, cpu 47%, memory 39%, deployment revision 11 unchanged.\nROOT_CAUSE_CATEGORY: saturation\nVALIDATED_CLAIMS:\n- app_cache_hit_ratio = 0.12 vs 0.70 SLO (baseline 0.94); cache_keys_resident collapsed 41,820 -> 5,210 and cache_misses_per_s jumped ~15x [evidence: prometheus_metrics]\n- A CacheFlushed event shows Redis FLUSHALL evicted all 41,820 catalog keys at 14:22:03, immediately followed by CacheHitRatioLow on {{POD}} [evidence: k8s_events]\n- Logs from {{POD}} show 3 concurrent misses on the same key (product:42) dispatched to Postgres with no coalescing, and the marker 'CacheStampede: hit ratio dropped to 12% after FLUSHALL' [evidence: k8s_pod_logs]\n- Traces show slow requests spending ~700ms in catalog.db_query on duplicate SELECTs for the same hot key — a herd of redundant cold-cache fallthroughs [evidence: traces]\n- CacheStampede alert firing since 14:22:30 with value 0.12 [evidence: prometheus_alerts]\nNON_VALIDATED_CLAIMS:\n- Whether the FLUSHALL was an accidental operator command vs an automated job cannot be determined from cluster evidence alone\nCAUSAL_CHAIN:\n- Redis FLUSHALL evicts the entire catalog keyspace, instantly cold-starting the cache\n- Concurrent requests for the same hot keys all miss at once and, lacking request coalescing, each issues its own Postgres query\n- The thundering herd of redundant DB reads inflates db_query_p99 (740ms) and catalog p99 (880ms)\n- app_cache_hit_ratio sits at 0.12, breaching the 0.70 SLO and firing CacheStampede\n- Re-warming the cache (re-priming the hot keys) restores the hit ratio above SLO and drains the herd off Postgres\nRULED_OUT:\n- bad_deploy: deployment revision 11 unchanged, last rollout 8d2h ago, image v3.1.2 stable; regression coincides with the FLUSHALL, not a deploy [evidence: k8s_deployments]\n- dependency_failure: Postgres is healthy per-query (the high db_query_p99 is a downstream effect of the miss storm, not a slow/erroring dependency) and db_pool is 78%, under its 80% ceiling [evidence: prometheus_metrics, traces]\n- resource_exhaustion: cpu 47%, memory 39%, 0 restarts — no OOM or throttling [evidence: prometheus_metrics, k8s_pods]\n- redis crash: the redis-0 'Started' event 3m prior was a routine probe restart with continuous uptime and intact RDB; the keyspace loss is from an explicit FLUSHALL, not a crash [evidence: k8s_events]"
+  },
+  "remediation": {
+    "fix_tool": "clear_cache",
+    "canonical_fix": "kubectl exec -n rlvr-target deploy/catalog -- bash -c 'for i in $(seq 1 100); do curl -s http://localhost:8080/api/products?id=$i >/dev/null; done'",
+    "trust_tier": "autonomous",
+    "primary_metric": "app_cache_hit_ratio",
+    "direction": "higher",
+    "state_before": { "app_cache_hit_ratio": 0.12 },
+    "state_after": { "app_cache_hit_ratio": 0.95 },
+    "recovery_check": "app_cache_hit_ratio > 0.7",
+    "resolved": true
+  }
+}

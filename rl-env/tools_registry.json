@@ -1,0 +1,127 @@
+[
+  {
+    "name": "get_metrics",
+    "trust_tier": "autonomous",
+    "description": "Fetch current metrics (cpu/mem/latency/error_rate) for a service."
+  },
+  {
+    "name": "get_logs",
+    "trust_tier": "autonomous",
+    "description": "Tail recent logs for a service/pod."
+  },
+  {
+    "name": "get_events",
+    "trust_tier": "autonomous",
+    "description": "List recent k8s events for a namespace/pod."
+  },
+  {
+    "name": "describe_pod",
+    "trust_tier": "autonomous",
+    "description": "Describe a pod: status, restarts, last state, conditions."
+  },
+  {
+    "name": "get_deployment_status",
+    "trust_tier": "autonomous",
+    "description": "Get rollout status + replica health of a deployment."
+  },
+  {
+    "name": "get_node_status",
+    "trust_tier": "autonomous",
+    "description": "Get node conditions (Ready, MemoryPressure, DiskPressure)."
+  },
+  {
+    "name": "query_traces",
+    "trust_tier": "autonomous",
+    "description": "Query distributed traces for slow/error spans."
+  },
+  {
+    "name": "get_alerts",
+    "trust_tier": "autonomous",
+    "description": "List firing alerts for a service."
+  },
+  {
+    "name": "restart_pod",
+    "trust_tier": "autonomous",
+    "description": "Restart (delete) a pod so it is recreated."
+  },
+  {
+    "name": "clear_cache",
+    "trust_tier": "autonomous",
+    "description": "Flush an application/CDN cache."
+  },
+  {
+    "name": "rotate_logs",
+    "trust_tier": "autonomous",
+    "description": "Rotate/truncate logs to free disk."
+  },
+  {
+    "name": "scale_deployment",
+    "trust_tier": "approval",
+    "description": "Change replica count of a deployment."
+  },
+  {
+    "name": "rollback_deployment",
+    "trust_tier": "approval",
+    "description": "Roll a deployment back to the previous revision."
+  },
+  {
+    "name": "restart_service",
+    "trust_tier": "approval",
+    "description": "Restart a service / all its pods."
+  },
+  {
+    "name": "increase_memory_limit",
+    "trust_tier": "approval",
+    "description": "Raise the container memory limit/request."
+  },
+  {
+    "name": "failover_service",
+    "trust_tier": "approval",
+    "description": "Fail traffic over to a healthy replica/region."
+  },
+  {
+    "name": "renew_certificate",
+    "trust_tier": "approval",
+    "description": "Renew/rotate an expiring TLS certificate."
+  },
+  {
+    "name": "scale_consumers",
+    "trust_tier": "approval",
+    "description": "Scale a queue consumer group to drain backlog."
+  },
+  {
+    "name": "drain_node",
+    "trust_tier": "blocked",
+    "description": "Cordon + drain a node (evicts workloads)."
+  },
+  {
+    "name": "cordon_node",
+    "trust_tier": "approval",
+    "description": "Mark a node unschedulable."
+  },
+  {
+    "name": "rotate_secret",
+    "trust_tier": "blocked",
+    "description": "Rotate a secret/credential."
+  },
+  {
+    "name": "modify_network_policy",
+    "trust_tier": "blocked",
+    "description": "Change a network policy / firewall rule."
+  },
+  {
+    "name": "delete_pvc",
+    "trust_tier": "blocked",
+    "description": "Delete a persistent volume claim (data loss risk)."
+  },
+  {
+    "name": "end_incident",
+    "trust_tier": "autonomous",
+    "description": "Declare the incident resolved and close it out."
+  },
+  {
+    "name": "escalate_to_human",
+    "trust_tier": "autonomous",
+    "description": "Hand off to an on-call human with context."
+  }
+]

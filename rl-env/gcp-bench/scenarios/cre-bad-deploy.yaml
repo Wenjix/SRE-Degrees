@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-011
+  severity: 0
+  title: "Bad Deploy — orders"
+  category: deployment-problems
+  author: rlvr-bench
+  description: |
+    - orders v2 returning 500 on the checkout path
+    - 5xx error rate spiked right after a rollout
+  cause: |
+    - Regression shipped in the new image revision
+  impact: |
+    - Order placement fails, revenue path broken
+  mitigation: |
+    - Roll back to the last good revision OR hotfix forward
+  references:
+    - https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#rolling-back-a-deployment
+  tags:
+    - cre-2025-rlvr-011
+    - rlvr
+    - bad-deploy
+    - http-5xx
+metadata:
+  kind: prequel
+  id: 7c53f920-bdpl-44b6-9283-orders0000011
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "DeployError: orders v2 returns 500 on /checkout"

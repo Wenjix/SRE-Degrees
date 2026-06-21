@@ -1,0 +1,169 @@
+# CIDG scenario — reconstruction of a real post-mortem as an emergent-cascade topology.
+#
+# Incident #2: CrowdStrike Falcon Channel File 291 (Jul 19 2024).
+# A "Rapid Response Content" config update shipped a channel file whose template
+# TYPE described 21 input fields while the sensor's Content Interpreter was built to
+# read 20 -> an out-of-bounds memory READ in the kernel-mode sensor -> Windows hosts
+# BSOD / boot-loop globally. Airlines, banks, hospitals, and cloud VMs went dark.
+#
+# MISLEADING: the world first suspected a cyberattack or a bad kernel DRIVER push.
+# It was neither — it was CONFIG DATA (a content file), not a code/driver change.
+# So the loudest, most-suspected surface (the down product services) and the obvious
+# hypothesis (driver rollback / reimage / "it's an attack") both point AWAY from the
+# real lever: revert the channel file.
+#
+# TRAP: reboot-only was frequently INSUFFICIENT. A plain restart re-mounts the same
+# poisoned content file and the host re-crashes; recovery required booting to safe
+# mode and manually deleting the file (BitLocker keys complicated this). So restarting
+# pods/services does NOT clear the latent damage -> hysteresis: the counter only
+# resets once the bad content is rolled back AND the node is reset.
+#
+# Maps onto the 4-criteria pattern:
+#   cascade            -> security-agent (DaemonSet) crashes the NODES it runs on;
+#                         node_notready evicts pods; required edges fan the failure
+#                         out to banking/airline/hospital services; surviving nodes
+#                         pool-contend on the shared session store (fan-in).
+#   misleading symptom -> loudest alerts are 5xx/down on the product VICTIM services
+#                         (and "possible intrusion" alerts), NOT on the security-agent
+#                         that shipped the file.
+#   multi-step diag    -> the field-count / out-of-bounds smoking gun is buried in the
+#                         security-agent logs under a storm of crash/BSOD noise;
+#                         cluster monitoring is itself degraded (it observes the nodes).
+#   naive fix worsens  -> restart_pod / restart_service reboots into the same bad file
+#                         -> re-crash loop, and the reschedule herd onto the shrinking
+#                         healthy-node pool prolongs the outage.
+
+meta:
+  id: crowdstrike-cf291
+  title: "CrowdStrike Falcon Channel File 291 global BSOD"
+  source: "CrowdStrike Falcon Content Update Remediation & Root Cause Analysis (Jul 19 2024)"
+  urls:
+    - https://www.crowdstrike.com/falcon-content-update-remediation-and-guidance-hub/
+    - https://www.crowdstrike.com/wp-content/uploads/2024/08/Channel-File-291-Incident-Root-Cause-Analysis-08.06.2024.pdf
+  failure_class: bad-content-propagation + node-crashloop + reboot-insufficient-hysteresis
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: security-agent           # Falcon sensor DaemonSet; ships the channel file, runs on every node
+      kind: control_plane
+      resources: { replicas: 1 }     # DaemonSet: one agent per node, same content everywhere
+      limits: { field_count_mismatch: true, out_of_bounds_read: true }
+    - name: node-a                    # cluster node; agent runs here and crashes it -> NotReady
+      kind: node
+      resources: { replicas: 1 }
+      limits: { bsod_on_bad_content: true }
+    - name: node-b                    # cluster node; agent runs here and crashes it -> NotReady
+      kind: node
+      resources: { replicas: 1 }
+      limits: { bsod_on_bad_content: true }
+    - name: node-c                    # cluster node; agent runs here and crashes it -> NotReady
+      kind: node
+      resources: { replicas: 1 }
+      limits: { bsod_on_bad_content: true }
+    - name: session-store            # shared finite session/state store; fan-in choke point
+      kind: datastore
+      resources: { pool_size: 60 }   # surviving-node pods herd here as reschedules pile on
+    - name: banking-api              # product victim (banks)
+      kind: service
+      resources: { replicas: 3 }
+    - name: airline-checkin          # product victim (airlines)
+      kind: service
+      resources: { replicas: 3 }
+    - name: hospital-ehr             # product victim (hospitals)
+      kind: service
+      resources: { replicas: 3 }
+    - name: cluster-monitor          # observability; itself on the crashing nodes -> degraded
+      kind: monitoring
+      resources: { replicas: 2 }
+  edges:
+    # The DaemonSet is discovered/served onto each node; the bad content lands here.
+    - { from: node-a, to: security-agent, type: discovery, weight: 1.0 }
+    - { from: node-b, to: security-agent, type: discovery, weight: 1.0 }
+    - { from: node-c, to: security-agent, type: discovery, weight: 1.0 }
+    # Product pods hard-depend on the nodes they run on; NotReady nodes evict them.
+    - { from: banking-api,    to: node-a, type: required, latency_add_ms: 8, retry: 0.5 }
+    - { from: airline-checkin, to: node-b, type: required, latency_add_ms: 8, retry: 0.5 }
+    - { from: hospital-ehr,   to: node-c, type: required, latency_add_ms: 8, retry: 0.5 }
+    # Fan-in: as nodes die, surviving product pods reschedule and herd the session store.
+    - { from: banking-api,    to: session-store, type: pool, weight: 1.0 }
+    - { from: airline-checkin, to: session-store, type: pool, weight: 1.0 }
+    - { from: hospital-ehr,   to: session-store, type: pool, weight: 1.0 }
+    # Monitoring lives on the same crashing nodes -> degraded observation in the blast radius.
+    - { from: cluster-monitor, to: node-a, type: observes }
+    - { from: cluster-monitor, to: node-b, type: observes }
+    - { from: cluster-monitor, to: node-c, type: observes }
+
+root_cause:
+  location: security-agent           # the DaemonSet that shipped the bad channel file
+  kind: bad_content                  # CONFIG DATA (21 vs 20 fields), NOT a driver/code change
+  severity: 0.95
+  hidden: true
+  persistent: true                   # reboot re-mounts the same poisoned file -> re-crash
+  reset_by: [rollback_deployment, restart_service]   # revert content FIRST, then reset nodes
+  rate_law:
+    var: bad_content_rollout_pct     # the channel file replicates to every node's agent
+    per_tick: 50
+    cap: 100                         # at 100% rollout every node BSODs / boot-loops
+    worsened_by: [restart_pod, restart_service, scale_deployment]  # reboot into same bad file -> re-crash + herd
+  params:
+    expected_fields: 20
+    provided_fields: 21              # the off-by-one that triggers the out-of-bounds read
+    reboot_clears_file: false        # plain reboot does NOT remove the channel file
+
+fault:
+  chaos_kind: exec
+  exec_cmd: "push channel-file-291 (21-field content) to security-agent DaemonSet; agent OOB-reads -> node BSOD"
+  sim: { set: { security_agent_bad_content: true, node_bsod_loop: true } }
+  duration_s: 150
+
+observation:
+  alerting: uniform                  # loudness is emergent: it surfaces on the victim services
+  monitoring_degrades: true          # cluster-monitor delayed/blind (it observes the crashing nodes)
+  smoking_guns:
+    - tool: get_logs
+      node: security-agent
+      signature: "Content Interpreter: input field count 21 exceeds expected 20 -> out-of-bounds read"
+      buried_under: 80               # buried under BSOD/crash/possible-intrusion noise
+
+slo:
+  - { metric: error_rate_pct, node: banking-api,    direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: airline-checkin, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: error_rate_pct, node: hospital-ehr,   direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+
+# The DERIVED trap set is computed by the engine ({a : ΔSLO(a) < 0}); these are the
+# INTENDED traps, asserted at author time so the engine must reproduce them as worsening.
+# Reboot-only: reschedules pods / restarts pods onto nodes that re-mount the SAME bad file.
+trap_actions:
+  - { tool: restart_pod, args: { target: banking-api } }        # reboot into same bad content -> re-crash
+  - { tool: restart_service, args: { target: security-agent } } # restart agent w/o revert -> re-ships bad file
+
+canonical_fix:
+  ordering_notes: >
+    REVERT the bad channel file (rollback_deployment on security-agent) BEFORE touching
+    the nodes. Rolling back replaces the 21-field content with the known-good file so
+    agents stop crashing their hosts. ONLY THEN cordon + restart the affected nodes to
+    clear the boot-loop and reschedule pods — a reset BEFORE the revert just re-mounts
+    the poisoned file and re-crashes (reboot-only is insufficient: hysteresis). Restart
+    the security-agent last to confirm it re-ships the good content.
+  steps:
+    - { tool: rollback_deployment, args: { target: security-agent, to_revision: previous_channel_file } }
+    - { tool: cordon_node, args: { target: node-a } }
+    - { tool: restart_service, args: { target: security-agent } }   # reset agent after content reverted
+
+paired_positive: bad-revision-rollback-positive   # a sibling where rollback/restart IS the right fix
+
+assertions:
+  cascades: true
+  loudest_alert_not_cause: true
+  fix_resolves: true
+  buried_gun_exists: true
+  hysteresis: true
+  monitoring_degrades: true
+
+chance:
+  flap_prob: 0.12          # nodes flap Ready/NotReady as the boot-loop partially recovers then re-crashes
+  jitter: 0.05
+  partial_recovery_prob: 0.2
+
+seed: 719

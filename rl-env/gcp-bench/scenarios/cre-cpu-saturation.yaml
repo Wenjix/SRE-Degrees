@@ -1,0 +1,34 @@
+cre:
+  id: CRE-2025-RLVR-002
+  severity: 1
+  title: "CPU Saturation — checkout"
+  category: resource-problems
+  author: rlvr-bench
+  description: |
+    - Sustained CPU saturation on the checkout deployment
+    - Worker threads pegged at 100% with throttling
+  cause: |
+    - Insufficient CPU headroom for current request volume
+    - CPU stressor / hot loop pinning all cores
+  impact: |
+    - checkout latency climbs, requests queue and time out
+  mitigation: |
+    - Scale replicas OR raise CPU limits OR shed load
+  references:
+    - https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/
+  tags:
+    - cre-2025-rlvr-002
+    - rlvr
+    - cpu
+    - saturation
+metadata:
+  kind: prequel
+  id: 1b9d44e0-cpu2-4c10-8a77-checkout00002
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "CPU pegged on checkout workers"

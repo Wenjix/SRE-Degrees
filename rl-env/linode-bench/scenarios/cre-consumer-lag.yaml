@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-014
+  severity: 2
+  title: "Consumer Lag — notifications"
+  category: messaging-problems
+  author: rlvr-bench
+  description: |
+    - notifications consumer backlog growing into the hundreds of thousands
+    - Lag well past the alerting threshold
+  cause: |
+    - Producer flood / under-provisioned consumers
+  impact: |
+    - Delayed notifications, end-to-end latency on the queue grows
+  mitigation: |
+    - Scale up consumers OR drain backlog OR throttle producers
+  references:
+    - https://kafka.apache.org/documentation/#consumerconfigs
+  tags:
+    - cre-2025-rlvr-014
+    - rlvr
+    - consumer-lag
+    - messaging
+metadata:
+  kind: prequel
+  id: af86fc50-clag-44e9-85b6-notify000014
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "ConsumerLag: notifications backlog grew to 800k msgs"

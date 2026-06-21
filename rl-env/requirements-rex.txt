@@ -1,0 +1,4 @@
+# Runtime deps for the REx vertical slice (sim + frozen-model client + rex loop).
+# NOTE: requirements.txt is the GPU/SFT stack (unsloth/trl) — NOT needed to run rex.
+pyyaml>=6
+requests>=2.28

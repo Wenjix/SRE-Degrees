@@ -1,0 +1,229 @@
+# CIDG M-real — a REAL call-mesh on Kubernetes. Cascades are emergent: every
+# service calls its upstreams over real HTTP (server.py), so a fault propagates.
+#
+# Topology:  gateway --> checkout --> payments --> db(pool)
+#                                     orders   --> db(pool)        (fan-in)
+# Fault payments  =>  checkout 500s  =>  gateway 500s  (gateway = loud victim)
+#
+# server.py is mounted from configmap cidg-mreal-src (created by deploy.sh).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cidg-mreal
+  labels: { part-of: cidg-mreal }
+---
+# ---- db: the shared pool (semaphore of 8 concurrent slots) ----
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: db, namespace: cidg-mreal, labels: { app: db, part-of: cidg-mreal } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: db } }
+  template:
+    metadata: { labels: { app: db, part-of: cidg-mreal } }
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python", "/app/server.py"]
+          env:
+            - { name: APP, value: db }
+            - { name: POOL_SIZE, value: "8" }
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts: [{ name: src, mountPath: /app }]
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 3, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 2, periodSeconds: 5 }
+          resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 250m, memory: 128Mi } }
+      volumes: [{ name: src, configMap: { name: cidg-mreal-src } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: db, namespace: cidg-mreal, labels: { app: db, part-of: cidg-mreal } }
+spec:
+  selector: { app: db }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+# ---- payments: leaf service + the ROOT we fault; depends on the db pool ----
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: payments, namespace: cidg-mreal, labels: { app: payments, part-of: cidg-mreal } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: payments } }
+  template:
+    metadata: { labels: { app: payments, part-of: cidg-mreal } }
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python", "/app/server.py"]
+          env:
+            - { name: APP, value: payments }
+            - { name: POOL, value: "db:8080" }
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts: [{ name: src, mountPath: /app }]
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 3, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 2, periodSeconds: 5 }
+          resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 250m, memory: 128Mi } }
+      volumes: [{ name: src, configMap: { name: cidg-mreal-src } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payments, namespace: cidg-mreal, labels: { app: payments, part-of: cidg-mreal } }
+spec:
+  selector: { app: payments }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+# ---- orders: also depends on the db pool (creates fan-in contention) ----
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: orders, namespace: cidg-mreal, labels: { app: orders, part-of: cidg-mreal } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: orders } }
+  template:
+    metadata: { labels: { app: orders, part-of: cidg-mreal } }
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python", "/app/server.py"]
+          env:
+            - { name: APP, value: orders }
+            - { name: POOL, value: "db:8080" }
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts: [{ name: src, mountPath: /app }]
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 3, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 2, periodSeconds: 5 }
+          resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 250m, memory: 128Mi } }
+      volumes: [{ name: src, configMap: { name: cidg-mreal-src } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: orders, namespace: cidg-mreal, labels: { app: orders, part-of: cidg-mreal } }
+spec:
+  selector: { app: orders }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+# ---- checkout: requires payments ----
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: checkout, namespace: cidg-mreal, labels: { app: checkout, part-of: cidg-mreal } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: checkout } }
+  template:
+    metadata: { labels: { app: checkout, part-of: cidg-mreal } }
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python", "/app/server.py"]
+          env:
+            - { name: APP, value: checkout }
+            - { name: UPSTREAMS, value: "payments:8080" }
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts: [{ name: src, mountPath: /app }]
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 3, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 2, periodSeconds: 5 }
+          resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 250m, memory: 128Mi } }
+      volumes: [{ name: src, configMap: { name: cidg-mreal-src } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: checkout, namespace: cidg-mreal, labels: { app: checkout, part-of: cidg-mreal } }
+spec:
+  selector: { app: checkout }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+# ---- gateway: requires checkout (top of the chain; the loud VICTIM) ----
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: gateway, namespace: cidg-mreal, labels: { app: gateway, part-of: cidg-mreal } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: gateway } }
+  template:
+    metadata: { labels: { app: gateway, part-of: cidg-mreal } }
+    spec:
+      containers:
+        - name: svc
+          image: python:3.11-slim
+          command: ["python", "/app/server.py"]
+          env:
+            - { name: APP, value: gateway }
+            - { name: UPSTREAMS, value: "checkout:8080" }
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts: [{ name: src, mountPath: /app }]
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 3, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 2, periodSeconds: 5 }
+          resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 250m, memory: 128Mi } }
+      volumes: [{ name: src, configMap: { name: cidg-mreal-src } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: gateway, namespace: cidg-mreal, labels: { app: gateway, part-of: cidg-mreal } }
+spec:
+  selector: { app: gateway }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+# ---- load-gen: drives real RPS into the TOP of the graph (gateway + orders) ----
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: loadgen, namespace: cidg-mreal, labels: { app: loadgen, part-of: cidg-mreal } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: loadgen } }
+  template:
+    metadata: { labels: { app: loadgen, part-of: cidg-mreal } }
+    spec:
+      containers:
+        - name: gen
+          image: python:3.11-slim
+          command:
+            - python
+            - -c
+            - |
+              import urllib.request, time
+              while True:
+                  for u in ("gateway", "orders"):
+                      try:
+                          urllib.request.urlopen("http://%s:8080/" % u, timeout=3).read()
+                      except Exception:
+                          pass
+                  time.sleep(0.05)
+          resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 200m, memory: 64Mi } }
+---
+# ---- Prometheus scrape (operator picks this up via release label) ----
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cidg-mreal
+  namespace: cidg-mreal
+  labels: { release: kube-prometheus-stack, part-of: cidg-mreal }
+spec:
+  namespaceSelector: { matchNames: [cidg-mreal] }
+  selector: { matchLabels: { part-of: cidg-mreal } }
+  endpoints:
+    - { port: http, path: /metrics, interval: 15s }
+---
+# ---- UNIFORM alert: 5xx burn per app -> fires loudest on the VICTIM, not the root ----
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cidg-mreal
+  namespace: cidg-mreal
+  labels: { release: kube-prometheus-stack, part-of: cidg-mreal }
+spec:
+  groups:
+    - name: cidg-mreal.rules
+      rules:
+        - alert: ServiceErrorBurn
+          expr: >
+            sum(rate(app_requests_total{namespace="cidg-mreal",status="500"}[1m])) by (app)
+            / clamp_min(sum(rate(app_requests_total{namespace="cidg-mreal"}[1m])) by (app), 1)
+            > 0.05
+          for: 30s
+          labels: { severity: page }
+          annotations:
+            summary: "{{ $labels.app }} 5xx burn (likely a cascade victim — check upstreams)"

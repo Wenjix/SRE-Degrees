@@ -1,0 +1,311 @@
+{
+  "incident": "latency_spike",
+  "provider": "k8s",
+  "failure_mode": "network_delay_injected",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "gateway",
+    "NS": "rlvr-target",
+    "WORKLOAD": "gateway",
+    "POD": "gateway-7b6b9dfb7c-lv9ld",
+    "POD2": "gateway-7b6b9dfb7c-q4m8p",
+    "POD3": "gateway-7b6b9dfb7c-xr2tg",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9kd1",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-7c0a",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] p99 latency 1520ms on gateway — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "GatewayLatencyP99",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "p99 request latency on {{SVC}} is 1520ms (SLO 500ms)",
+      "description": "histogram_quantile(0.99, http_request_duration_seconds) for {{WORKLOAD}} in {{NS}} has been above the 800ms alert ceiling for 3m and crossed 1500ms. Throughput and error rate are near baseline; only tail latency is inflated, uniformly across all gateway pods.",
+      "error": "p99 latency on gateway crossed 1500ms",
+      "suspected_symptom": "high_tail_latency",
+      "k8s_failure_mode": "network_delay",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_events,k8s_pod_logs,query_traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "request_rate_rps on {{SVC}} is elevated (~190 rps, near the top of the normal band) so it could look like an organic traffic surge overwhelming the service",
+      "a routine ConfigMap reload event fired on {{POD2}} ~25m before the alert, which could look like a config rollout that introduced the regression",
+      "downstream upstream-mock p99 shows mild jitter, which could look like a slow dependency dragging the gateway down"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "6d4h",
+          "container": {
+            "name": "gateway",
+            "image": "registry.rlvr/gateway:v2.4.1",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "6d4h",
+          "container": {
+            "name": "gateway",
+            "image": "registry.rlvr/gateway:v2.4.1",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "6d4h",
+          "container": {
+            "name": "gateway",
+            "image": "registry.rlvr/gateway:v2.4.1",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "last_seen": "55s",
+          "type": "Warning",
+          "reason": "NetworkChaosInjected",
+          "object": "networkchaos/delay-gateway",
+          "source": "chaos-controller-manager",
+          "message": "Applied delay action to pods matching app=gateway: latency=1500ms jitter=200ms (tc netem on eth0, all 3 replicas)"
+        },
+        {
+          "last_seen": "52s",
+          "type": "Warning",
+          "reason": "HighLatency",
+          "object": "pod/{{POD}}",
+          "source": "prometheus",
+          "message": "p99 http_request_duration_seconds for {{WORKLOAD}} crossed 1500ms"
+        },
+        {
+          "last_seen": "25m",
+          "type": "Normal",
+          "reason": "ConfigMapReload",
+          "object": "pod/{{POD2}}",
+          "source": "config-reloader",
+          "message": "Reloaded gateway-routes ConfigMap (no checksum change; routes identical)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{POD}}",
+      "container": "gateway",
+      "lines": [
+        "2026-06-20T18:31:02Z INFO  gateway started, listening :8080, routes=42 (rev unchanged since v2.4.1)",
+        "2026-06-20T18:55:40Z WARN  upstream call ok but slow: route=/api/checkout took 1487ms (upstream self-time 41ms, transit 1446ms)",
+        "2026-06-20T18:55:41Z WARN  p99 latency on gateway crossed 1500ms",
+        "2026-06-20T18:55:43Z WARN  socket roundtrip inflated: median rtt to 127.0.0.1 backend 1503ms, packets delayed not dropped (loss=0%)",
+        "2026-06-20T18:55:45Z INFO  health check OK, cpu=22%, mem=180Mi, inflight=58"
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "replicas": { "desired": 3, "ready": 3, "available": 3, "updated": 3 },
+      "current_revision": 7,
+      "image": "registry.rlvr/gateway:v2.4.1",
+      "last_rollout": "6d4h ago",
+      "rollout_status": "complete",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "window": "2m",
+      "metrics": {
+        "p99_latency_ms": 1520,
+        "p95_latency_ms": 1310,
+        "upstream_p99_ms": 1495,
+        "error_rate_pct": 0.4,
+        "request_rate_rps": 190,
+        "cpu_util_pct": 23,
+        "cpu_throttle_pct": 1,
+        "memory_util_pct": 36,
+        "ready_replicas_pct": 100,
+        "available_replicas_pct": 100,
+        "restart_count": 0,
+        "upstream_success_pct": 99.6
+      },
+      "baseline": {
+        "p99_latency_ms": 165,
+        "p95_latency_ms": 110,
+        "upstream_p99_ms": 150,
+        "error_rate_pct": 0.3,
+        "request_rate_rps": 175,
+        "cpu_util_pct": 24,
+        "memory_util_pct": 35
+      },
+      "note": "p99/p95 and gateway upstream_p99_ms all jumped ~9x in lockstep across all 3 replicas; cpu/mem/error_rate/replicas unchanged from baseline. Latency added uniformly, not load-correlated."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "alertname": "GatewayLatencyP99",
+          "state": "firing",
+          "severity": "critical",
+          "service": "{{SVC}}",
+          "namespace": "{{NS}}",
+          "value": "1520ms",
+          "threshold": "800ms",
+          "for": "3m",
+          "active_since": "2026-06-20T18:53:10Z"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "{{SVC}}",
+      "sampled_spans": 4,
+      "summary": "Tail latency is dominated by a flat per-request delay on the gateway's own network path; upstream service self-time is normal.",
+      "spans": [
+        {
+          "trace_id": "a1f3...c9",
+          "root": "{{SVC}}:/api/checkout",
+          "total_ms": 1531,
+          "breakdown": [
+            { "span": "gateway.network_transit", "ms": 1462, "note": "tc netem queueing delay on eth0, loss=0%" },
+            { "span": "gateway.handler", "ms": 27 },
+            { "span": "upstream-mock.handler", "ms": 42, "note": "downstream self-time normal" }
+          ]
+        },
+        {
+          "trace_id": "b7d2...41",
+          "root": "{{SVC}}:/api/catalog",
+          "total_ms": 1508,
+          "breakdown": [
+            { "span": "gateway.network_transit", "ms": 1451, "note": "delay applied before/after handler, all replicas" },
+            { "span": "gateway.handler", "ms": 19 },
+            { "span": "catalog.handler", "ms": 38, "note": "downstream self-time normal" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "network_fault",
+    "required_keywords": [
+      "network delay",
+      "tc netem",
+      "1500ms",
+      "p99 latency",
+      "gateway",
+      "NetworkChaos",
+      "delay-gateway",
+      "transit"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "dependency_failure",
+      "saturation",
+      "config_error"
+    ],
+    "ruling_out_keywords": [
+      "revision 7 unchanged",
+      "last_rollout 6d4h ago",
+      "cpu 23%",
+      "no throttling",
+      "upstream self-time 42ms",
+      "upstream_success_pct 99.6",
+      "ConfigMap no checksum change",
+      "request_rate near baseline"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "query_traces",
+      "get_events",
+      "get_logs",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "query_traces",
+      "get_events"
+    ],
+    "max_investigation_loops": 4,
+    "model_response": "ROOT_CAUSE: An injected network delay (NetworkChaos delay-gateway: tc netem latency=1500ms jitter=200ms on eth0 of all 3 gateway replicas) is adding a flat ~1.46s of network transit time to every request, driving gateway p99 latency to 1520ms versus the 500ms SLO. The service itself is healthy: CPU 23%, memory 36%, 0 restarts, 3/3 replicas ready, error rate 0.4%, throughput near baseline.\nROOT_CAUSE_CATEGORY: network_fault\nVALIDATED_CLAIMS:\n- p99 latency is 1520ms (baseline 165ms), ~9x, with cpu/mem/replicas at baseline [evidence: prometheus_metrics]\n- Traces show ~1462ms spent in gateway.network_transit with handler+upstream self-time only ~70ms total [evidence: traces]\n- A NetworkChaosInjected event applied delay=1500ms jitter=200ms via tc netem to all app=gateway pods 55s before the alert [evidence: k8s_events]\n- Logs on {{POD}} report socket roundtrip rtt 1503ms with loss=0% (packets delayed, not dropped) [evidence: k8s_pod_logs]\nNON_VALIDATED_CLAIMS:\n- Whether the chaos injection was intentional (test) vs an errant tc rule cannot be determined from cluster evidence alone\nCAUSAL_CHAIN:\n- NetworkChaos delay-gateway applies tc netem 1500ms delay to gateway pod NICs\n- Every inbound/outbound packet is queued ~1.46s, inflating per-request transit time uniformly\n- p99/p95 and gateway upstream_p99_ms rise ~9x in lockstep across all replicas while CPU/mem/error rate stay flat\n- p99 (1520ms) crosses the 800ms alert ceiling and 500ms SLO, firing GatewayLatencyP99\nRULED_OUT:\n- bad_deploy: deployment revision 7 unchanged, last rollout 6d4h ago, image v2.4.1 stable [evidence: k8s_deployments]\n- config_error: 25m-old ConfigMapReload had no checksum change, routes identical [evidence: k8s_events]\n- resource_exhaustion/saturation: cpu 23%, throttle 1%, mem 36%, request_rate near baseline [evidence: prometheus_metrics]\n- dependency_failure: upstream self-time 42ms and upstream_success_pct 99.6% are normal; delay is in gateway transit, not the dependency [evidence: traces]"
+  },
+  "remediation": {
+    "fix_tool": "modify_network_policy",
+    "canonical_fix": "kubectl delete networkchaos -n chaos-mesh delay-gateway",
+    "trust_tier": "blocked",
+    "primary_metric": "p99_latency_ms",
+    "direction": "lower",
+    "state_before": { "p99_latency_ms": 1520 },
+    "state_after": { "p99_latency_ms": 168 },
+    "recovery_check": "p99_latency_ms < 500",
+    "resolved": true
+  }
+}

@@ -1,0 +1,371 @@
+{
+  "incident": "oom_kill",
+  "provider": "k8s",
+  "failure_mode": "oom_killed",
+  "default_severity": "critical",
+  "scenario_difficulty": 3,
+  "placeholder_defaults": {
+    "SVC": "payments",
+    "NS": "rlvr-target",
+    "WORKLOAD": "payments",
+    "POD": "payments-7b6b9dfb7c-lv9ld",
+    "POD2": "payments-7b6b9dfb7c-q4xkz",
+    "POD3": "payments-7b6b9dfb7c-r2m8p",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9kp7",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-c1ws",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] OOMKilled — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "OOMKilled",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "Container {{SVC}} OOMKilled on {{POD}}",
+      "description": "Container working set on pod {{POD}} ({{NS}}) reached 524MB against a 512MiB cgroup limit and the kernel OOM-killer terminated it (exit code 137). The pod has restarted 4 times; container_memory_working_set_bytes is 524288000 vs the 200MB SLO.",
+      "error": "OOMKilled (exit code 137): memory cgroup out of memory",
+      "suspected_symptom": "container_memory_working_set_bytes > 500000000",
+      "k8s_failure_mode": "oom_killed",
+      "context_sources": "prometheus_metrics,k8s_pods,k8s_events,k8s_pod_logs"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "A {{WORKLOAD}} deployment rollout completed 9 minutes before the alert (image payments:1.8.3), making a bad_deploy look plausible — but the image and replica spec are unchanged from the last healthy revision and the rollout shows AVAILABLE 3/3.",
+      "Node {{NODE}} reports a MemoryPressure=False transition in events, hinting at node_failure — but kube_node_status_condition Ready=true and allocatable memory is 78% free, so the node is healthy and the kill is container-scoped (cgroup), not node-scoped.",
+      "A neighboring pod {{POD3}} on the same node logs occasional 'context deadline exceeded' to the payments DB, suggesting dependency_failure — but those timeouts are downstream effects of the OOM restarts (connections dropped mid-flight), not the cause."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 4,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "payments:1.8.3",
+              "ready": false,
+              "restart_count": 4,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "state": { "running": { "startedAt": "2026-06-20T18:42:11Z" } },
+              "last_state": {
+                "terminated": {
+                  "reason": "OOMKilled",
+                  "exitCode": 137,
+                  "startedAt": "2026-06-20T18:40:55Z",
+                  "finishedAt": "2026-06-20T18:42:07Z"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 3,
+          "containers": [
+            {
+              "name": "{{SVC}}",
+              "image": "payments:1.8.3",
+              "ready": false,
+              "restart_count": 3,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "100m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "state": { "running": { "startedAt": "2026-06-20T18:41:48Z" } },
+              "last_state": {
+                "terminated": {
+                  "reason": "OOMKilled",
+                  "exitCode": 137,
+                  "startedAt": "2026-06-20T18:39:30Z",
+                  "finishedAt": "2026-06-20T18:41:44Z"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "containers": [
+            {
+              "name": "checkout-sidecar",
+              "image": "checkout:2.2.0",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "128Mi", "cpu": "50m" },
+                "limits": { "memory": "256Mi", "cpu": "250m" }
+              },
+              "state": { "running": { "startedAt": "2026-06-20T17:55:02Z" } },
+              "last_state": {}
+            }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "OOMKilling",
+          "object": "pod/{{POD}}",
+          "source": "kernel-monitor, {{NODE}}",
+          "count": 4,
+          "lastTimestamp": "2026-06-20T18:42:07Z",
+          "message": "Memory cgroup out of memory: Killed process for container {{SVC}} (524288000 bytes used, limit 536870912 bytes)"
+        },
+        {
+          "type": "Warning",
+          "reason": "BackOff",
+          "object": "pod/{{POD}}",
+          "source": "kubelet, {{NODE}}",
+          "count": 3,
+          "lastTimestamp": "2026-06-20T18:42:09Z",
+          "message": "Back-off restarting failed container {{SVC}} in pod {{POD}}"
+        },
+        {
+          "type": "Warning",
+          "reason": "OOMKilling",
+          "object": "pod/{{POD2}}",
+          "source": "kernel-monitor, {{NODE2}}",
+          "count": 3,
+          "lastTimestamp": "2026-06-20T18:41:44Z",
+          "message": "Memory cgroup out of memory: Killed process for container {{SVC}} (521142272 bytes used, limit 536870912 bytes)"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/{{WORKLOAD}}",
+          "source": "deployment-controller",
+          "count": 1,
+          "lastTimestamp": "2026-06-20T18:33:18Z",
+          "message": "Scaled up replica set {{WORKLOAD}}-7b6b9dfb7c to 3 (image payments:1.8.3) — rollout complete"
+        },
+        {
+          "type": "Normal",
+          "reason": "NodeMemoryPressure",
+          "object": "node/{{NODE}}",
+          "source": "kubelet, {{NODE}}",
+          "count": 1,
+          "lastTimestamp": "2026-06-20T18:38:01Z",
+          "message": "Node condition MemoryPressure transitioned to False; allocatable memory 78% free"
+        },
+        {
+          "type": "Warning",
+          "reason": "DependencyTimeout",
+          "object": "pod/{{POD3}}",
+          "source": "checkout-sidecar, {{NODE}}",
+          "count": 2,
+          "lastTimestamp": "2026-06-20T18:42:10Z",
+          "message": "context deadline exceeded calling payments DB at {{POD}}:8080 — connection reset after upstream {{SVC}} OOM restart (downstream of OOMKilling at 18:42:07)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "{{NS}}",
+      "pod": "{{POD}}",
+      "container": "{{SVC}}",
+      "lines": [
+        "2026-06-20T18:40:55Z INFO  payments started, listening on :8080 (rev payments:1.8.3)",
+        "2026-06-20T18:41:38Z INFO  heap allocator: working set 312MB / limit 512MB",
+        "2026-06-20T18:41:59Z WARN  memory.high breached: working set 498MB approaching cgroup limit 512MB",
+        "2026-06-20T18:42:06Z WARN  OOMKILLED detected on payments: rss 524MB exceeded cgroup limit 512MB",
+        "2026-06-20T18:42:07Z FATAL received SIGKILL (137) — container terminated by kernel OOM-killer",
+        "2026-06-20T18:42:08Z WARN  dropped 12 in-flight DB connections on SIGKILL — neighbors will see 'context deadline exceeded' until restart completes",
+        "2026-06-20T18:42:11Z INFO  payments restarted by kubelet (restart #4)"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 22,
+          "pods": "14/110"
+        },
+        {
+          "name": "{{NODE2}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 19,
+          "pods": "11/110"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "image": "payments:1.8.3",
+      "strategy": "RollingUpdate",
+      "desired_replicas": 3,
+      "available_replicas": 1,
+      "ready_replicas": 1,
+      "unavailable_replicas": 2,
+      "current_revision": 7,
+      "previous_revision": 6,
+      "previous_image": "payments:1.8.3",
+      "rollout_status": "Deployment has minimum availability; 2 replicas crash-restarting (OOMKilled)",
+      "last_rollout": "2026-06-20T18:33:18Z",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "query": "max(container_memory_working_set_bytes{namespace=\"rlvr-target\",pod=~\"payments-.*\"})",
+      "primary_metric": "container_memory_working_set_bytes",
+      "slo_threshold": 200000000,
+      "direction": "lower",
+      "current_value": 524288000,
+      "unit": "bytes",
+      "series": [
+        { "pod": "{{POD}}", "container_memory_working_set_bytes": 524288000, "memory_limit_bytes": 536870912, "memory_util_pct": 97.7 },
+        { "pod": "{{POD2}}", "container_memory_working_set_bytes": 521142272, "memory_limit_bytes": 536870912, "memory_util_pct": 97.1 },
+        { "pod": "{{POD3}}", "container_memory_working_set_bytes": 142606336, "memory_limit_bytes": 268435456, "memory_util_pct": 53.1 }
+      ],
+      "samples": [
+        { "t": "2026-06-20T18:38:00Z", "value": 268435456 },
+        { "t": "2026-06-20T18:40:00Z", "value": 419430400 },
+        { "t": "2026-06-20T18:41:00Z", "value": 503316480 },
+        { "t": "2026-06-20T18:42:00Z", "value": 524288000 }
+      ],
+      "container_oom_events_total": 7
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "OOMKilled",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "pod": "{{POD}}"
+          },
+          "annotations": {
+            "summary": "Container {{SVC}} OOMKilled on {{POD}}",
+            "description": "container_memory_working_set_bytes 524288000 > 500000000 and last_terminated reason=OOMKilled"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:40:30Z",
+          "value": "524288000"
+        },
+        {
+          "labels": {
+            "alertname": "ContainerMemoryHigh",
+            "severity": "warning",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "pod": "{{POD2}}"
+          },
+          "annotations": {
+            "summary": "Container {{SVC}} memory near limit on {{POD2}}",
+            "description": "container_memory_working_set_bytes 521142272 at 97% of 512Mi limit"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:41:10Z",
+          "value": "521142272"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "resource_exhaustion",
+    "required_keywords": [
+      "OOMKilled",
+      "exit code 137",
+      "memory limit",
+      "512Mi",
+      "cgroup",
+      "container_memory_working_set_bytes",
+      "{{POD}}"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "node_failure",
+      "dependency_failure",
+      "config_error",
+      "network_fault"
+    ],
+    "ruling_out_keywords": [
+      "image payments:1.8.3 unchanged from previous revision",
+      "rollout complete / MinimumReplicasAvailable",
+      "MemoryPressure=False",
+      "node memory 78% free",
+      "Ready=True",
+      "DB timeouts are downstream of OOM restarts"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "describe_pod",
+      "get_events",
+      "get_logs"
+    ],
+    "required_queries": [
+      "describe_pod",
+      "get_events",
+      "get_logs"
+    ],
+    "max_investigation_loops": 3,
+    "model_response": "ROOT_CAUSE: Container {{SVC}} on pod {{POD}} ({{NS}}) is being OOMKilled — its working set reached 524MB (97.7%) against a 512Mi cgroup memory limit, so the kernel OOM-killer terminated it with exit code 137. Two of three replicas ({{POD}}, {{POD2}}) are in OOM-driven crash loops, breaching the container_memory_working_set_bytes SLO (524288000 vs 200000000). The memory limit is too low for the workload's working set.\nROOT_CAUSE_CATEGORY: resource_exhaustion\nVALIDATED_CLAIMS:\n- Pod {{POD}} last_state.terminated reason=OOMKilled, exitCode=137, restart_count=4 [evidence: k8s_pods]\n- Kernel 'Memory cgroup out of memory: Killed process ... (524288000 bytes used, limit 536870912 bytes)' on {{POD}} [evidence: k8s_events]\n- Pod log 'OOMKILLED detected on payments: rss 524MB exceeded cgroup limit 512MB' then SIGKILL(137) [evidence: k8s_pod_logs]\n- container_memory_working_set_bytes=524288000 (97.7% of 512Mi limit) vs 200MB SLO, ramping 268MB->524MB over 4m [evidence: prometheus_metrics]\n- Container limits.memory=512Mi with working set exceeding it [evidence: k8s_pods]\nNON_VALIDATED_CLAIMS:\n- Not a bad deploy: image payments:1.8.3 is unchanged from previous revision 6 and the rollout reports Available/MinimumReplicasAvailable [evidence: k8s_deployments, k8s_events]\n- Not node_failure: {{NODE}} Ready=True, MemoryPressure=False, 78% memory free — the kill is container-cgroup scoped, not node scoped [evidence: k8s_node_health]\n- Not dependency_failure: the payments DB 'context deadline exceeded' timeouts are downstream of the OOM restarts dropping connections, not the cause [evidence: k8s_pod_logs, k8s_events]\nCAUSAL_CHAIN:\n- payments working set grows past the 512Mi cgroup limit -> kernel OOM-killer sends SIGKILL (exit 137) -> kubelet restarts the container (BackOff) -> 2/3 replicas crash-loop, ready 1/3 -> container_memory_working_set_bytes breaches the 200MB SLO and checkout path degrades."
+  },
+  "remediation": {
+    "fix_tool": "increase_memory_limit",
+    "canonical_fix": "kubectl delete stresschaos -n chaos-mesh oom-payments; kubectl rollout restart deployment/payments -n rlvr-target",
+    "trust_tier": "approval",
+    "primary_metric": "container_memory_working_set_bytes",
+    "direction": "lower",
+    "state_before": { "container_memory_working_set_bytes": 524288000 },
+    "state_after": { "container_memory_working_set_bytes": 138412032 },
+    "recovery_check": "container_memory_working_set_bytes < 200000000",
+    "resolved": true
+  }
+}

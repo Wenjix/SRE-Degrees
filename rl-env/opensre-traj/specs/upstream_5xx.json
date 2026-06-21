@@ -1,0 +1,360 @@
+{
+  "incident": "upstream_5xx",
+  "provider": "k8s",
+  "failure_mode": "upstream_dependency_5xx",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "recommendations",
+    "NS": "rlvr-target",
+    "WORKLOAD": "recommendations",
+    "POD": "recommendations-7b6b9dfb7c-lv9ld",
+    "POD2": "recommendations-7b6b9dfb7c-q4m8p",
+    "POD3": "recommendations-7b6b9dfb7c-xr2tg",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9kd1",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-7c0a",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] Upstream success ratio 41% on {{SVC}} — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "Upstream5xx",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{SVC}} upstream success ratio fell to 0.41 (SLO 0.95) in {{NS}}",
+      "description": "app_upstream_success_ratio for {{WORKLOAD}} dropped to 0.41, below the 0.50 alert floor and far under the 0.95 SLO. {{SVC}} pods are healthy and serving, but the recommendations-upstream dependency (upstream-mock) is returning HTTP 503 for the majority of calls, so {{SVC}} returns degraded/fallback responses.",
+      "error": "UpstreamError: recommendations upstream returned 503",
+      "suspected_symptom": "upstream_5xx_errors",
+      "k8s_failure_mode": "upstream_dependency_5xx",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,k8s_events,prometheus_metrics,query_traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "{{SVC}} rolled out a new image tag (v3.7.2) 11 hours ago, well before the incident window, which could tempt a bad_deploy conclusion — but the rollout is Complete and the 503s come from the upstream, not from {{SVC}} code",
+      "{{POD2}} restarted once 6h ago after a node autoscaler eviction, which could look like a crashloop, but it has been Running and Ready since and has 0 restarts in the incident window",
+      "request_rate_rps on {{SVC}} is mildly elevated (~150 rps) so it could look like an organic traffic surge saturating the service",
+      "{{SVC}} CPU and memory utilization are nominal (cpu 0.28 cores, mem 38%), so this is not resource exhaustion or saturation of the recommendations pods"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11h",
+          "container": {
+            "name": "{{SVC}}",
+            "image": "registry.rlvr/{{SVC}}:v3.7.2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "container healthy and serving; the 503s originate from the upstream dependency it calls, not the pod itself"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 1,
+          "age": "11h",
+          "container": {
+            "name": "{{SVC}}",
+            "image": "registry.rlvr/{{SVC}}:v3.7.2",
+            "state": "running",
+            "last_state": "terminated (Completed) — node autoscaler eviction 6h ago, adversarial",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11h",
+          "container": {
+            "name": "{{SVC}}",
+            "image": "registry.rlvr/{{SVC}}:v3.7.2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "250m",
+            "cpu_limit": "1000m",
+            "memory_request": "256Mi",
+            "memory_limit": "512Mi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "UpstreamRequestFailed",
+          "object": "pod/{{POD}}",
+          "count": 207,
+          "first_seen": "2026-06-20T14:22:09Z",
+          "last_seen": "2026-06-20T14:26:51Z",
+          "message": "Upstream call to recommendations-upstream.{{NS}}.svc.cluster.local:8080 returned HTTP 503 Service Unavailable"
+        },
+        {
+          "type": "Warning",
+          "reason": "UpstreamRequestFailed",
+          "object": "pod/{{POD3}}",
+          "count": 193,
+          "first_seen": "2026-06-20T14:22:12Z",
+          "last_seen": "2026-06-20T14:26:50Z",
+          "message": "Upstream call to recommendations-upstream.{{NS}}.svc.cluster.local:8080 returned HTTP 503 Service Unavailable"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/{{WORKLOAD}}",
+          "count": 1,
+          "first_seen": "2026-06-20T03:18:40Z",
+          "last_seen": "2026-06-20T03:18:40Z",
+          "message": "Scaled up replica set {{WORKLOAD}}-7b6b9dfb7c to 3 for image {{SVC}}:v3.7.2 (11h before incident — adversarial)"
+        },
+        {
+          "type": "Normal",
+          "reason": "Killing",
+          "object": "pod/{{POD2}}",
+          "count": 1,
+          "first_seen": "2026-06-20T08:31:22Z",
+          "last_seen": "2026-06-20T08:31:22Z",
+          "message": "Stopping container {{SVC}} for node scale-down (cluster-autoscaler eviction, 6h before incident — adversarial)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{POD}}",
+      "container": "{{SVC}}",
+      "lines": [
+        "2026-06-20T14:22:08Z INFO  serving request id=req-4c71 path=/v1/recommend user=u-8841",
+        "2026-06-20T14:22:09Z ERROR UpstreamError: recommendations upstream returned 503 host=recommendations-upstream.{{NS}}.svc.cluster.local status=503 latency=14ms",
+        "2026-06-20T14:22:09Z WARN  upstream returned 5xx, serving stale fallback recommendations (degraded) for id=req-4c71",
+        "2026-06-20T14:22:10Z ERROR UpstreamError: recommendations upstream returned 503 host=recommendations-upstream.{{NS}}.svc.cluster.local status=503 latency=11ms",
+        "2026-06-20T14:22:10Z WARN  circuit breaker half-open probe to recommendations-upstream failed: 503",
+        "2026-06-20T14:22:11Z INFO  upstream connection established ok (tcp connect 3ms) — fault is HTTP-layer 503, not network/DNS",
+        "2026-06-20T14:26:51Z ERROR UpstreamError: recommendations upstream returned 503 host=recommendations-upstream.{{NS}}.svc.cluster.local status=503 latency=12ms"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "3920m", "memory": "13Gi" },
+          "note": "Ready with ample headroom — not a node failure"
+        },
+        {
+          "name": "{{NODE2}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "3920m", "memory": "13Gi" }
+        },
+        {
+          "name": "{{NODE3}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "3920m", "memory": "13Gi" }
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "replicas": { "desired": 3, "ready": 3, "available": 3, "updated": 3 },
+      "current_revision": 9,
+      "image": "registry.rlvr/{{SVC}}:v3.7.2",
+      "last_rollout": "2026-06-20T03:18:40Z",
+      "rollout_status": "Complete",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "rollout to v3.7.2 completed cleanly 11h before the incident and all 3 replicas are Available — rules out bad_deploy"
+    },
+    "prometheus_metrics.json": {
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "window": "1m",
+      "samples": [
+        {
+          "metric": "app_upstream_success_ratio",
+          "query": "sum(rate(app_upstream_2xx_total{namespace=\"{{NS}}\",app=\"{{SVC}}\"}[1m])) / sum(rate(app_upstream_requests_total{namespace=\"{{NS}}\",app=\"{{SVC}}\"}[1m]))",
+          "value": 0.41,
+          "slo_threshold": 0.95,
+          "breached": true,
+          "unit": "ratio",
+          "note": "direction higher: must climb back above 0.95 to resolve"
+        },
+        { "metric": "app_upstream_requests_total_rate_1m", "value": 148.0, "unit": "requests_per_s" },
+        { "metric": "app_upstream_5xx_total_rate_1m", "value": 87.3, "unit": "errors_per_s", "note": "503s from the upstream dependency" },
+        { "metric": "app_upstream_2xx_total_rate_1m", "value": 60.7, "unit": "ok_per_s" },
+        { "metric": "upstream_tcp_connect_ms", "value": 3, "unit": "ms", "note": "TCP connect to upstream is fast — not a network/DNS fault, the upstream answers then returns 503" },
+        { "metric": "request_rate_rps", "value": 150, "unit": "rps", "note": "mildly elevated but within normal band (adversarial — not a saturation surge)" },
+        { "metric": "cpu_cores", "value": 0.28, "unit": "cores", "note": "nominal — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 38.0, "unit": "percent", "note": "nominal — not resource_exhaustion" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "Upstream5xx",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{SVC}} upstream success ratio breached SLO (<50%)",
+            "error": "UpstreamError: recommendations upstream returned 503"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T14:22:40Z",
+          "value": "0.41"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "{{SVC}}",
+      "sampled_spans": 4,
+      "summary": "The recommendations handler itself is fast; the error is entirely in the downstream call to recommendations-upstream, which responds quickly with HTTP 503 (server self-time normal, status code is the failure).",
+      "spans": [
+        {
+          "trace_id": "c4a8...d2",
+          "root": "{{SVC}}:/v1/recommend",
+          "total_ms": 28,
+          "status": "error",
+          "breakdown": [
+            { "span": "recommendations.handler", "ms": 9, "status": "ok" },
+            { "span": "recommendations-upstream.call", "ms": 14, "status": "error", "http_status": 503, "note": "upstream returns 503 fast — failing dependency, not slow/unreachable" },
+            { "span": "recommendations.fallback", "ms": 5, "status": "ok", "note": "stale/degraded fallback served" }
+          ]
+        },
+        {
+          "trace_id": "e9b1...77",
+          "root": "{{SVC}}:/v1/recommend",
+          "total_ms": 24,
+          "status": "error",
+          "breakdown": [
+            { "span": "recommendations.handler", "ms": 8, "status": "ok" },
+            { "span": "recommendations-upstream.call", "ms": 11, "status": "error", "http_status": 503, "note": "all upstream calls 503 regardless of which recommendations replica originates them" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "dependency_failure",
+    "required_keywords": [
+      "upstream",
+      "503",
+      "recommendations-upstream",
+      "Service Unavailable",
+      "app_upstream_success_ratio",
+      "dependency",
+      "UpstreamError"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "network_fault",
+      "node_failure",
+      "saturation"
+    ],
+    "ruling_out_keywords": [
+      "rollout Complete 11h prior",
+      "tcp connect 3ms",
+      "nodes Ready",
+      "cpu 0.28 cores",
+      "memory 38%",
+      "handler self-time 9ms",
+      "autoscaler eviction 6h prior",
+      "request_rate within normal band"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "query_traces",
+      "get_events",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "query_traces"
+    ],
+    "max_investigation_loops": 4,
+    "model_response": "ROOT_CAUSE: The recommendations-upstream dependency (upstream-mock at recommendations-upstream.{{NS}}.svc.cluster.local:8080) is returning HTTP 503 Service Unavailable for the majority of calls. {{SVC}} pods ({{POD}}, {{POD2}}, {{POD3}}) are healthy and reach the upstream quickly (tcp connect 3ms), but the upstream's 503s drive app_upstream_success_ratio down to 0.41 versus the 0.95 SLO, forcing {{SVC}} onto degraded fallback responses. This is a failing downstream dependency, not a fault in the recommendations service itself.\nROOT_CAUSE_CATEGORY: dependency_failure\nVALIDATED_CLAIMS:\n- app_upstream_success_ratio = 0.41, below the 0.50 alert floor and the 0.95 SLO, with upstream 5xx rate 87.3/s vs 2xx 60.7/s [evidence: prometheus_metrics]\n- Pod logs show 'UpstreamError: recommendations upstream returned 503' against recommendations-upstream with status=503 [evidence: k8s_pod_logs]\n- Events report UpstreamRequestFailed HTTP 503 Service Unavailable on {{POD}} and {{POD3}}, count ~200 each since 14:22 [evidence: k8s_events]\n- Traces show recommendations.handler self-time ~9ms while recommendations-upstream.call returns http_status 503 in ~14ms — the dependency answers fast but errors [evidence: traces]\n- Upstream5xx alert firing since 14:22:40 with value 0.41 [evidence: prometheus_alerts]\nNON_VALIDATED_CLAIMS:\n- Why the upstream-mock began returning 503 (its own crash, overload, or injected status) is not observable from the recommendations side; only that it answers with 503\nCAUSAL_CHAIN:\n- The recommendations-upstream dependency starts returning HTTP 503 for nearly all requests\n- {{SVC}} pods complete the TCP connect quickly but receive 503, trip their circuit breaker, and serve stale fallback recommendations\n- app_upstream_success_ratio collapses to 0.41 and upstream 5xx rate climbs to ~87/s\n- The ratio crosses below the 0.50 alert floor and the 0.95 SLO, firing Upstream5xx\n- Restoring the upstream to healthy 2xx (or failing over to a healthy upstream / opening the breaker) drives the success ratio back above 0.95\nRULED_OUT:\n- bad_deploy: deployment revision 9 / image v3.7.2 rolled out cleanly 11h prior, all 3 replicas Available [evidence: k8s_deployments]\n- network_fault: TCP connect to the upstream is 3ms and the upstream responds — it returns a 503 status, it is not unreachable or slow [evidence: prometheus_metrics, traces]\n- resource_exhaustion/saturation: {{SVC}} cpu 0.28 cores, memory 38%, request_rate within the normal band [evidence: prometheus_metrics]\n- crashloop/node_failure: the {{POD2}} restart was a 6h-old autoscaler eviction, all pods Ready with 0 in-window restarts and all nodes Ready [evidence: k8s_pods, k8s_events, k8s_node_health]"
+  },
+  "remediation": {
+    "fix_tool": "failover_service",
+    "canonical_fix": "kubectl exec -n rlvr-target deploy/upstream-mock -- bash -c 'echo 200 > /tmp/status'",
+    "trust_tier": "approval",
+    "primary_metric": "app_upstream_success_ratio",
+    "direction": "higher",
+    "state_before": { "app_upstream_success_ratio": 0.41 },
+    "state_after": { "app_upstream_success_ratio": 0.997 },
+    "recovery_check": "app_upstream_success_ratio > 0.95",
+    "resolved": true
+  }
+}

@@ -1,0 +1,510 @@
+{
+  "incident": "github_dns_zone_corruption",
+  "provider": "k8s",
+  "source_company": "GitHub",
+  "source_url": "https://github.blog/news-insights/dns-outage-post-mortem/",
+  "failure_mode": "dns_zone_circular_dep_corruption",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "NS": "github-prod",
+    "CLUSTER": "gh-main-prod",
+    "VICTIM_SVC": "web-frontend",
+    "VICTIM_WORKLOAD": "web-frontend",
+    "VICTIM_POD": "web-frontend-6b7d8c9f5d-4xq2n",
+    "VICTIM_POD2": "web-frontend-6b7d8c9f5d-9tk7m",
+    "AUTH_NS_POD": "dns-authoritative-0",
+    "CACHING_NS_POD": "dns-caching-7c4f8b6d9a-2pq5r",
+    "CACHING_NS_POD2": "dns-caching-7c4f8b6d9a-8mn3w",
+    "DNS_DEPLOY_POD": "dns-deploy-pipeline-5f9d7c8b4a-jr6kx",
+    "FILESERVER_POD": "fileserver-2",
+    "FILESERVER_POD2": "fileserver-5",
+    "NODE": "gke-gh-main-prod-np-c4a91f3e-1abc",
+    "NODE2": "gke-gh-main-prod-np-c4a91f3e-2def",
+    "NODE3": "gke-gh-main-prod-np-c4a91f3e-3ghi"
+  },
+  "alert": {
+    "title": "[real-k8s] DNS query timeouts and NXDOMAIN — {{VICTIM_SVC}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "DNSResolutionFailure",
+      "severity": "critical",
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{VICTIM_WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{VICTIM_SVC}} requests failing — DNS lookups time out then return NXDOMAIN; app slow/erroring as backend (fileserver) calls fail to resolve",
+      "description": "dns_query_timeout_rate for {{VICTIM_SVC}} rose to 0.83, far above the 0.01 SLO, and dns_nxdomain_rate climbed to 0.74. Internal name lookups for backend hosts (fileservers, internal APIs) first time out, then resolve to NXDOMAIN. App latency p99 has spiked and error rate is high because dependency hostnames no longer resolve. The loud symptom points squarely at the DNS resolver tier.",
+      "error": "lookup fileserver-2.{{NS}}.internal: server misbehaving / NXDOMAIN; dial: no such host",
+      "suspected_symptom": "dns_resolver_outage",
+      "k8s_failure_mode": "dns_zone_circular_dep_corruption",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,k8s_events,prometheus_metrics,k8s_node_health,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The loud symptom is DNS query timeouts → NXDOMAIN → app slowness, so the first instinct is 'restart the DNS resolvers / re-run the DNS deploy to push fresh records' — but that very deploy pipeline is the trap: it depends on DNS to run and pushed an unvalidated, truncated zone that CAUSED the NXDOMAIN.",
+      "The caching nameserver pods are Running and Ready with 0 restarts and answer queries quickly — they 'look healthy'. The defect is invisible at the pod layer: a Puppet manifest bug restarted only the authoritative nameserver after a config change, so the caching nameservers kept serving STALE upstream IPs that no longer serve DNS (the unnoticed original trigger).",
+      "The authoritative nameserver pod is also Running and Ready — but it is now serving a TRUNCATED zone file (records were dropped) after the DNS deploy ran with unvalidated API output; pod status hides the corrupted data inside the zone.",
+      "A subset of fileserver pods (fileserver-2, fileserver-5) are OOMKilling / refusing connections and look like their own independent capacity incident — they are actually a DOWNSTREAM knock-on: apps spawned a flood of retry processes during the DNS outage, exhausting fileserver memory; back-pressure in the routing layer then makes even HEALTHY fileservers unreachable.",
+      "{{VICTIM_SVC}} itself shows nominal CPU (0.31 cores) and memory (34%) and zero OOM/restarts — this is not resource exhaustion or a bad deploy of the victim; it errors only because hostname resolution is broken.",
+      "An operator is tempted to do a uniform/wholesale restart of all fileservers to clear the OOM — but a blanket restart re-spawns retry storms and keeps healthy fileservers blocked by routing back-pressure; the correct move is to remove misbehaving fileservers from the routing layer INDIVIDUALLY."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "multiple (github-prod + dns-system)",
+      "pods": [
+        {
+          "name": "{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "web-frontend:v5.2.0",
+          "started": "2026-06-17T09:14:22Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Victim is healthy at the pod lifecycle layer; it errors only because internal hostnames no longer resolve (timeouts then NXDOMAIN). Loud symptom, not root cause."
+        },
+        {
+          "name": "{{VICTIM_POD2}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "web-frontend:v5.2.0",
+          "started": "2026-06-17T09:14:22Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{CACHING_NS_POD}}",
+          "namespace": "dns-system",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "internal/dns-caching:1.9.4",
+          "started": "2026-06-15T02:11:08Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: pod status is Ready, but this caching nameserver was NEVER restarted after the last config change (Puppet manifest bug only restarted the authoritative NS). It is still pointed at STALE upstream IPs that no longer serve DNS — the unnoticed original trigger, invisible at the pod layer."
+        },
+        {
+          "name": "{{CACHING_NS_POD2}}",
+          "namespace": "dns-system",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "internal/dns-caching:1.9.4",
+          "started": "2026-06-15T02:11:08Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: same stale-upstream-IP defect; pod Running/Ready hides that it was not restarted after the config change."
+        },
+        {
+          "name": "{{AUTH_NS_POD}}",
+          "namespace": "dns-system",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 1,
+          "image": "internal/dns-authoritative:1.9.4",
+          "started": "2026-06-20T18:22:40Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING GUN (data-level): pod is Ready, but after the DNS deploy ran it loaded a TRUNCATED zone file (record count collapsed from 41,902 to 7,118). Records were dropped because the deploy converted UNVALIDATED provisioning-API output into the zone. This is why queries now return NXDOMAIN. The corruption is in the data, not the pod status."
+        },
+        {
+          "name": "{{DNS_DEPLOY_POD}}",
+          "namespace": "dns-system",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "internal/dns-deploy-pipeline:2.3.1",
+          "started": "2026-06-20T18:20:05Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING GUN (root cause): the DNS deploy pipeline makes an API call to the internal provisioning system and turns the result into a zone file with NO sanity check. CIRCULAR DEPENDENCY: that API call itself needs working DNS to complete; during the partial outage it returned a degraded/short result, which became a truncated zone → NXDOMAIN. Re-running this deploy (the trap) re-truncates the zone."
+        },
+        {
+          "name": "{{FILESERVER_POD}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 4,
+          "image": "fileserver:v4.1.7",
+          "started": "2026-06-20T18:40:12Z",
+          "last_state": { "terminated": { "reason": "OOMKilled", "exitCode": 137 } },
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "ADVERSARIAL (downstream knock-on, NOT a separate incident): OOMKilled because apps spawned a flood of retry processes during the DNS outage. Looks like an independent fileserver capacity problem; it is a symptom of the DNS failure. Back-pressure from this pod in the routing layer also blocks HEALTHY fileservers."
+        },
+        {
+          "name": "{{FILESERVER_POD2}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 3,
+          "image": "fileserver:v4.1.7",
+          "started": "2026-06-20T18:41:55Z",
+          "last_state": { "terminated": { "reason": "OOMKilled", "exitCode": 137 } },
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "ADVERSARIAL (downstream knock-on): same retry-storm OOM. Must be removed from the routing layer INDIVIDUALLY, not via a uniform fleet restart (the trap)."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "multiple",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "DNSDeployTruncatedZone",
+          "object": "pod/{{DNS_DEPLOY_POD}}",
+          "namespace": "dns-system",
+          "count": 1,
+          "first_seen": "2026-06-20T18:21:30Z",
+          "last_seen": "2026-06-20T18:21:30Z",
+          "message": "DNS deploy pushed a zone with 7118 records (previous 41902); provisioning-API output was not sanity-checked before zone generation — significant records removed (SMOKING GUN: this is what produced NXDOMAIN)"
+        },
+        {
+          "type": "Warning",
+          "reason": "DNSDeployCircularDependency",
+          "object": "pod/{{DNS_DEPLOY_POD}}",
+          "namespace": "dns-system",
+          "count": 3,
+          "first_seen": "2026-06-20T18:20:40Z",
+          "last_seen": "2026-06-20T18:25:11Z",
+          "message": "API call to internal provisioning system timed out / returned partial result: 'lookup provisioning.internal: i/o timeout' — the DNS deploy pipeline itself requires functioning DNS to complete (SMOKING GUN: circular dependency)"
+        },
+        {
+          "type": "Warning",
+          "reason": "NXDOMAIN",
+          "object": "pod/{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "count": 488,
+          "first_seen": "2026-06-20T18:22:05Z",
+          "last_seen": "2026-06-20T18:58:41Z",
+          "message": "resolve failed: lookup fileserver-2.{{NS}}.internal: NXDOMAIN — backend hostnames no longer present in zone (victim symptom, downstream of truncated zone)"
+        },
+        {
+          "type": "Normal",
+          "reason": "ConfigChangeApplied",
+          "object": "pod/{{AUTH_NS_POD}}",
+          "namespace": "dns-system",
+          "count": 1,
+          "first_seen": "2026-06-20T17:55:00Z",
+          "last_seen": "2026-06-20T17:55:00Z",
+          "message": "Authoritative nameserver restarted to pick up new IP config (Puppet). NOTE: caching nameservers received the same config but were NOT restarted due to a Puppet manifest bug — they still hold stale upstream IPs (unnoticed original trigger)"
+        },
+        {
+          "type": "Warning",
+          "reason": "OOMKilling",
+          "object": "pod/{{FILESERVER_POD}}",
+          "namespace": "{{NS}}",
+          "count": 4,
+          "first_seen": "2026-06-20T18:39:50Z",
+          "last_seen": "2026-06-20T18:57:12Z",
+          "message": "Memory cgroup out of memory: killed fileserver process — retry-process flood from DNS-failing clients (ADVERSARIAL: downstream of DNS outage, not an independent fileserver incident)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{DNS_DEPLOY_POD}}",
+      "container": "dns-deploy",
+      "namespace": "dns-system",
+      "lines": [
+        "2026-06-20T18:20:05Z INFO  starting DNS deploy: querying internal provisioning API for zone records",
+        "2026-06-20T18:20:40Z WARN  provisioning API call slow: lookup provisioning.internal: i/o timeout (retrying) — NOTE deploy requires DNS to resolve provisioning API (CIRCULAR DEPENDENCY)",
+        "2026-06-20T18:21:18Z WARN  provisioning API returned partial result: 7118 records (expected ~41900)",
+        "2026-06-20T18:21:30Z INFO  generating zone file from API output (no sanity-check stage configured) — SMOKING GUN: truncated input written straight to zone",
+        "2026-06-20T18:21:31Z INFO  pushing zone to authoritative nameserver; reloading {{AUTH_NS_POD}}",
+        "2026-06-20T18:22:05Z INFO  deploy complete — zone record count dropped 41902 -> 7118 (records for fileserver-*, internal-api-* MISSING) => clients now get NXDOMAIN"
+      ],
+      "secondary_logs": {
+        "pod": "{{CACHING_NS_POD}}",
+        "container": "dns-caching",
+        "namespace": "dns-system",
+        "lines": [
+          "2026-06-20T17:56:10Z INFO  config reloaded on disk but process NOT restarted (still using in-memory upstream IPs 10.40.2.11, 10.40.2.12)",
+          "2026-06-20T18:05:33Z WARN  upstream query timeout to 10.40.2.11: no response (stale IP no longer serves DNS) — ADVERSARIAL ORIGINAL TRIGGER: caching NS never restarted (Puppet bug)",
+          "2026-06-20T18:05:33Z WARN  upstream query timeout to 10.40.2.12: no response (stale IP)"
+        ],
+        "victim_logs": {
+          "pod": "{{VICTIM_POD}}",
+          "container": "web-frontend",
+          "namespace": "{{NS}}",
+          "lines": [
+            "2026-06-20T18:06:01Z WARN  dns lookup slow: lookup fileserver-2.github-prod.internal: server misbehaving (timeout via caching NS — stale-IP phase)",
+            "2026-06-20T18:22:08Z ERROR dns lookup failed: lookup fileserver-2.github-prod.internal: NXDOMAIN (post-deploy truncated-zone phase) — spawning retry workers",
+            "2026-06-20T18:35:44Z ERROR backend unreachable after retries; spawning additional retry processes (ADVERSARIAL: this retry storm is what OOMs the fileservers)"
+          ]
+        },
+        "fileserver_logs": {
+          "pod": "{{FILESERVER_POD}}",
+          "container": "fileserver",
+          "namespace": "{{NS}}",
+          "lines": [
+            "2026-06-20T18:39:50Z FATAL out of memory: cannot fork (too many inbound retry connections/processes) — OOMKilled",
+            "2026-06-20T18:40:30Z WARN  routing layer back-pressure: connection queue full; healthy fileservers behind this node also unreachable (ADVERSARIAL knock-on)"
+          ]
+        }
+      }
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7910m", "memory": "29Gi" },
+          "note": "Node Ready and resourced fine; the fault is DNS data/config, not node health. The fileserver OOM on this node is a per-pod retry-storm symptom, not node memory pressure."
+        },
+        {
+          "name": "{{NODE2}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7910m", "memory": "29Gi" }
+        },
+        {
+          "name": "{{NODE3}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7910m", "memory": "29Gi" },
+          "note": "Hosts the authoritative NS and DNS deploy pipeline; node healthy. The problem is the truncated zone the deploy pushed, not anything node-level."
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{VICTIM_WORKLOAD}}",
+      "desired": 2,
+      "updated": 2,
+      "ready": 2,
+      "available": 2,
+      "current_revision": 18,
+      "image": "web-frontend:v5.2.0",
+      "last_rollout": "2026-06-17T09:14:22Z",
+      "rollout_status": "Complete",
+      "note": "Victim deployment rolled out cleanly 3 days before the incident and all replicas are Available — rules out bad_deploy of the victim. The relevant change is the DNS config push + DNS deploy, not an app deploy.",
+      "related_deployments": [
+        {
+          "deployment": "dns-deploy-pipeline",
+          "namespace": "dns-system",
+          "current_revision": 7,
+          "last_rollout": "2026-06-20T18:20:05Z",
+          "rollout_status": "Complete",
+          "note": "RELEVANT CHANGE: a DNS deploy ran at 18:20 (during the stale-IP timeout phase) and pushed a truncated zone. This deploy is the corruption vector AND the trap if re-run."
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "samples": [
+        {
+          "metric": "dns_query_timeout_rate",
+          "query": "sum(rate(dns_client_query_timeouts_total{namespace=\"{{NS}}\"}[1m])) / sum(rate(dns_client_queries_total{namespace=\"{{NS}}\"}[1m]))",
+          "value": 0.83,
+          "slo_threshold": 0.01,
+          "breached": true,
+          "unit": "ratio",
+          "note": "Loud victim symptom phase 1: 83% of internal DNS lookups time out (stale-IP phase via caching NS)"
+        },
+        {
+          "metric": "dns_nxdomain_rate",
+          "query": "sum(rate(dns_responses_total{namespace=\"{{NS}}\",rcode=\"NXDOMAIN\"}[1m])) / sum(rate(dns_responses_total{namespace=\"{{NS}}\"}[1m]))",
+          "value": 0.74,
+          "slo_threshold": 0.0,
+          "breached": true,
+          "unit": "ratio",
+          "note": "SMOKING GUN METRIC: 74% NXDOMAIN after 18:22 — records were dropped from the zone by the unvalidated DNS deploy"
+        },
+        {
+          "metric": "dns_zone_record_count",
+          "value": 7118,
+          "previous_value": 41902,
+          "unit": "records",
+          "note": "SMOKING GUN: authoritative zone record count collapsed 41902 -> 7118 at 18:22 (deploy time). Truncated zone == missing records == NXDOMAIN. The corruption is here, not in the resolver process."
+        },
+        {
+          "metric": "dns_deploy_provisioning_api_error_rate_1m",
+          "value": 1.0,
+          "unit": "ratio",
+          "note": "SMOKING GUN: the DNS deploy's provisioning-API calls are failing (need DNS to resolve provisioning.internal) — the circular dependency that fed truncated input into the zone"
+        },
+        { "metric": "dns_caching_ns_upstream_timeout_rate_1m", "value": 0.91, "unit": "ratio", "note": "ADVERSARIAL ORIGINAL TRIGGER: caching NS still querying stale upstream IPs (never restarted after config change due to Puppet bug); pods look Ready" },
+        { "metric": "dns_caching_ns_up", "value": 1, "unit": "bool", "note": "ADVERSARIAL: caching NS pods up/ready — process health is misleading; their CONFIG is stale" },
+        { "metric": "dns_authoritative_ns_up", "value": 1, "unit": "bool", "note": "ADVERSARIAL: authoritative NS pod up/ready — it is serving a corrupted (truncated) zone, which pod status cannot reveal" },
+        { "metric": "fileserver_oom_kills_total_rate_5m", "value": 0.6, "unit": "kills_per_min", "note": "ADVERSARIAL knock-on: fileservers OOMing from app retry-process flood — downstream of DNS, not a separate capacity incident" },
+        { "metric": "cpu_cores", "value": 0.31, "unit": "cores", "note": "nominal for victim — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 34.0, "unit": "percent", "note": "nominal for victim — not resource_exhaustion" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "DNSResolutionFailure",
+            "severity": "critical",
+            "service": "{{VICTIM_SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{VICTIM_SVC}} internal lookups timing out then NXDOMAIN; app erroring",
+            "error": "lookup fileserver-2.{{NS}}.internal: server misbehaving / NXDOMAIN"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:06:30Z",
+          "value": "0.83"
+        },
+        {
+          "labels": {
+            "alertname": "DNSZoneRecordCountDrop",
+            "severity": "critical",
+            "component": "dns-authoritative",
+            "namespace": "dns-system",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "Authoritative DNS zone record count dropped sharply after a DNS deploy",
+            "error": "zone_record_count 41902 -> 7118 (truncated zone); provisioning-API output not sanity-checked"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:22:10Z",
+          "value": "7118"
+        },
+        {
+          "labels": {
+            "alertname": "FileserverOOM",
+            "severity": "warning",
+            "service": "fileserver",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "fileserver pods OOMKilled and refusing connections (downstream of DNS retry storm)",
+            "error": "OOMKilled exitCode 137; routing back-pressure blocking healthy fileservers"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:40:00Z",
+          "value": "0.6"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "config_error",
+    "root_cause_subtype": "DNS deploy pipeline circular dependency + Puppet manifest restart bug + missing zone-file sanity check → truncated zone → NXDOMAIN",
+    "required_keywords": [
+      "DNS deploy pipeline",
+      "circular dependency",
+      "zone file",
+      "truncated",
+      "NXDOMAIN",
+      "sanity check",
+      "provisioning API",
+      "Puppet",
+      "caching nameserver",
+      "authoritative nameserver",
+      "stale IPs"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "node_failure",
+      "bad_deploy",
+      "saturation"
+    ],
+    "ruling_out_keywords": [
+      "caching NS pods Running 0 restarts (status misleading)",
+      "authoritative NS pod Ready but serving truncated zone",
+      "dns_caching_ns_up=1",
+      "dns_authoritative_ns_up=1",
+      "victim rollout Complete 3d prior",
+      "cpu 0.31 cores",
+      "memory 34%",
+      "nodes Ready no MemoryPressure",
+      "fileserver OOM is downstream retry-storm knock-on not separate incident"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "describe_pod",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "describe_pod"
+    ],
+    "max_investigation_loops": 5,
+    "causal_chain": "Puppet partial restart leaves caching NS on stale IPs → DNS timeouts → operator triggers DNS deploy → deploy pipeline itself needs DNS, gets partial provisioning-API output → unvalidated output written to zone → truncated zone → NXDOMAIN → apps spawn retry processes → fileserver OOM → healthy fileservers unreachable via routing back-pressure",
+    "model_response": "ROOT_CAUSE: A DNS config change was applied via Puppet, but a manifest bug restarted only the authoritative nameserver, not the caching nameservers — so the caching NS kept querying stale upstream IPs that no longer serve DNS, producing the initial DNS query timeouts. The real escalation is a config/pipeline defect: an operator triggered the DNS deploy pipeline to 'push fresh records', but that pipeline makes an API call to the internal provisioning system that itself requires working DNS (a CIRCULAR DEPENDENCY). During the outage the API returned a partial/short result, and because there is NO sanity-check stage, that truncated output was written straight into the zone file. The authoritative zone collapsed from 41,902 to 7,118 records, so lookups for backend hosts (fileserver-*, internal-api-*) now return NXDOMAIN — the loud 'DNS resolver outage' symptom. DNS process/pod health is misleading: caching and authoritative NS pods are Running/Ready; the fault is stale config + corrupted zone DATA.\nROOT_CAUSE_CATEGORY: config_error\nVALIDATED_CLAIMS:\n- DNS deploy log shows it required DNS to resolve provisioning.internal (circular dependency), got a partial result (7118 vs ~41900 records), and wrote it to the zone with no sanity-check stage [evidence: k8s_pod_logs, k8s_events]\n- Authoritative zone record count dropped 41902 -> 7118 at the 18:22 deploy time; dns_nxdomain_rate = 0.74 [evidence: prometheus_metrics, k8s_events]\n- Caching NS config was reloaded on disk but the process was NOT restarted (Puppet bug only restarted authoritative NS); it still queries stale IPs upstream (10.40.2.11/.12) that time out [evidence: k8s_pod_logs, k8s_events, prometheus_metrics]\n- DNSZoneRecordCountDrop and DNSResolutionFailure alerts firing; DNS deploy ran at 18:20 (k8s_deployments related dns-deploy-pipeline revision) [evidence: prometheus_alerts, k8s_deployments]\nNON_VALIDATED_CLAIMS:\n- NOT a DNS resolver process outage (the loud red herring): caching and authoritative NS pods are Running/Ready with healthy process status (dns_caching_ns_up=1, dns_authoritative_ns_up=1). The resolvers are 'up'; their config is stale and their zone data is truncated. Restarting the resolvers does not restore dropped records [evidence: k8s_pods, prometheus_metrics]\n- The naive fix — re-running the DNS deploy to 'push fresh records' — is the TRAP: the deploy pipeline depends on DNS and pushes unvalidated output, so re-running it re-truncates the zone and deepens the NXDOMAIN outage. The zone must be fixed by a MANUAL provisioning API call with the output VALIDATED before pushing [evidence: k8s_pod_logs, k8s_events]\n- The fileserver OOMs are NOT a separate capacity incident: fileserver pods OOMKilled (exit 137) because apps spawned a flood of retry processes during the DNS outage; routing back-pressure then blocks healthy fileservers. This is a downstream knock-on; a uniform fleet restart re-spawns the retry storm — misbehaving fileservers must be removed from the routing layer INDIVIDUALLY [evidence: k8s_pods, k8s_pod_logs, prometheus_metrics]\n- NOT a bad deploy of the victim: web-frontend rollout Complete 3 days prior, all replicas Available [evidence: k8s_deployments]\n- NOT resource exhaustion / node failure of the victim: nodes Ready, no MemoryPressure, victim cpu 0.31 cores / memory 34% [evidence: prometheus_metrics, k8s_node_health]\nCAUSAL_CHAIN:\n- Puppet manifest bug restarts only the authoritative NS; caching NS keeps stale upstream IPs → DNS query timeouts\n- Operator triggers the DNS deploy to push fresh records; pipeline needs DNS, gets partial provisioning-API output\n- Unvalidated output written to zone (no sanity check) → zone truncated 41902 -> 7118 → NXDOMAIN cluster-wide\n- Apps spawn retry processes; fileservers OOM; routing back-pressure makes even healthy fileservers unreachable\nFIX: Do NOT re-run the DNS deploy and do NOT blanket-restart resolvers/fileservers. Repair the zone by performing the provisioning API call MANUALLY, validating the output (record count sane), and pushing the verified zone to the nameservers. Fix the Puppet manifest so caching nameservers restart on config change. Then clean up the fileservers by removing misbehaving ones from the routing layer INDIVIDUALLY so healthy fileservers recover. Add a zone-file sanity-check stage and break the deploy-pipeline circular dependency on DNS."
+  },
+  "remediation": {
+    "fix_tool": "rollback_deployment",
+    "canonical_fix": "Repair the DNS zone WITHOUT re-running the broken deploy: perform the provisioning API call manually, validate the output (sane record count), and push the verified zone to the nameservers; fix the Puppet manifest so caching nameservers also restart on config change; then remove misbehaving fileservers from the routing layer INDIVIDUALLY so healthy fileservers recover. Add a zone-file sanity-check stage and break the DNS-deploy circular dependency on DNS.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "re-run the DNS deploy pipeline to 'push fresh records' without a sanity-check — the pipeline needs DNS and writes unvalidated output, so it re-truncated the zone and WORSENED the NXDOMAIN outage (the postmortem's wrong move)",
+      "restart_service / restart_pod on the caching or authoritative nameservers — resolvers are 'up'; restarting does not restore the dropped zone records and does not fix the stale-config or truncated-data root cause",
+      "uniform/wholesale restart of all fileservers to clear the OOM — re-spawns the retry storm and keeps healthy fileservers blocked by routing back-pressure; misbehaving fileservers must be removed INDIVIDUALLY"
+    ],
+    "primary_metric": "dns_zone_record_count",
+    "direction": "higher",
+    "state_before": { "dns_zone_record_count": 7118, "dns_nxdomain_rate": 0.74, "dns_query_timeout_rate": 0.83 },
+    "state_after": { "dns_zone_record_count": 41902, "dns_nxdomain_rate": 0.0, "dns_query_timeout_rate": 0.004 },
+    "recovery_check": "dns_zone_record_count >= 41902 AND dns_nxdomain_rate == 0 AND dns_query_timeout_rate < 0.01",
+    "resolved": true
+  }
+}

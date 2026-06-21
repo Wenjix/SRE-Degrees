@@ -1,0 +1,5 @@
+# Generated corpus — regenerate with `python3 generate.py` / `capture_live.py`.
+# (Upload to Hugging Face instead of committing thousands of files.)
+out/
+__pycache__/
+*.pyc

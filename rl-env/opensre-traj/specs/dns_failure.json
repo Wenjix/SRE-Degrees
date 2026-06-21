@@ -1,0 +1,294 @@
+{
+  "incident": "dns_failure",
+  "provider": "k8s",
+  "failure_mode": "dns_resolution_failure",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "search",
+    "NS": "rlvr-target",
+    "WORKLOAD": "search",
+    "POD": "search-7b6b9dfb7c-lv9ld",
+    "POD2": "search-7b6b9dfb7c-q2k8m",
+    "POD3": "search-7b6b9dfb7c-x4n7p",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-8rmq",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-jc4d",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] DNS error rate > 5% — {{SVC}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "DNSFailures",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{SVC}} DNS error rate breached SLO (>5%) in {{NS}}",
+      "description": "app_dns_error_rate for {{SVC}} rose to 0.62 (62% of upstream lookups failing), far above the 0.01 SLO. {{SVC}} pods cannot resolve their upstream hostname and requests are failing.",
+      "error": "DNS resolution failed: search upstream unreachable",
+      "suspected_symptom": "upstream_unreachable",
+      "k8s_failure_mode": "dns_resolution_failure",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,k8s_events,prometheus_metrics"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "kube-dns deployment in kube-system is Available with 2/2 ready replicas and zero recent restarts — cluster DNS infrastructure is healthy",
+      "{{SVC}} rolled out a new image tag (v2.14.0) 9 hours ago, well before the incident window, tempting a bad_deploy conclusion",
+      "node {{NODE}} shows a transient MemoryPressure=False flap in events but all nodes are Ready with ample headroom",
+      "{{SVC}} CPU and memory utilization are nominal (cpu 0.31 cores, mem 41%), so this is not resource exhaustion"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "{{SVC}}:v2.14.0",
+          "started": "2026-06-19T15:02:11Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "container healthy and serving; failures are at the DNS lookup layer, not the pod lifecycle"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "{{SVC}}:v2.14.0",
+          "started": "2026-06-19T15:02:11Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "{{SVC}}:v2.14.0",
+          "started": "2026-06-19T15:02:11Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "DNSResolutionError",
+          "object": "pod/{{POD}}",
+          "count": 184,
+          "first_seen": "2026-06-20T09:14:02Z",
+          "last_seen": "2026-06-20T09:18:47Z",
+          "message": "Failed to resolve upstream host 'search-upstream.{{NS}}.svc.cluster.local': server misbehaving (SERVFAIL)"
+        },
+        {
+          "type": "Warning",
+          "reason": "DNSResolutionError",
+          "object": "pod/{{POD2}}",
+          "count": 171,
+          "first_seen": "2026-06-20T09:14:05Z",
+          "last_seen": "2026-06-20T09:18:46Z",
+          "message": "Failed to resolve upstream host 'search-upstream.{{NS}}.svc.cluster.local': server misbehaving (SERVFAIL)"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/{{WORKLOAD}}",
+          "count": 1,
+          "first_seen": "2026-06-20T00:01:55Z",
+          "last_seen": "2026-06-20T00:01:55Z",
+          "message": "Scaled up replica set {{WORKLOAD}}-7b6b9dfb7c to 3 for image {{SVC}}:v2.14.0 (9h before incident — adversarial)"
+        },
+        {
+          "type": "Warning",
+          "reason": "NodeMemoryPressureFlap",
+          "object": "node/{{NODE}}",
+          "count": 1,
+          "first_seen": "2026-06-20T07:41:10Z",
+          "last_seen": "2026-06-20T07:41:18Z",
+          "message": "Node {{NODE}} reported MemoryPressure=True for 8s then cleared (adversarial — not correlated with DNS window)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{POD}}",
+      "container": "{{SVC}}",
+      "lines": [
+        "2026-06-20T09:14:02Z INFO  serving request id=req-9f21 path=/v1/query",
+        "2026-06-20T09:14:02Z ERROR DNS resolution failed: search upstream unreachable host=search-upstream.{{NS}}.svc.cluster.local rcode=SERVFAIL",
+        "2026-06-20T09:14:02Z ERROR upstream call aborted: dial tcp: lookup search-upstream.{{NS}}.svc.cluster.local: SERVFAIL",
+        "2026-06-20T09:14:03Z WARN  retrying upstream lookup attempt=2 backoff=200ms",
+        "2026-06-20T09:14:03Z ERROR DNS resolution failed: search upstream unreachable host=search-upstream.{{NS}}.svc.cluster.local rcode=SERVFAIL",
+        "2026-06-20T09:14:03Z ERROR returning 503 to client: upstream resolution failed after 3 attempts",
+        "2026-06-20T09:18:47Z ERROR DNS resolution failed: search upstream unreachable host=search-upstream.{{NS}}.svc.cluster.local rcode=SERVFAIL"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "3920m", "memory": "13Gi" },
+          "note": "Ready; momentary MemoryPressure flap at 07:41 already cleared and predates DNS window (adversarial)"
+        },
+        {
+          "name": "{{NODE2}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "3920m", "memory": "13Gi" }
+        },
+        {
+          "name": "{{NODE3}}",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "3920m", "memory": "13Gi" }
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "desired": 3,
+      "updated": 3,
+      "ready": 3,
+      "available": 3,
+      "current_revision": 7,
+      "image": "{{SVC}}:v2.14.0",
+      "last_rollout": "2026-06-20T00:01:55Z",
+      "rollout_status": "Complete",
+      "note": "rollout completed cleanly 9h before the incident and all replicas are Available — rules out bad_deploy"
+    },
+    "prometheus_metrics.json": {
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "samples": [
+        {
+          "metric": "app_dns_error_rate",
+          "query": "sum(rate(app_dns_errors_total{namespace=\"{{NS}}\",app=\"{{SVC}}\"}[1m])) / sum(rate(app_dns_lookups_total{namespace=\"{{NS}}\",app=\"{{SVC}}\"}[1m]))",
+          "value": 0.62,
+          "slo_threshold": 0.01,
+          "breached": true,
+          "unit": "ratio"
+        },
+        { "metric": "app_dns_lookups_total_rate_1m", "value": 296.0, "unit": "lookups_per_s" },
+        { "metric": "app_dns_errors_total_rate_1m", "value": 183.5, "unit": "errors_per_s" },
+        { "metric": "http_request_error_rate", "value": 0.59, "unit": "ratio", "note": "client-facing 503s tracking the DNS failures 1:1" },
+        { "metric": "cpu_cores", "value": 0.31, "unit": "cores", "note": "nominal — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 41.0, "unit": "percent", "note": "nominal — not resource_exhaustion" },
+        { "metric": "kube_dns_up", "value": 1, "unit": "bool", "note": "cluster DNS pods healthy (adversarial — fault is name-specific, not infra-wide)" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "DNSFailures",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{SVC}} DNS error rate breached SLO (>5%)",
+            "error": "DNS resolution failed: search upstream unreachable"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T09:14:30Z",
+          "value": "0.62"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "network_fault",
+    "required_keywords": [
+      "DNS",
+      "SERVFAIL",
+      "search-upstream",
+      "resolution failed",
+      "upstream unreachable",
+      "app_dns_error_rate"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "node_failure",
+      "config_error"
+    ],
+    "ruling_out_keywords": [
+      "rollout Complete 9h prior",
+      "kube_dns_up=1",
+      "nodes Ready",
+      "cpu 0.31 cores",
+      "memory 41%",
+      "0 restarts"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events"
+    ],
+    "max_investigation_loops": 3,
+    "model_response": "ROOT_CAUSE: A network-layer DNS fault is corrupting resolution of the upstream hostname 'search-upstream.{{NS}}.svc.cluster.local' for the {{SVC}} service. Lookups return SERVFAIL, so {{SVC}} pods ({{POD}}, {{POD2}}, {{POD3}}) cannot reach their upstream and fail requests, driving app_dns_error_rate to 0.62 (SLO 0.01) and client-facing 503s to 0.59.\nROOT_CAUSE_CATEGORY: network_fault\nVALIDATED_CLAIMS:\n- app_dns_error_rate = 0.62, 62x over the 0.01 SLO [evidence: prometheus_metrics]\n- Pod logs show 'DNS resolution failed: search upstream unreachable ... rcode=SERVFAIL' for the upstream host [evidence: k8s_pod_logs]\n- Events report DNSResolutionError SERVFAIL on {{POD}} and {{POD2}} starting 09:14, count >170 each [evidence: k8s_events]\n- DNSFailures alert firing since 09:14:30 with value 0.62 [evidence: prometheus_alerts]\n- Failures are scoped to the single upstream name, not all DNS [evidence: k8s_pod_logs]\nNON_VALIDATED_CLAIMS:\n- Not a bad deploy: rollout to v2.14.0 completed cleanly 9h earlier and all 3 replicas are Available [evidence: k8s_deployments]\n- Not resource exhaustion: cpu 0.31 cores and memory 41% are nominal [evidence: prometheus_metrics]\n- Not node failure: all nodes Ready; the {{NODE}} MemoryPressure flap cleared at 07:41, before the DNS window [evidence: k8s_node_health]\n- Not cluster-DNS outage: kube_dns_up=1 and kube-dns pods are healthy [evidence: prometheus_metrics]\nCAUSAL_CHAIN:\n- A network/DNS fault intercepts queries for 'search-upstream.{{NS}}.svc.cluster.local' and returns SERVFAIL\n- {{SVC}} pods retry, exhaust attempts, and return 503 to clients\n- app_dns_error_rate climbs to 0.62 and the DNSFailures alert fires\n- Removing the injected DNS network fault restores normal resolution and drops the error rate below SLO"
+  },
+  "remediation": {
+    "fix_tool": "modify_network_policy",
+    "canonical_fix": "kubectl delete networkchaos -n chaos-mesh dns-search",
+    "trust_tier": "blocked",
+    "primary_metric": "app_dns_error_rate",
+    "direction": "lower",
+    "state_before": { "app_dns_error_rate": 0.62 },
+    "state_after": { "app_dns_error_rate": 0.002 },
+    "recovery_check": "app_dns_error_rate < 0.01",
+    "resolved": true
+  }
+}

@@ -1,0 +1,409 @@
+{
+  "incident": "github_git_failover_rollback",
+  "provider": "k8s",
+  "source_company": "GitHub",
+  "source_url": "https://github.blog/news-insights/company-news/github-availability-report-may-2023/",
+  "failure_mode": "failover_without_replica_reattach",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "SVC": "git-data",
+    "NS": "git-storage",
+    "WORKLOAD": "gitdb-primary",
+    "POD": "gitdb-primary-0",
+    "REPLICA_A": "gitdb-replica-0",
+    "REPLICA_B": "gitdb-replica-1",
+    "PROXY": "git-https-proxy",
+    "PROXY_POD": "git-https-proxy-6c8f9d4b7d-x2k9p",
+    "NODE": "gke-rlvr-bench-data-pool-aa11bb22-d4qm",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] Git reads failing + PR pushes not appearing — git-data",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "GitDataReadErrorsHigh",
+      "severity": "critical",
+      "service": "git-data",
+      "namespace": "git-storage",
+      "workload_type": "statefulset",
+      "workload_name": "gitdb-primary",
+      "cluster_name": "rlvr-bench"
+    },
+    "commonAnnotations": {
+      "summary": "15-26% of Git read operations are failing or slow; PR pushes are not appearing for users",
+      "description": "git_op_error_ratio for git-data spiked to 0.26 at incident start and is holding around 0.15. Customers report Git clones/fetches timing out and freshly pushed commits/PRs not showing up. The loud symptom looks like the gitdb-primary database itself crashing or being overloaded by a bad query, so an instinct is to roll back the recent config change or restart/replace the primary.",
+      "error": "fatal: unable to access git data: upstream read timeout (primary saturated)",
+      "suspected_symptom": "git_database_read_failure",
+      "k8s_failure_mode": "failover_without_replica_reattach",
+      "context_sources": "prometheus_alerts,prometheus_metrics,k8s_pod_logs,k8s_events,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "gitdb-primary-0 LOOKS like the culprit: it is pegged at ~96% CPU and serving 100% of reads, so it screams 'the database crashed / is overloaded' — but the primary is healthy, it is simply doing the work of the whole read replica pool that was never reattached",
+      "a connection-saturation CONFIG change was pushed shortly before the event; it was meant to PREVENT connection exhaustion and had already applied safely on every other database cluster, so it looks like the obvious thing to revert — but reverting it is the TRAP (the rollback path itself is broken and errors out)",
+      "the automated failover reports SUCCESS: a new primary was promoted, the StatefulSet is Running 1/1, and the orchestrator marks the cluster 'failover complete / healthy' — so the failover machinery looks innocent even though it silently left the read replicas detached",
+      "the rollback attempt returns an internal infra error, which tempts blaming the deploy/config pipeline rather than noticing the cluster is missing its replicas",
+      "no OOMKill, no crashloop, no bad image: gitdb-primary-0 has 0 restarts and an unchanged StatefulSet revision for days — rules out a code regression or memory leak on the primary",
+      "the Git HTTPS proxy shows connection/read timeouts, which looks like a proxy or network fault, but the proxy is just propagating the saturated-primary latency downstream"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "git-storage",
+      "pods": [
+        {
+          "name": "gitdb-primary-0",
+          "node": "gke-rlvr-bench-data-pool-aa11bb22-d4qm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "gitdb:14.7-custom",
+          "started": "2026-06-12T08:00:00Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Promoted primary after the automated failover. Running 1/1, 0 restarts — it did NOT crash. It is pegged at ~96% CPU because it is serving 100% of reads alone: the read replicas were never reattached (adversarial: looks like the overloaded victim/culprit)"
+        },
+        {
+          "name": "gitdb-replica-0",
+          "node": "gke-rlvr-bench-data-pool-aa11bb22-d4qm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "gitdb:14.7-custom",
+          "started": "2026-06-12T08:00:01Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "labels": { "role": "replica", "attached_to_primary": "false" },
+          "note": "SMOKING GUN: replica is Running and healthy but attached_to_primary=false — the automated failover code path promoted a new primary and never re-pointed the read replicas at it, so it is sitting idle while the primary drowns"
+        },
+        {
+          "name": "gitdb-replica-1",
+          "node": "gke-rlvr-bench-data-pool-aa11bb22-d4qm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "gitdb:14.7-custom",
+          "started": "2026-06-12T08:00:01Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "labels": { "role": "replica", "attached_to_primary": "false" },
+          "note": "SMOKING GUN: second healthy replica also detached (attached_to_primary=false) — read capacity exists but is not in the serving path post-failover"
+        },
+        {
+          "name": "git-https-proxy-6c8f9d4b7d-x2k9p",
+          "node": "gke-rlvr-bench-data-pool-aa11bb22-d4qm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "git-https-proxy:2.9.1",
+          "started": "2026-06-12T08:00:02Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Proxy is healthy; its read timeouts are downstream of the saturated primary, not its own fault (adversarial: looks like a proxy/network fault)"
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "git-storage",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "AutomatedFailoverCompleted",
+          "object": "statefulset/gitdb-primary",
+          "count": 1,
+          "first_seen": "2026-06-20T22:50:00Z",
+          "last_seen": "2026-06-20T22:50:00Z",
+          "message": "orchestrator: automated failover completed successfully; gitdb-primary-0 promoted to primary, cluster marked healthy"
+        },
+        {
+          "type": "Warning",
+          "reason": "ReadReplicasNotReattached",
+          "object": "statefulset/gitdb-primary",
+          "count": 1,
+          "first_seen": "2026-06-20T22:50:01Z",
+          "last_seen": "2026-06-20T22:50:01Z",
+          "message": "post-failover topology: 0 of 2 read replicas reattached to new primary; reads are NOT being offloaded (replica reattach step was skipped by the failover code path)"
+        },
+        {
+          "type": "Warning",
+          "reason": "PrimaryReadSaturation",
+          "object": "pod/gitdb-primary-0",
+          "count": 1,
+          "first_seen": "2026-06-20T22:51:00Z",
+          "last_seen": "2026-06-20T23:30:00Z",
+          "message": "gitdb-primary-0 cannot handle full read+write load alone; git_op_error_ratio peaked 0.26, holding ~0.15"
+        },
+        {
+          "type": "Warning",
+          "reason": "ConfigRollbackFailed",
+          "object": "statefulset/gitdb-primary",
+          "count": 1,
+          "first_seen": "2026-06-20T22:55:00Z",
+          "last_seen": "2026-06-20T22:55:00Z",
+          "message": "attempted revert of conn-saturation config change FAILED with internal infra error; rollback path is broken — reverting does NOT restore service (TRAP)"
+        },
+        {
+          "type": "Normal",
+          "reason": "ConnSatConfigApplied",
+          "object": "statefulset/gitdb-primary",
+          "count": 1,
+          "first_seen": "2026-06-20T22:48:00Z",
+          "last_seen": "2026-06-20T22:48:00Z",
+          "message": "connection-saturation prevention config applied to gitdb cluster (same change applied cleanly on all other clusters); change triggered the cluster failover here"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "gitdb-primary-0",
+      "container": "gitdb",
+      "lines": [
+        "2026-06-20T22:48:00Z INFO  config: applied conn-saturation prevention parameters (max_conn pool tuning)",
+        "2026-06-20T22:49:55Z WARN  cluster: config change triggered topology re-evaluation -> initiating automated failover",
+        "2026-06-20T22:50:00Z INFO  failover: promoted gitdb-primary-0 to PRIMARY; failover reported COMPLETE",
+        "2026-06-20T22:50:01Z WARN  topology: read replica reattach step NOT executed; replicas gitdb-replica-0, gitdb-replica-1 remain detached",
+        "2026-06-20T22:51:10Z WARN  load: serving 100% of reads on primary (no replica offload); cpu 96%, read queue depth climbing",
+        "2026-06-20T22:55:00Z ERROR rollback: revert of conn-saturation config FAILED — internal infra error during rollback; primary state unchanged",
+        "2026-06-20T23:05:00Z WARN  load: 15-26% of git read ops timing out; primary saturated by full read load",
+        "2026-06-20T23:30:00Z INFO  topology: manual reattach of read replicas would offload reads and restore capacity"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "gke-rlvr-bench-data-pool-aa11bb22-d4qm",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "Node is fully healthy — no MemoryPressure, no DiskPressure, network up. This is NOT a node_failure; the primary is busy because it is doing all the read work alone"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "git-storage",
+      "deployment": "gitdb-primary",
+      "kind": "statefulset",
+      "desired": 3,
+      "updated": 3,
+      "ready": 3,
+      "available": 3,
+      "current_revision": 7,
+      "image": "gitdb:14.7-custom",
+      "last_rollout": "2026-06-12T08:00:00Z",
+      "rollout_status": "Complete",
+      "note": "All 3 gitdb pods (1 primary + 2 replicas) are Ready and the StatefulSet revision is unchanged for days — rules out bad_deploy. The replicas are READY but DETACHED from the primary; readiness != reattached to serving topology"
+    },
+    "prometheus_metrics.json": {
+      "service": "git-data",
+      "namespace": "git-storage",
+      "samples": [
+        {
+          "metric": "git_op_error_ratio",
+          "query": "sum(rate(git_op_errors_total{service=\"git-data\"}[5m])) / sum(rate(git_op_total{service=\"git-data\"}[5m]))",
+          "value": 0.18,
+          "slo_threshold": 0.01,
+          "breached": true,
+          "unit": "ratio",
+          "note": "loud symptom — 15-26% of Git ops failing/slow (peak 0.26, holding ~0.15-0.18)"
+        },
+        {
+          "metric": "gitdb_replicas_attached",
+          "value": 0,
+          "expected": 2,
+          "unit": "count",
+          "breached": true,
+          "note": "SMOKING GUN: 0 of 2 read replicas attached to the new primary after the automated failover — reads are NOT offloaded"
+        },
+        {
+          "metric": "gitdb_primary_read_share",
+          "value": 1.0,
+          "unit": "ratio",
+          "note": "SMOKING GUN: primary is serving 100% of reads instead of ~0.2 (replicas would normally absorb ~80%)"
+        },
+        {
+          "metric": "gitdb_primary_cpu_pct",
+          "value": 96.0,
+          "unit": "percent",
+          "note": "primary saturated — but this is a SYMPTOM of carrying the full read load alone, not a crash; the fix is to reattach replicas, not replace the primary"
+        },
+        {
+          "metric": "gitdb_replica_cpu_pct",
+          "value": 4.0,
+          "unit": "percent",
+          "note": "the detached replicas are nearly idle (4% cpu) — spare read capacity exists, it just is not in the serving path"
+        },
+        {
+          "metric": "config_rollback_success",
+          "value": 0,
+          "unit": "bool",
+          "breached": true,
+          "note": "the revert of the conn-saturation config FAILED (internal infra error) — the rollback path is broken; reverting does not fix this (TRAP)"
+        },
+        {
+          "metric": "gitdb_primary_restarts",
+          "value": 0,
+          "unit": "count",
+          "note": "primary never crashed/restarted — not a crashloop / OOM"
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "GitDataReadErrorsHigh",
+            "severity": "critical",
+            "service": "git-data",
+            "namespace": "git-storage",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "15-26% of Git read operations failing or slow; PR pushes not appearing",
+            "error": "upstream read timeout (primary saturated)"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:51:30Z",
+          "value": "0.18"
+        },
+        {
+          "labels": {
+            "alertname": "GitDBReplicasDetached",
+            "severity": "critical",
+            "service": "git-data",
+            "namespace": "git-storage",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "0 of 2 read replicas attached to primary after automated failover",
+            "error": "replica reattach step skipped by failover code path"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:50:01Z",
+          "value": "0"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "git-data",
+      "namespace": "git-storage",
+      "spans": [
+        {
+          "trace_id": "c4a7e210",
+          "operation": "git.fetch.read",
+          "target": "gitdb-primary-0",
+          "status": "error",
+          "duration_ms": 30000,
+          "error": "read timeout — primary read queue saturated",
+          "ts": "2026-06-20T23:05:01Z"
+        },
+        {
+          "trace_id": "c4a7e210",
+          "operation": "git.read.route",
+          "target": "gitdb-primary-0",
+          "status": "ok",
+          "duration_ms": 1,
+          "note": "router sent the read to the PRIMARY — no replica targets registered (gitdb_replicas_attached=0), confirming reads are not being offloaded",
+          "ts": "2026-06-20T23:05:00Z"
+        },
+        {
+          "trace_id": "d9b1f034",
+          "operation": "config.rollback",
+          "target": "gitdb-primary",
+          "status": "error",
+          "duration_ms": 8000,
+          "error": "internal infra error during rollback — revert path broken",
+          "note": "confirms the naive 'revert the config' trap does not work",
+          "ts": "2026-06-20T22:55:00Z"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "config_error",
+    "root_cause_subtype": "failover/rollback path defect — automated failover promoted a new primary but skipped the read-replica reattach step, leaving the primary serving 100% of reads (and the conn-saturation config rollback path was itself broken)",
+    "required_keywords": [
+      "automated failover",
+      "read replicas not reattached",
+      "replicas detached",
+      "primary serving 100% of reads",
+      "primary overload",
+      "15-26% Git ops fail",
+      "conn-saturation config triggered failover",
+      "rollback path broken",
+      "reattach replicas"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "bad_deploy",
+      "node_failure",
+      "network_fault",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "gitdb-primary-0 Running 1/1 0 restarts (no crash)",
+      "no OOMKill / no crashloop",
+      "StatefulSet revision unchanged for days",
+      "node Ready, no MemoryPressure/DiskPressure",
+      "config_rollback_success=0 (revert fails — broken path, not the fix)",
+      "replicas Running 1/1 but attached_to_primary=false",
+      "git-https-proxy healthy (timeouts are downstream of saturated primary)"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_events",
+      "get_logs",
+      "describe_pod",
+      "query_traces",
+      "get_deployment_status",
+      "get_node_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_events",
+      "get_logs"
+    ],
+    "max_investigation_loops": 5,
+    "causal_chain": "conn-saturation config push (safe elsewhere) triggers cluster failover -> automated failover promotes a new primary but does NOT reattach the read replicas -> primary serves 100% of reads alone and saturates -> 15-26% of Git read ops fail/slow and PR pushes do not appear -> naive config rollback path is itself broken (internal infra error) -> correct fix is to manually reattach the read replicas (and verify replica attachment post-failover / fix the rollback path)",
+    "model_response": "ROOT_CAUSE: A connection-saturation prevention config change (the same change that applied cleanly on every other database cluster) triggered an automated failover on the git-data cluster (conn-saturation config triggered failover). The failover SUCCEEDED at promoting a new primary (gitdb-primary-0) but the failover code path skipped the read-replica reattach step (read replicas not reattached), so 0 of 2 read replicas are attached. With no read offload, the result is a single primary serving 100% of reads, saturating at ~96% CPU (primary overload), and 15-26% Git ops fail or are slow (PR pushes not appearing). This is a config_error in the failover/rollback path, NOT a database crash, NOT resource_exhaustion on a doomed node, and NOT something the config rollback fixes — the rollback path is itself broken (rollback path broken). The correct fix is to manually reattach the read replicas to the new primary.\nROOT_CAUSE_CATEGORY: config_error\nVALIDATED_CLAIMS:\n- gitdb_replicas_attached=0 (expected 2) and both replicas show attached_to_primary=false while Running 1/1 — the failover left the replicas detached [evidence: prometheus_metrics, k8s_pods]\n- AutomatedFailoverCompleted then ReadReplicasNotReattached events: failover promoted a primary and explicitly did not reattach replicas [evidence: k8s_events, k8s_pod_logs]\n- gitdb_primary_read_share=1.0 and gitdb_primary_cpu_pct=96 — the primary carries the entire read load alone [evidence: prometheus_metrics]\n- git_op_error_ratio peaked 0.26 holding ~0.15-0.18, traces show reads routed to the primary timing out with no replica targets registered [evidence: prometheus_metrics, traces]\n- the conn-saturation config change triggered the failover (ConnSatConfigApplied -> failover in logs) [evidence: k8s_events, k8s_pod_logs]\nNON_VALIDATED_CLAIMS:\n- NOT a database crash / overloaded primary to restart or replace: gitdb-primary-0 is Running 1/1 with 0 restarts; its CPU is high only because it is doing the replicas' work too [evidence: k8s_pods, prometheus_metrics]. Restarting or replacing the primary would force ANOTHER failover and likely repeat the detached-replica state — worse, not better.\n- NOT fixed by reverting the config: config_rollback_success=0 and ConfigRollbackFailed / 'internal infra error during rollback' — the rollback path is broken, so reverting does nothing (TRAP) [evidence: prometheus_metrics, k8s_events, traces].\n- NOT resource_exhaustion / node_failure: the node is Ready with no MemoryPressure/DiskPressure; the detached replicas are 4% CPU idle spare capacity [evidence: k8s_node_health, prometheus_metrics].\n- NOT a bad_deploy: StatefulSet revision unchanged for days, all pods Ready [evidence: k8s_deployments].\n- NOT a proxy/network fault: git-https-proxy is healthy; its read timeouts are downstream of the saturated primary [evidence: k8s_pods, traces].\nCAUSAL_CHAIN:\n- conn-saturation config (safe on other clusters) is pushed to the git-data cluster and triggers an automated failover\n- the automated failover promotes gitdb-primary-0 but skips the read-replica reattach step (0/2 attached)\n- the primary serves 100% of reads with no offload, saturates CPU, and read latency/errors climb\n- 15-26% of Git read ops fail/slow and PR pushes stop appearing for users\n- the naive 'revert the config' rollback fails with an internal infra error (broken rollback path)\n- reattaching the read replicas restores read offload and recovers Git operations\nFIX: Manually reattach the read replicas (gitdb-replica-0, gitdb-replica-1) to the new primary so reads are offloaded again; do a manual gradual failover rather than trusting the broken automated path, explicitly verify replica attachment post-failover, and fix the failover code path so it reattaches replicas (and repair the broken config rollback path). Do NOT revert the config and do NOT restart/replace the primary."
+  },
+  "remediation": {
+    "fix_tool": "failover_service",
+    "canonical_fix": "Reattach the read replicas to the new primary (manual gradual failover with explicit post-failover replica-attachment verification); do not trust the broken automated failover/rollback path, and fix the failover code so it reattaches read replicas. Do NOT revert the conn-saturation config (rollback path is broken) and do NOT restart/replace the primary.",
+    "trust_tier": "approval",
+    "primary_metric": "gitdb_replicas_attached",
+    "direction": "higher",
+    "state_before": { "gitdb_replicas_attached": 0, "gitdb_primary_read_share": 1.0, "git_op_error_ratio": 0.18 },
+    "state_after": { "gitdb_replicas_attached": 2, "gitdb_primary_read_share": 0.2, "git_op_error_ratio": 0.004 },
+    "recovery_check": "gitdb_replicas_attached == 2 and git_op_error_ratio < 0.01",
+    "trap_actions": [
+      "rollback_deployment",
+      "restart_service",
+      "scale_deployment"
+    ],
+    "resolved": true
+  }
+}

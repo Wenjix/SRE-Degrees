@@ -1,0 +1,25 @@
+# linode-bench runtime state — kubeconfig + ssh keys live here after stage 01
+state/
+!state/.gitkeep
+
+# Scenario results + aggregate JSON (regenerated every sweep)
+results/
+!results/.gitkeep
+
+# preq binary downloaded by stage 05
+bin/
+
+# Python bytecode (orchestrator/aggregate.py)
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Anything that looks like it could be a secret — belt + suspenders
+*.pem
+*.key
+id_rsa*
+.env
+.env.*
+kubeconfig*

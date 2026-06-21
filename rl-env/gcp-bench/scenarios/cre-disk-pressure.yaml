@@ -1,0 +1,33 @@
+cre:
+  id: CRE-2025-RLVR-003
+  severity: 1
+  title: "Disk Pressure — media-upload"
+  category: resource-problems
+  author: rlvr-bench
+  description: |
+    - Node filesystem filling up under the media-upload workload
+    - Available bytes dropped below the safe threshold
+  cause: |
+    - Runaway temp files / unbounded upload buffer on local disk
+  impact: |
+    - DiskPressure eviction risk, writes fail, pods evicted
+  mitigation: |
+    - Remove the offending files OR restart the pod OR add volume capacity
+  references:
+    - https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
+  tags:
+    - cre-2025-rlvr-003
+    - rlvr
+    - disk
+    - storage
+metadata:
+  kind: prequel
+  id: c4e21a80-disk-4d33-9f01-mediauploa0003
+  generation: 1
+rule:
+  sequence:
+    window: 30s
+    event:
+      src: log
+    order:
+      - regex: "DiskPressure: media-upload filesystem filling up"

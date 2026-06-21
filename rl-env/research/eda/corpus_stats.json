@@ -1,0 +1,47 @@
+{
+  "total_posts": 809,
+  "total_comments": 2970,
+  "subreddits": {
+    "Entrepreneur": 100,
+    "ExperiencedDevs": 100,
+    "aws": 100,
+    "azure": 100,
+    "chaosengineering": 7,
+    "devops": 100,
+    "gcp": 2,
+    "programming": 100,
+    "sre": 100,
+    "startups": 100
+  },
+  "top_authors": {
+    "JohnSavill": 19,
+    "licedey": 9,
+    "devoopseng": 9,
+    "AutoModerator": 9,
+    "speckz": 6,
+    "ckilborn": 5,
+    "matgalt": 5,
+    "hellodeveloper": 4,
+    "IndieDiscovery": 4,
+    "hatchikyu": 4,
+    "localcasestudy": 3,
+    "tianan": 3,
+    "jeffbarr": 3,
+    "SkullTech101": 3,
+    "Dubinko": 3,
+    "brooksa321": 3,
+    "gxxgly_eyez": 3,
+    "sreiously": 3,
+    "LL112": 2,
+    "sweatystartup": 2
+  },
+  "earliest_utc": 1371237018.0,
+  "latest_utc": 1747405624.0,
+  "earliest_human": "2013-06-14T19:10:18+00:00",
+  "latest_human": "2025-05-16T14:27:04+00:00",
+  "score_stats": {
+    "mean": 1926.5,
+    "max": 44750,
+    "median": 436
+  }
+}

@@ -1,0 +1,416 @@
+{
+  "incident": "circleci_kubeproxy_iptables",
+  "provider": "k8s",
+  "source_company": "CircleCI",
+  "source_url": "https://discuss.circleci.com/t/incident-report-2023-03-14-delays-starting-jobs/47555",
+  "failure_mode": "kubeproxy_iptables_restore_skew",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "NS": "circleci-prod",
+    "CLUSTER": "ci-main-prod",
+    "VICTIM_SVC": "job-dispatcher",
+    "VICTIM_WORKLOAD": "job-dispatcher",
+    "VICTIM_POD": "job-dispatcher-7d9c6f4b58-h2k4p",
+    "VICTIM_POD2": "job-dispatcher-7d9c6f4b58-q7m2t",
+    "KUBEPROXY_POD": "kube-proxy-gke-ci-main-prod-np-a3f91c2d-9xkt",
+    "KUBEPROXY_POD2": "kube-proxy-gke-ci-main-prod-np-a3f91c2d-2hrl",
+    "COREDNS_POD": "coredns-6c8f9d7b44-5gqzn",
+    "NODELOCALDNS_POD": "node-local-dns-cache-jq8vw",
+    "NODE": "gke-ci-main-prod-np-a3f91c2d-9xkt",
+    "NODE2": "gke-ci-main-prod-np-a3f91c2d-2hrl",
+    "NODE3": "gke-ci-main-prod-np-a3f91c2d-7p4m"
+  },
+  "alert": {
+    "title": "[real-k8s] widespread service-to-service comms failing — {{VICTIM_SVC}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "ServiceConnectivityErrors",
+      "severity": "critical",
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{VICTIM_WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{VICTIM_SVC}} cannot reach its dependencies — cluster-wide service-to-service communication errors, jobs not starting",
+      "description": "app_upstream_error_rate for {{VICTIM_SVC}} rose to 0.71, far above the 0.01 SLO. Connections to multiple in-cluster ClusterIP services time out or are refused. Errors are widespread across many services at once and dial failures frequently surface as name-resolution / lookup failures, so DNS is the leading suspicion. Jobs are no longer starting.",
+      "error": "dial tcp: connect: connection timed out / lookup <svc>.{{NS}}.svc.cluster.local: i/o timeout",
+      "suspected_symptom": "cluster_dns_resolution_failure",
+      "k8s_failure_mode": "service_connectivity_failure",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,k8s_events,prometheus_metrics,k8s_node_health,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "Connection failures surface as 'lookup <svc>.svc.cluster.local: i/o timeout' in many app logs, making this look like a cluster-wide DNS outage — but DNS itself is healthy; the lookups time out because the ClusterIP path to kube-dns is broken, not because DNS is answering wrong.",
+      "CoreDNS deployment in kube-system is Available with all replicas Ready and zero recent restarts — the DNS resolver tier appears completely healthy.",
+      "node-local-dns-cache DaemonSet is Running on every node with 0 restarts and is answering local cache queries — the per-node DNS cache appears healthy.",
+      "kube-proxy pods are all Running and Ready with 0 restarts and pass their liveness probes — the proxy pods 'look healthy' even though their iptables programming is silently failing (the smoking gun is in their LOGS, not their pod status).",
+      "An in-progress Kubernetes minor-version upgrade is mid-rollout; an operator is tempted to interpret 'partial rollback restores a few nodes' as recovery and roll the whole upgrade back, but the rollback is wrong-direction and the recovered nodes are simply the ones whose kube-proxy was bounced.",
+      "{{VICTIM_SVC}} itself shows nominal CPU (0.28 cores) and memory (37%) and zero OOM/restarts — this is not resource exhaustion or a bad deploy of the victim."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "multiple (circleci-prod + kube-system)",
+      "pods": [
+        {
+          "name": "{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "job-dispatcher:v3.8.1",
+          "started": "2026-06-18T11:20:04Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Victim is healthy at the pod lifecycle layer; it simply cannot reach its dependencies over ClusterIP. Loud symptom, not root cause."
+        },
+        {
+          "name": "{{VICTIM_POD2}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "job-dispatcher:v3.8.1",
+          "started": "2026-06-18T11:20:04Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{KUBEPROXY_POD}}",
+          "namespace": "kube-system",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "registry.k8s.io/kube-proxy:v1.27.2",
+          "started": "2026-06-20T17:45:31Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: pod status is Ready, but kube-proxy v1.27.2 is now running against kubelet v1.26.6 on this node (version skew). Pod-status health is misleading — the failure is in its iptables programming, visible only in its logs."
+        },
+        {
+          "name": "{{COREDNS_POD}}",
+          "namespace": "kube-system",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "registry.k8s.io/coredns/coredns:v1.10.1",
+          "started": "2026-06-15T08:03:12Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL RED HERRING: CoreDNS is fully healthy. Restarting it (the trap) will only break DNS that is currently still working at the resolver level."
+        },
+        {
+          "name": "{{NODELOCALDNS_POD}}",
+          "namespace": "kube-system",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "registry.k8s.io/dns/k8s-dns-node-cache:1.22.20",
+          "started": "2026-06-15T08:03:40Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL RED HERRING: node-local-dns-cache is healthy and serving. Restarting it (the trap) worsened the real incident by breaking DNS fully."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "multiple",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "ProxyRuleSyncFailed",
+          "object": "pod/{{KUBEPROXY_POD}}",
+          "namespace": "kube-system",
+          "count": 412,
+          "first_seen": "2026-06-20T18:01:09Z",
+          "last_seen": "2026-06-20T18:47:55Z",
+          "message": "Sync failed: failed to execute iptables-restore: exit status 2 — Proxier.syncProxyRules() could not reprogram Service/Endpoints rules; per-node Service routing is now stale (SMOKING GUN)"
+        },
+        {
+          "type": "Warning",
+          "reason": "DialTimeout",
+          "object": "pod/{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "count": 366,
+          "first_seen": "2026-06-20T18:03:22Z",
+          "last_seen": "2026-06-20T18:48:01Z",
+          "message": "dial tcp 10.24.0.0:0: connect: connection timed out — ClusterIP for upstream dependency not reachable (victim symptom, downstream of stale Service routing)"
+        },
+        {
+          "type": "Normal",
+          "reason": "NodeUpgradeStarted",
+          "object": "node/{{NODE}}",
+          "count": 1,
+          "first_seen": "2026-06-20T17:40:00Z",
+          "last_seen": "2026-06-20T17:40:00Z",
+          "message": "GKE node-pool minor-version upgrade in progress: kube-proxy advanced to v1.27.2 while kubelet on this node remains v1.26.6 (version skew window)"
+        },
+        {
+          "type": "Normal",
+          "reason": "DNSProbeOK",
+          "object": "pod/{{COREDNS_POD}}",
+          "namespace": "kube-system",
+          "count": 1,
+          "first_seen": "2026-06-20T18:30:00Z",
+          "last_seen": "2026-06-20T18:30:00Z",
+          "message": "CoreDNS readiness/liveness healthy; resolver answering authoritative queries normally (ADVERSARIAL — DNS tier is not the fault)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{KUBEPROXY_POD}}",
+      "container": "kube-proxy",
+      "namespace": "kube-system",
+      "lines": [
+        "2026-06-20T18:01:08Z I0620 proxier.go:812] \"Syncing iptables rules\"",
+        "2026-06-20T18:01:09Z E0620 proxier.go:1571] \"Failed to execute iptables-restore\" err=\"exit status 2: iptables-restore: line 134 failed\" ipFamily=\"IPv4\"",
+        "2026-06-20T18:01:09Z E0620 proxier.go:880] \"Sync failed\" err=\"failed to execute iptables-restore: exit status 2\" (SMOKING GUN: Service/Endpoints rules NOT reprogrammed)",
+        "2026-06-20T18:01:09Z I0620 server.go:225] \"Version mismatch detected\" kubeProxyVersion=\"v1.27.2\" kubeletVersion=\"v1.26.6\" node=\"{{NODE}}\"",
+        "2026-06-20T18:12:33Z E0620 proxier.go:1571] \"Failed to execute iptables-restore\" err=\"exit status 2: iptables-restore: line 134 failed\" ipFamily=\"IPv4\"",
+        "2026-06-20T18:12:33Z E0620 proxier.go:880] \"Sync failed\" err=\"failed to execute iptables-restore: exit status 2\"",
+        "2026-06-20T18:12:33Z W0620 proxier.go:902] \"Service routing tables are STALE; new/changed Endpoints will not receive traffic until a successful sync\"",
+        "2026-06-20T18:31:40Z E0620 proxier.go:880] \"Sync failed\" err=\"failed to execute iptables-restore: exit status 2\" — backoff escalating, no successful sync since 17:59"
+      ],
+      "secondary_logs": {
+        "pod": "{{VICTIM_POD}}",
+        "container": "job-dispatcher",
+        "namespace": "{{NS}}",
+        "lines": [
+          "2026-06-20T18:03:22Z ERROR dependency call failed: dial tcp 10.24.0.0:0: connect: connection timed out target=scheduler.{{NS}}.svc.cluster.local",
+          "2026-06-20T18:03:22Z WARN  name lookup slow/failing: lookup kube-dns.kube-system.svc.cluster.local: i/o timeout (ADVERSARIAL: looks like DNS, but it is the ClusterIP path to kube-dns that is stale, not the resolver)",
+          "2026-06-20T18:03:25Z ERROR job not started: upstream scheduler unreachable after 3 retries"
+        ],
+        "coredns_logs": {
+          "pod": "{{COREDNS_POD}}",
+          "container": "coredns",
+          "lines": [
+            "2026-06-20T18:30:00Z [INFO] plugin/ready: still ready",
+            "2026-06-20T18:30:02Z [INFO] 10.24.3.11:51234 - A IN scheduler.circleci-prod.svc.cluster.local. udp 60 false 512 NOERROR (resolver answering correctly — DNS tier healthy; ADVERSARIAL)"
+          ]
+        }
+      }
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "ready": "True",
+          "kubelet_version": "v1.26.6",
+          "kubeproxy_version": "v1.27.2",
+          "version_skew": true,
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7910m", "memory": "29Gi" },
+          "note": "Node Ready and resourced fine; the fault is kube-proxy/kubelet version skew (v1.27.2 vs v1.26.6), not node health. Service routing here is stale until a fresh iptables ruleset is regenerated."
+        },
+        {
+          "name": "{{NODE2}}",
+          "ready": "True",
+          "kubelet_version": "v1.26.6",
+          "kubeproxy_version": "v1.27.2",
+          "version_skew": true,
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7910m", "memory": "29Gi" }
+        },
+        {
+          "name": "{{NODE3}}",
+          "ready": "True",
+          "kubelet_version": "v1.26.6",
+          "kubeproxy_version": "v1.26.6",
+          "version_skew": false,
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7910m", "memory": "29Gi" },
+          "note": "Not yet upgraded; kube-proxy still v1.26.6 and matches kubelet, so its iptables sync succeeds and routing through this node still works (this is why a few nodes 'look recovered')."
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{VICTIM_WORKLOAD}}",
+      "desired": 2,
+      "updated": 2,
+      "ready": 2,
+      "available": 2,
+      "current_revision": 11,
+      "image": "job-dispatcher:v3.8.1",
+      "last_rollout": "2026-06-18T11:20:04Z",
+      "rollout_status": "Complete",
+      "note": "Victim deployment rolled out cleanly 2 days before the incident and all replicas are Available — rules out bad_deploy of the victim. The relevant change is the cluster K8s upgrade, not an app deploy."
+    },
+    "prometheus_metrics.json": {
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "samples": [
+        {
+          "metric": "app_upstream_error_rate",
+          "query": "sum(rate(app_upstream_errors_total{namespace=\"{{NS}}\",app=\"{{VICTIM_SVC}}\"}[1m])) / sum(rate(app_upstream_calls_total{namespace=\"{{NS}}\",app=\"{{VICTIM_SVC}}\"}[1m]))",
+          "value": 0.71,
+          "slo_threshold": 0.01,
+          "breached": true,
+          "unit": "ratio",
+          "note": "Loud victim symptom: 71% of dependency calls failing"
+        },
+        {
+          "metric": "kubeproxy_sync_proxy_rules_iptables_restore_failures_total_rate_1m",
+          "query": "sum(rate(kubeproxy_sync_proxy_rules_iptables_restore_failures_total{cluster=\"{{CLUSTER}}\"}[1m]))",
+          "value": 9.2,
+          "unit": "failures_per_s",
+          "note": "SMOKING GUN METRIC: kube-proxy iptables-restore is failing continuously; Service rules are not being reprogrammed"
+        },
+        {
+          "metric": "kubeproxy_sync_proxy_rules_last_timestamp_seconds_age",
+          "value": 2880,
+          "unit": "seconds",
+          "note": "SMOKING GUN: last SUCCESSFUL kube-proxy sync was ~48 min ago; routing has been frozen/stale since the upgrade hit these nodes"
+        },
+        { "metric": "coredns_dns_request_duration_p99_ms", "value": 3.1, "unit": "ms", "note": "ADVERSARIAL: CoreDNS latency nominal — resolver is healthy" },
+        { "metric": "coredns_dns_responses_servfail_rate_1m", "value": 0.0, "unit": "rate", "note": "ADVERSARIAL: CoreDNS returning 0 SERVFAILs — DNS is NOT broken (yet); it only breaks if you restart it (the trap)" },
+        { "metric": "kube_dns_up", "value": 1, "unit": "bool", "note": "ADVERSARIAL: DNS pods up and ready" },
+        { "metric": "cpu_cores", "value": 0.28, "unit": "cores", "note": "nominal — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 37.0, "unit": "percent", "note": "nominal — not resource_exhaustion" },
+        { "metric": "rabbitmq_queue_messages_ready", "value": 184000, "unit": "messages", "note": "DOWNSTREAM TAIL: job backlog accumulating in RabbitMQ because dispatch is failing; will become an RMQ saturation/corruption tail if the root cause is not fixed and RMQ logs are not preserved before mitigation" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "ServiceConnectivityErrors",
+            "severity": "critical",
+            "service": "{{VICTIM_SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{VICTIM_SVC}} dependency error rate breached SLO; jobs not starting",
+            "error": "dial tcp connect: connection timed out / lookup i/o timeout"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:03:30Z",
+          "value": "0.71"
+        },
+        {
+          "labels": {
+            "alertname": "KubeProxySyncFailing",
+            "severity": "critical",
+            "component": "kube-proxy",
+            "namespace": "kube-system",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "kube-proxy iptables-restore syncs failing across upgraded nodes",
+            "error": "Sync failed: failed to execute iptables-restore: exit status 2"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:01:15Z",
+          "value": "9.2"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "network_fault",
+    "root_cause_subtype": "kube-proxy/kubelet version skew during in-progress K8s upgrade → iptables-restore sync failures → stale Service routing",
+    "required_keywords": [
+      "kube-proxy",
+      "kubelet",
+      "version skew",
+      "iptables-restore",
+      "Sync failed",
+      "Service routing",
+      "stale",
+      "syncProxyRules",
+      "v1.27.2",
+      "v1.26.6"
+    ],
+    "forbidden_categories": [
+      "dependency_failure",
+      "resource_exhaustion",
+      "bad_deploy",
+      "node_failure"
+    ],
+    "ruling_out_keywords": [
+      "CoreDNS healthy",
+      "coredns_dns_responses_servfail_rate=0",
+      "node-local-dns-cache Running 0 restarts",
+      "kube_dns_up=1",
+      "kube-proxy pod Ready 0 restarts (status misleading)",
+      "victim rollout Complete 2d prior",
+      "cpu 0.28 cores",
+      "memory 37%",
+      "node3 no skew still routes"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "get_node_status",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "get_node_status"
+    ],
+    "max_investigation_loops": 4,
+    "causal_chain": "partial K8s upgrade → kube-proxy/kubelet version skew → iptables-restore failures → stale Service routing → svc-to-svc traffic fails → job backlog → RMQ saturation → RMQ corruption tail",
+    "model_response": "ROOT_CAUSE: An in-progress Kubernetes node-pool upgrade created a kube-proxy/kubelet version skew (kube-proxy v1.27.2 against kubelet v1.26.6) on the upgraded nodes. kube-proxy's Proxier.syncProxyRules() now fails with 'Failed to execute iptables-restore: exit status 2' / 'Sync failed', so per-node iptables Service/Endpoints rules stop updating and go stale. As pods churn and Endpoints change, ClusterIP routing across the cluster breaks, so {{VICTIM_SVC}} and many other services cannot reach their in-cluster dependencies — the loud 'widespread comms failing / DNS lookup timeout' symptom. DNS itself is healthy; lookups time out only because the ClusterIP path to kube-dns is among the stale routes.\nROOT_CAUSE_CATEGORY: network_fault\nVALIDATED_CLAIMS:\n- kube-proxy logs show 'Failed to execute iptables-restore: exit status 2' and 'Sync failed' with an explicit 'Version mismatch detected kubeProxyVersion=v1.27.2 kubeletVersion=v1.26.6' [evidence: k8s_pod_logs]\n- Node status confirms version skew: {{NODE}}/{{NODE2}} run kube-proxy v1.27.2 over kubelet v1.26.6; {{NODE3}} (not skewed) still routes fine [evidence: k8s_node_health]\n- kubeproxy_sync_proxy_rules_iptables_restore_failures_total rate = 9.2/s and last successful sync was ~48 min ago, so Service routing is frozen [evidence: prometheus_metrics]\n- Events show 412 ProxyRuleSyncFailed on kube-proxy and 366 downstream DialTimeout on the victim, with NodeUpgradeStarted marking the skew window [evidence: k8s_events]\n- Victim dependency error rate is 0.71 vs 0.01 SLO; KubeProxySyncFailing alert firing since 18:01 [evidence: prometheus_alerts, prometheus_metrics]\nNON_VALIDATED_CLAIMS:\n- NOT a DNS outage (the loud red herring): CoreDNS is Ready with 0 restarts, p99 3.1ms, coredns_dns_responses_servfail_rate=0, and node-local-dns-cache is Running on every node. The resolver is healthy; lookups fail only because the ClusterIP route to it is stale. Restarting CoreDNS / node-local-dns-cache would break DNS that is currently still working — this is the trap that WORSENED the real incident [evidence: k8s_pods, k8s_events, prometheus_metrics]\n- NOT a kube-proxy pod crash: kube-proxy pods are Ready with 0 restarts — pod status is misleading; the failure is in iptables programming, visible only in the logs [evidence: k8s_pods]\n- NOT a bad deploy of the victim: rollout Complete 2 days prior, all replicas Available [evidence: k8s_deployments]\n- NOT resource exhaustion / node failure: nodes Ready, cpu 0.28 cores, memory 37%, no pressure conditions [evidence: prometheus_metrics, k8s_node_health]\n- A partial rollback of the K8s upgrade is wrong-direction: recovered-looking nodes are simply ones whose kube-proxy got bounced or were never skewed; rolling the upgrade back does not regenerate the corrupted rulesets [evidence: k8s_node_health]\nCAUSAL_CHAIN:\n- Partial K8s upgrade introduces kube-proxy/kubelet version skew on upgraded nodes\n- kube-proxy syncProxyRules() iptables-restore fails; Service/Endpoints rules go stale per node\n- ClusterIP service-to-service routing breaks cluster-wide; victim dependency calls time out and jobs stop starting; DNS-shaped lookup timeouts are a side effect, not the cause\n- Unaddressed, the job backlog saturates RabbitMQ and produces a queue-corruption tail\nFIX: drain_node — Identify the skew from the iptables-restore 'Sync failed' errors BEFORE touching DNS. Restart kube-proxy on a node to confirm traffic flows, then run drain_node across all nodes (cordon + drain + recreate) for a full rolling node restart so each regenerates a fresh, consistent iptables ruleset; align kube-proxy and kubelet versions. Preserve RabbitMQ logging/state before any mitigation so the downstream queue backlog can be drained and corruption avoided. Do NOT restart CoreDNS / node-local-dns-cache and do NOT roll the upgrade back."
+  },
+  "remediation": {
+    "fix_tool": "drain_node",
+    "canonical_fix": "Identify kube-proxy/kubelet version skew via the iptables-restore 'Sync failed' errors before touching DNS; restart kube-proxy on a node to confirm traffic flows, then do a full rolling node restart (cordon+drain+recreate) so every node regenerates a fresh, version-consistent iptables ruleset and Service routing recovers; align kube-proxy with kubelet; preserve RabbitMQ logging/state before mitigation.",
+    "trust_tier": "blocked",
+    "trap_actions": [
+      "restart_pod on CoreDNS — broke DNS fully (the postmortem's wrong move that WORSENED the outage)",
+      "restart_pod on node-local-dns-cache — broke DNS fully (the postmortem's wrong move that WORSENED the outage)",
+      "rollback_deployment / roll back the partial K8s upgrade — wrong-direction surface-level fix that looked like recovery but did not regenerate the corrupted iptables rulesets",
+      "restart_service on miscellaneous app services — ineffective, did not address kube-proxy",
+      "mitigate before preserving RabbitMQ logging — led to the follow-on RMQ corruption tail"
+    ],
+    "primary_metric": "kubeproxy_sync_proxy_rules_iptables_restore_failures_total_rate_1m",
+    "direction": "lower",
+    "state_before": { "kubeproxy_sync_proxy_rules_iptables_restore_failures_total_rate_1m": 9.2, "app_upstream_error_rate": 0.71 },
+    "state_after": { "kubeproxy_sync_proxy_rules_iptables_restore_failures_total_rate_1m": 0.0, "app_upstream_error_rate": 0.003 },
+    "recovery_check": "kubeproxy_sync_proxy_rules_iptables_restore_failures_total_rate_1m == 0 AND app_upstream_error_rate < 0.01",
+    "resolved": true
+  }
+}

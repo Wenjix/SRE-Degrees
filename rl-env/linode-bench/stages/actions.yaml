@@ -1,0 +1,155 @@
+# actions.yaml — preq runbook actions, one per RLVR incident.
+# When preq matches a CRE in the tailed pod logs it runs the mapped
+# exec action below (the canonical fix from scenarios/registry.json).
+# Generated from registry.json — keep fixes in sync there, not here.
+actions:
+  - cre_id: CRE-2025-RLVR-001
+    name: fix-oom-kill
+    incident: oom_kill
+    service: payments
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl delete stresschaos -n chaos-mesh oom-payments; kubectl rollout restart deployment/payments -n rlvr-target"
+  - cre_id: CRE-2025-RLVR-002
+    name: fix-cpu-saturation
+    incident: cpu_saturation
+    service: checkout
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl delete stresschaos -n chaos-mesh cpu-checkout; kubectl scale deployment/checkout -n rlvr-target --replicas=5"
+  - cre_id: CRE-2025-RLVR-003
+    name: fix-disk-pressure
+    incident: disk_pressure
+    service: media-upload
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl exec -n rlvr-target deploy/media-upload -- rm -f /tmp/fill; kubectl rollout restart deployment/media-upload -n rlvr-target"
+  - cre_id: CRE-2025-RLVR-004
+    name: fix-crashloop
+    incident: crashloop
+    service: auth
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl delete podchaos -n chaos-mesh kill-auth; kubectl rollout restart deployment/auth -n rlvr-target"
+  - cre_id: CRE-2025-RLVR-005
+    name: fix-latency-spike
+    incident: latency_spike
+    service: gateway
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl delete networkchaos -n chaos-mesh delay-gateway"
+  - cre_id: CRE-2025-RLVR-006
+    name: fix-dns-failure
+    incident: dns_failure
+    service: search
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl delete networkchaos -n chaos-mesh dns-search"
+  - cre_id: CRE-2025-RLVR-007
+    name: fix-memory-leak
+    incident: memory_leak
+    service: user-profile
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl rollout restart deployment/user-profile -n rlvr-target"
+  - cre_id: CRE-2025-RLVR-008
+    name: fix-cert-expiry
+    incident: cert_expiry
+    service: billing
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl exec -n rlvr-target deploy/billing -- bash -c 'cp /etc/billing/cert.pem.bak /etc/billing/cert.pem 2>/dev/null; kubectl rollout restart deployment/billing -n rlvr-target'"
+  - cre_id: CRE-2025-RLVR-009
+    name: fix-cache-stampede
+    incident: cache_stampede
+    service: catalog
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl exec -n rlvr-target deploy/catalog -- bash -c 'for i in $(seq 1 100); do curl -s http://localhost:8080/api/products?id=$i >/dev/null; done'"
+  - cre_id: CRE-2025-RLVR-010
+    name: fix-upstream-5xx
+    incident: upstream_5xx
+    service: recommendations
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl exec -n rlvr-target deploy/upstream-mock -- bash -c 'echo 200 > /tmp/status'"
+  - cre_id: CRE-2025-RLVR-011
+    name: fix-bad-deploy-errors
+    incident: bad_deploy_errors
+    service: orders
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl rollout undo deployment/orders -n rlvr-target"
+  - cre_id: CRE-2025-RLVR-012
+    name: fix-db-pool-exhaustion
+    incident: db_pool_exhaustion
+    service: cart
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl rollout restart deployment/cart -n rlvr-target"
+  - cre_id: CRE-2025-RLVR-013
+    name: fix-node-not-ready
+    incident: node_not_ready
+    service: any
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl uncordon $NODE"
+  - cre_id: CRE-2025-RLVR-014
+    name: fix-consumer-lag
+    incident: consumer_lag
+    service: notifications
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl scale deployment/notifications-consumer -n rlvr-target --replicas=6"
+  - cre_id: CRE-2025-RLVR-015
+    name: fix-stuck-rollout
+    incident: stuck_rollout
+    service: shipping
+    run:
+      exec:
+        command:
+          - bash
+          - -c
+          - "kubectl rollout undo deployment/shipping -n rlvr-target"

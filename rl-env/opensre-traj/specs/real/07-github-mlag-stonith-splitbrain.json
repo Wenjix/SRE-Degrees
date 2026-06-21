@@ -1,0 +1,467 @@
+{
+  "incident": "github_mlag_stonith_splitbrain",
+  "provider": "k8s",
+  "source_company": "GitHub",
+  "source_url": "https://github.blog/news-insights/downtime-last-saturday/",
+  "failure_mode": "fencing_storm_split_brain",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "SVC": "fileserver",
+    "NS": "storage",
+    "WORKLOAD": "fileserver",
+    "POD_FS1_A": "fileserver-pair1-a-0",
+    "POD_FS1_B": "fileserver-pair1-b-0",
+    "POD_FS2_A": "fileserver-pair2-a-0",
+    "POD_FS2_B": "fileserver-pair2-b-0",
+    "AGG_SWITCH_A": "agg-switch-a",
+    "AGG_SWITCH_B": "agg-switch-b",
+    "NODE_RACK1": "gke-rlvr-bench-rack1-aa11bb22-r1aq",
+    "NODE_RACK2": "gke-rlvr-bench-rack2-cc33dd44-r2nm",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] Fileserver pairs down — both nodes Stopped — fileserver",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "FileserverPairBothDown",
+      "severity": "critical",
+      "service": "fileserver",
+      "namespace": "storage",
+      "workload_type": "statefulset",
+      "workload_name": "fileserver",
+      "cluster_name": "rlvr-bench"
+    },
+    "commonAnnotations": {
+      "summary": "Multiple active/passive fileserver pairs have BOTH members down — wholesale storage outage",
+      "description": "fileserver_pair_active_count dropped to 0 for several pairs in the storage namespace: both the active and passive member of each pair are now Stopped, so volumes are unmounted and Git/Pages reads and writes are failing fleet-wide. The fileserver pods went down right after an aggregation-switch maintenance window. Looks like a catastrophic fileserver / storage-tier failure.",
+      "error": "mount: cannot mount /data — DRBD resource has no Primary; both peers stopped",
+      "suspected_symptom": "fileserver_storage_outage",
+      "k8s_failure_mode": "ha_pair_both_members_down",
+      "context_sources": "prometheus_alerts,prometheus_metrics,k8s_pod_logs,k8s_events,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The fileserver pairs LOOK like the failed component: fileserver_pair_active_count=0 and DRBD has no Primary — the loud symptom that screams 'the storage tier broke', tempting an immediate reboot of the fileservers to bring volumes back",
+      "Rebooting fileservers in arbitrary order looks like the obvious recovery, but both members of each pair STONITH-killed each other and each holds a different DRBD state — booting the wrong (stale) node first as Primary corrupts data and overwrites the more-current peer; recovery REQUIRES log forensics to pick the last true primary",
+      "The vendor's agent state dump on agg-switch-a was a HISTORICALLY BENIGN forensic runbook step ('just terminate the agent so it writes its state') and was assumed safe — it is the actual trigger, but it looks like a no-op diagnostic, not a change",
+      "The aggregation-switch software upgrade was the scheduled maintenance and the obvious suspect, but the upgrade itself completed and the partial-link workaround held — the upgrade is NOT what knocked out the fileservers; the later state dump is",
+      "The peer aggregation switch (agg-switch-b) reports itself fully healthy with all links UP — its MLAG failover heuristic silently chose the disruptive takeover path instead of the gentle stateful one, so it looks innocent while it caused the L2 churn",
+      "The fileserver pods show no OOM, no crash-loop, no bad image and no resource pressure — they were power-fenced by STONITH, not killed by the kubelet or by exhaustion, so there is nothing in resource metrics to blame",
+      "The inter-rack network is UP again now (the 90s spanning-tree reconvergence has cleared) — the partition was transient, so 'the network is fine' is true at observation time even though the brief partition is the root trigger"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "storage",
+      "pods": [
+        {
+          "name": "fileserver-pair1-a-0",
+          "node": "gke-rlvr-bench-rack1-aa11bb22-r1aq",
+          "phase": "Failed",
+          "ready": "0/1",
+          "restarts": 0,
+          "image": "fileserver:drbd-pacemaker-2.1",
+          "started": "2026-06-14T08:00:00Z",
+          "last_state": { "terminated": { "reason": "Stopped", "exit_code": 137, "finished_at": "2026-06-20T20:16:43Z" } },
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "STONITH'd by its own peer fileserver-pair1-b-0 (power-fenced, exit 137) — NOT an OOM or kubelet kill; it was the active/primary before the partition (adversarial: looks like the victim that just needs a reboot)"
+        },
+        {
+          "name": "fileserver-pair1-b-0",
+          "node": "gke-rlvr-bench-rack2-cc33dd44-r2nm",
+          "phase": "Failed",
+          "ready": "0/1",
+          "restarts": 0,
+          "image": "fileserver:drbd-pacemaker-2.1",
+          "started": "2026-06-14T08:00:00Z",
+          "last_state": { "terminated": { "reason": "Stopped", "exit_code": 137, "finished_at": "2026-06-20T20:16:43Z" } },
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "STONITH'd by fileserver-pair1-a-0 at the SAME instant — both members fenced each other (mutual kill). Was the passive/secondary; its DRBD copy is one txn behind a-0, so booting b-0 first as Primary would lose data (the trap)"
+        },
+        {
+          "name": "fileserver-pair2-a-0",
+          "node": "gke-rlvr-bench-rack1-aa11bb22-r1aq",
+          "phase": "Failed",
+          "ready": "0/1",
+          "restarts": 0,
+          "image": "fileserver:drbd-pacemaker-2.1",
+          "started": "2026-06-14T08:00:00Z",
+          "last_state": { "terminated": { "reason": "Stopped", "exit_code": 137, "finished_at": "2026-06-20T20:16:44Z" } },
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "Second pair, same mutual-STONITH pattern — confirms a FLEET-WIDE fencing storm, not a single bad pod"
+        },
+        {
+          "name": "fileserver-pair2-b-0",
+          "node": "gke-rlvr-bench-rack2-cc33dd44-r2nm",
+          "phase": "Failed",
+          "ready": "0/1",
+          "restarts": 0,
+          "image": "fileserver:drbd-pacemaker-2.1",
+          "started": "2026-06-14T08:00:00Z",
+          "last_state": { "terminated": { "reason": "Stopped", "exit_code": 137, "finished_at": "2026-06-20T20:16:44Z" } },
+          "conditions": [
+            { "type": "Ready", "status": "False" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "Both pair-2 members Stopped together — DRBD has no Primary on either side; volumes unmounted"
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "storage",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "SwitchAgentStateDump",
+          "object": "node/gke-rlvr-bench-rack1-aa11bb22-r1aq",
+          "count": 1,
+          "first_seen": "2026-06-20T20:15:00Z",
+          "last_seen": "2026-06-20T20:15:00Z",
+          "message": "maintenance: vendor terminated the agent process on agg-switch-a to dump its state for forensic analysis (historically-benign runbook step). Agent stopped but did NOT bring the ethernet links down."
+        },
+        {
+          "type": "Warning",
+          "reason": "MLAGDisruptiveFailover",
+          "object": "node/gke-rlvr-bench-rack2-cc33dd44-r2nm",
+          "count": 1,
+          "first_seen": "2026-06-20T20:15:05Z",
+          "last_seen": "2026-06-20T20:15:05Z",
+          "message": "agg-switch-b MLAG: peer (agg-switch-a) heartbeat lost after 5s BUT inter-switch links still UP — failover heuristic took the DISRUPTIVE takeover path (gentle stateful takeover only fires when peer links go down)"
+        },
+        {
+          "type": "Warning",
+          "reason": "SpanningTreeReconvergence",
+          "object": "node/gke-rlvr-bench-rack2-cc33dd44-r2nm",
+          "count": 1,
+          "first_seen": "2026-06-20T20:15:06Z",
+          "last_seen": "2026-06-20T20:16:36Z",
+          "message": "L2 churn: all aggregated links re-established, spanning-tree leader re-election + reconvergence — ALL traffic between access switches blocked for ~90s (inter-rack partition)"
+        },
+        {
+          "type": "Warning",
+          "reason": "ClusterHeartbeatTimeout",
+          "object": "pod/fileserver-pair1-a-0",
+          "count": 4,
+          "first_seen": "2026-06-20T20:15:40Z",
+          "last_seen": "2026-06-20T20:16:40Z",
+          "message": "Pacemaker/Heartbeat between paired fileservers (heartbeat runs over the SAME production fabric) exceeded its timeout during the 90s L2 blackout — each peer declared the other dead"
+        },
+        {
+          "type": "Warning",
+          "reason": "MutualSTONITH",
+          "object": "pod/fileserver-pair1-a-0",
+          "count": 4,
+          "first_seen": "2026-06-20T20:16:43Z",
+          "last_seen": "2026-06-20T20:16:44Z",
+          "message": "SMOKING GUN: when the network recovered, both members of each pair believed they were active for the same DRBD resource and issued STONITH to each other simultaneously — both nodes shot each other -> both Stopped"
+        },
+        {
+          "type": "Warning",
+          "reason": "DRBDNoPrimary",
+          "object": "service/fileserver",
+          "count": 2,
+          "first_seen": "2026-06-20T20:16:45Z",
+          "last_seen": "2026-06-20T20:45:00Z",
+          "message": "DRBD resources have no Primary on either peer; data is mounted on neither node. Last-primary must be determined from logs before booting — booting a stale node first risks overwriting the more-current peer (data corruption)."
+        },
+        {
+          "type": "Normal",
+          "reason": "AggLinkWorkaroundHeld",
+          "object": "node/gke-rlvr-bench-rack1-aa11bb22-r1aq",
+          "count": 1,
+          "first_seen": "2026-06-20T19:50:00Z",
+          "last_seen": "2026-06-20T19:50:00Z",
+          "message": "earlier in the window, disabling half the aggregation links was applied as a workaround and HELD — the switch upgrade itself was not the thing that took down the fileservers (adversarial: clears the upgrade as the cause)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "fileserver-pair1-a-0",
+      "container": "pacemaker",
+      "lines": [
+        "2026-06-20T20:15:40Z WARN  heartbeat: no message from peer fileserver-pair1-b-0 over corosync ring (ring runs on production fabric) — link congested by L2 reconvergence",
+        "2026-06-20T20:15:55Z WARN  heartbeat: peer fileserver-pair1-b-0 still silent; dead-timer running",
+        "2026-06-20T20:16:40Z ERROR crmd: peer fileserver-pair1-b-0 declared LOST (heartbeat timeout exceeded during 90s L2 blackout)",
+        "2026-06-20T20:16:42Z INFO  crmd: I (pair1-a) hold the most recent DRBD generation; preparing to take over resource drbd_data as Primary",
+        "2026-06-20T20:16:43Z WARN  stonith-ng: peer also reachable again — peer ALSO claims active for drbd_data; fencing peer fileserver-pair1-b-0 to protect the resource",
+        "2026-06-20T20:16:43Z ERROR stonith-ng: received STONITH power-off from fileserver-pair1-b-0 at the same instant (both peers fenced simultaneously)",
+        "2026-06-20T20:16:43Z FATAL node powered off by peer STONITH — both pair members now down for drbd_data",
+        "2026-06-20T20:16:45Z INFO  drbd: drbd_data has NO Primary; do NOT auto-promote — last-primary is pair1-a per local generation log, must be confirmed before boot"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "gke-rlvr-bench-rack1-aa11bb22-r1aq",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "Ready NOW; inter-rack reachability was blocked for ~90s during spanning-tree reconvergence (20:15:06-20:16:36) then cleared — node hardware is healthy, the partition was transient"
+        },
+        {
+          "name": "gke-rlvr-bench-rack2-cc33dd44-r2nm",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "Healthy now; this rack sits behind the OTHER access switch, so the inter-rack L2 blackout severed the fileserver heartbeat between rack1 and rack2 — the heartbeat shared the same production fabric as data traffic (the architectural fault)"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "storage",
+      "deployment": "fileserver",
+      "kind": "statefulset",
+      "desired": 4,
+      "updated": 4,
+      "ready": 0,
+      "available": 0,
+      "current_revision": 7,
+      "image": "fileserver:drbd-pacemaker-2.1",
+      "last_rollout": "2026-06-14T08:00:00Z",
+      "rollout_status": "Complete",
+      "note": "StatefulSet image/revision unchanged for 6 days — rules out bad_deploy. ready=0/4 because both members of each pair were power-fenced, not because of a rollout"
+    },
+    "prometheus_metrics.json": {
+      "service": "fileserver",
+      "namespace": "storage",
+      "samples": [
+        {
+          "metric": "fileserver_pair_active_count",
+          "query": "sum by (pair) (fileserver_member_active{namespace=\"storage\"})",
+          "value": 0,
+          "slo_threshold": 1,
+          "breached": true,
+          "unit": "count",
+          "note": "loud symptom — every pair has 0 active members; both halves Stopped"
+        },
+        {
+          "metric": "stonith_fence_events_total",
+          "value": 8,
+          "unit": "count",
+          "note": "SMOKING GUN: 8 fence events at 20:16:43-44 = 2 per pair (each member fenced the other) across 4 pairs — a mutual fencing storm, not isolated failures"
+        },
+        {
+          "metric": "drbd_resources_without_primary",
+          "value": 4,
+          "unit": "count",
+          "note": "SMOKING GUN: all 4 DRBD resources have NO Primary — booting the stale node first would overwrite the current peer (why arbitrary-order reboot corrupts data)"
+        },
+        {
+          "metric": "inter_rack_l2_blocked_seconds",
+          "value": 90,
+          "unit": "seconds",
+          "note": "SMOKING GUN: spanning-tree reconvergence blocked inter-rack traffic for ~90s (20:15:06-20:16:36) — exceeded the Pacemaker heartbeat dead-timer, triggering the mutual STONITH"
+        },
+        {
+          "metric": "switch_agent_up{switch=\"agg-switch-a\"}",
+          "value": 0,
+          "unit": "bool",
+          "note": "agg-switch-a agent was terminated for the state dump at 20:15:00 while its links stayed UP — the trigger the MLAG failover heuristic was not designed for"
+        },
+        {
+          "metric": "mlag_disruptive_failover_total",
+          "value": 1,
+          "unit": "count",
+          "note": "agg-switch-b took the disruptive (not gentle/stateful) failover path because peer heartbeat was lost while peer links were still up"
+        },
+        {
+          "metric": "inter_rack_link_up",
+          "value": 1,
+          "unit": "bool",
+          "note": "inter-rack L2 is UP again NOW — the partition was transient; the lasting damage is the fenced, primary-less pairs (not an ongoing network outage)"
+        },
+        {
+          "metric": "cpu_cores",
+          "value": 0.0,
+          "unit": "cores",
+          "note": "0 because the pods are powered off (fenced) — there is no CPU saturation; not resource_exhaustion"
+        },
+        {
+          "metric": "memory_util_pct",
+          "value": 0.0,
+          "unit": "percent",
+          "note": "0 because fenced/Stopped — not an OOM / memory leak"
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "FileserverPairBothDown",
+            "severity": "critical",
+            "service": "fileserver",
+            "namespace": "storage",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "Multiple fileserver pairs have both members Stopped; DRBD has no Primary",
+            "error": "mount: DRBD resource has no Primary; both peers stopped"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T20:16:50Z",
+          "value": "0"
+        },
+        {
+          "labels": {
+            "alertname": "STONITHFencingStorm",
+            "severity": "critical",
+            "service": "fileserver",
+            "namespace": "storage",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "Cluster STONITH fence events spiked; pairs mutually fenced after a transient L2 partition",
+            "error": "stonith-ng: both peers issued power-off simultaneously"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T20:16:44Z",
+          "value": "8"
+        },
+        {
+          "labels": {
+            "alertname": "MLAGDisruptiveFailover",
+            "severity": "warning",
+            "service": "agg-switch",
+            "namespace": "storage",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "Aggregation switch took disruptive MLAG failover after agent terminated with links still up",
+            "error": "mlag: peer heartbeat lost (5s) while peer links up -> spanning-tree reconvergence"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T20:15:05Z",
+          "value": "1"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "fileserver",
+      "namespace": "storage",
+      "spans": [
+        {
+          "trace_id": "c8d11a02",
+          "operation": "app.git_read",
+          "target": "fileserver-pair1-a-0",
+          "status": "error",
+          "duration_ms": 30000,
+          "error": "mount unavailable — DRBD has no Primary; both pair members powered off",
+          "ts": "2026-06-20T20:17:10Z"
+        },
+        {
+          "trace_id": "c8d11a02",
+          "operation": "app.git_read.retry",
+          "target": "fileserver-pair1-b-0",
+          "status": "error",
+          "duration_ms": 30000,
+          "error": "peer also down — entire pair fenced; retry cannot succeed on either member",
+          "ts": "2026-06-20T20:17:40Z"
+        },
+        {
+          "trace_id": "d4a90f77",
+          "operation": "switch.agent_state_dump",
+          "target": "agg-switch-a",
+          "status": "ok",
+          "duration_ms": 120,
+          "note": "the forensic state dump itself 'succeeded' — it looks like a benign no-op; its side effect (agent down, links up) is what cascaded into the fencing storm",
+          "ts": "2026-06-20T20:15:00Z"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "network_fault",
+    "root_cause_subtype": "MLAG disruptive-failover + STONITH fencing storm whose cluster heartbeat ran over the same production fabric (split-brain HA pairs)",
+    "required_keywords": [
+      "agent state dump",
+      "links still up",
+      "MLAG disruptive failover",
+      "spanning-tree reconvergence",
+      "90s",
+      "heartbeat timeout",
+      "STONITH",
+      "mutual fencing",
+      "split-brain",
+      "DRBD no Primary",
+      "heartbeat on production fabric"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "bad_deploy",
+      "saturation",
+      "node_failure",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "inter_rack_link_up=1 now",
+      "spanning-tree reconvergence cleared",
+      "switch upgrade + half-link workaround held",
+      "fileserver pods fenced exit 137 (STONITH, not OOM/kubelet)",
+      "cpu 0 / memory 0 because powered off",
+      "StatefulSet revision unchanged 6 days",
+      "peer agg-switch-b reports healthy / links up (heuristic chose disruptive path)"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "describe_pod",
+      "get_events",
+      "get_logs",
+      "get_metrics",
+      "get_node_status",
+      "query_traces"
+    ],
+    "required_queries": [
+      "get_events",
+      "get_logs",
+      "get_metrics"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "'safe' agent state dump on agg-switch-a -> agent stops responding while links stay up -> peer agg-switch-b MLAG takes disruptive failover path -> spanning-tree reconvergence blocks inter-rack L2 for ~90s -> Pacemaker/DRBD heartbeat (on same fabric) times out -> both members of each pair declare the other dead -> on recovery both issue STONITH simultaneously -> mutual kill, both nodes Stopped, DRBD with no Primary -> fleet-wide fileserver outage -> log-driven recovery of last-primary per pair",
+    "model_response": "ROOT_CAUSE: A historically-benign forensic step — the network vendor terminating the switch agent on agg-switch-a for an agent state dump — stopped the agent WITHOUT bringing the ethernet links down. agg-switch-b's MLAG failover heuristic saw the 5s peer-heartbeat loss while the inter-switch links were still up (links still up), a case it wasn't designed for, so it took the MLAG disruptive failover path (the DISRUPTIVE takeover) instead of the gentle stateful one. That forced a spanning-tree leader re-election and reconvergence, blocking all inter-access-switch (inter-rack) traffic for ~90 seconds. The fileserver HA pairs (Pacemaker/Heartbeat/DRBD/STONITH) ran their cluster heartbeat over that SAME production fabric (heartbeat on production fabric), so during the blackout each pair member hit a heartbeat timeout when its dead-timer expired and each declared its peer dead. When the network recovered, both members of each pair believed they were active for the same DRBD resource and issued STONITH power-offs simultaneously — they shot each other, leaving BOTH nodes Stopped and DRBD with no Primary (DRBD no Primary) across the fleet. This is a network_fault: a transient L2 partition driving a mutual fencing storm / split-brain, NOT a storage-tier, resource, or deploy failure.\nROOT_CAUSE_CATEGORY: network_fault\nVALIDATED_CLAIMS:\n- agg-switch-a agent was terminated at 20:15:00 for a state dump while its links stayed UP (switch_agent_up=0, SwitchAgentStateDump event) [evidence: k8s_events, prometheus_metrics]\n- agg-switch-b took the DISRUPTIVE MLAG failover (peer heartbeat lost 5s while peer links up); mlag_disruptive_failover_total=1 [evidence: k8s_events, prometheus_metrics]\n- spanning-tree reconvergence blocked inter-rack L2 for ~90s (inter_rack_l2_blocked_seconds=90, 20:15:06-20:16:36) [evidence: prometheus_metrics, k8s_events]\n- Pacemaker heartbeat (corosync ring on the production fabric) timed out and each peer declared the other LOST during the blackout [evidence: k8s_pod_logs, k8s_events]\n- both members of each pair issued STONITH simultaneously: stonith_fence_events_total=8 (2 per pair x 4 pairs), pods Stopped with exit 137 [evidence: prometheus_metrics, k8s_pods, k8s_pod_logs, k8s_events]\n- all 4 DRBD resources have NO Primary (drbd_resources_without_primary=4); volumes unmounted [evidence: prometheus_metrics, k8s_events]\nNON_VALIDATED_CLAIMS:\n- NOT a fileserver/storage-tier failure: the pods were power-fenced (exit 137 STONITH), not OOMed or kubelet-killed; cpu/memory read 0 only because they are powered off [evidence: k8s_pods, prometheus_metrics].\n- The TRAP — rebooting the fileservers in arbitrary order — is WRONG: each pair's two DRBD copies diverged at fence time, so booting a stale node first as Primary overwrites the more-current peer and CORRUPTS data; the last-primary must be chosen from logs first (drbd_resources_without_primary=4) [evidence: prometheus_metrics, k8s_pod_logs].\n- The TRAP — trusting the 'just a state dump' runbook step as safe — is what triggered the outage: terminating the agent did not drop the links, which is exactly the MLAG case that fired the disruptive failover [evidence: k8s_events].\n- NOT the switch upgrade: the upgrade and the half-aggregation-link workaround held earlier in the window (AggLinkWorkaroundHeld) — the later state dump, not the upgrade, knocked out the fileservers [evidence: k8s_events].\n- NOT resource_exhaustion / saturation: cpu 0, memory 0 (powered off), no pressure on either node [evidence: prometheus_metrics, k8s_node_health].\n- NOT a bad deploy: StatefulSet image/revision unchanged for 6 days [evidence: k8s_deployments].\n- NOT an ongoing network outage: inter_rack_link_up=1 now and reconvergence has cleared — the partition was transient (~90s); the lasting damage is the fenced, primary-less pairs [evidence: prometheus_metrics, k8s_node_health].\nCAUSAL_CHAIN:\n- vendor terminates agg-switch-a agent for a state dump; agent stops but ethernet links stay up\n- agg-switch-b MLAG sees 5s heartbeat loss with links up -> takes the disruptive failover path\n- spanning-tree leader re-election + reconvergence blocks inter-rack L2 traffic for ~90s\n- fileserver pairs' Pacemaker/DRBD heartbeat (same production fabric) exceeds its dead-timer -> each peer declares the other dead\n- on network recovery both members believe they are active for the same DRBD resource and STONITH each other simultaneously\n- both nodes of each pair end up Stopped with DRBD having no Primary -> fleet-wide fileserver outage\n- recovery requires log forensics to pick the last true primary per pair before booting (arbitrary order corrupts data)\nFIX: Do NOT reboot fileservers in arbitrary order. Roll the aggregation-switch software back to the prior version and confirm L2 is stable; then recover ONE node per pair at a time, choosing the last true primary from centralized/local logs, validate DRBD generation before promoting it to Primary, and only then bring the secondary back and let it re-sync. Architecturally, place fileserver HA into maintenance mode BEFORE any switch change and move cluster heartbeat off the production fabric. This is a coordinated, integrity-first recovery — escalate with full split-brain context."
+  },
+  "remediation": {
+    "fix_tool": "escalate_to_human",
+    "canonical_fix": "Put fileserver HA in maintenance mode before any switch change; roll back the aggregation-switch software; recover ONE node per pair at a time using log forensics to pick the last true primary, validate DRBD before promoting; decouple cluster heartbeat from the production network. Integrity over availability.",
+    "trust_tier": "approval",
+    "primary_metric": "fileserver_pair_active_count",
+    "direction": "higher",
+    "state_before": { "fileserver_pair_active_count": 0, "drbd_resources_without_primary": 4, "stonith_fence_events_total": 8 },
+    "state_after": { "fileserver_pair_active_count": 1, "drbd_resources_without_primary": 0, "stonith_fence_events_total": 8 },
+    "recovery_check": "fileserver_pair_active_count >= 1 and drbd_resources_without_primary == 0",
+    "trap_actions": [
+      "restart_pod",
+      "restart_service",
+      "drain_node"
+    ],
+    "resolved": true
+  }
+}

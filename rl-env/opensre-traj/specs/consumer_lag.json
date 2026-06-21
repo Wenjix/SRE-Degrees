@@ -1,0 +1,384 @@
+{
+  "incident": "consumer_lag",
+  "provider": "k8s",
+  "failure_mode": "consumer_lag",
+  "default_severity": "critical",
+  "scenario_difficulty": 4,
+  "placeholder_defaults": {
+    "SVC": "notifications",
+    "NS": "rlvr-target",
+    "WORKLOAD": "notifications-consumer",
+    "POD": "notifications-consumer-5c8d7f9b64-h2qmt",
+    "POD2": "notifications-consumer-5c8d7f9b64-p7vkx",
+    "POD3": "notifications-consumer-5c8d7f9b64-zr4ln",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-8rmq",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-jc4d",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] consumer lag 800k msgs on notifications — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "ConsumerLag",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{SVC}} consumer backlog grew to 800k messages (SLO 50k) in {{NS}}",
+      "description": "app_consumer_lag_k for {{WORKLOAD}} (the notif-queue Redis list) climbed from a steady ~8k to 800k messages, ~16x over the 50k SLO. Producers are enqueuing far faster than the 3 consumer replicas can drain: the per-replica consume rate is pinned at its single-threaded ceiling (~1.6k msgs/s each, ~4.9k/s total) while the inbound enqueue rate is ~14k msgs/s after an upstream producer flood. The backlog and end-to-end notification delivery latency keep growing. Consumer pods are Ready with 0 restarts, CPU/memory nominal, nodes Ready, and the deployment revision is unchanged — this is throughput under-provisioning, not a crash, OOM, bad deploy, or broker outage.",
+      "error": "ConsumerLag: notifications backlog grew to 800k msgs",
+      "suspected_symptom": "consumer_lag > 500k messages",
+      "k8s_failure_mode": "consumer_lag",
+      "context_sources": "prometheus_alerts,prometheus_metrics,k8s_pod_logs,k8s_events,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "End-to-end notification delivery latency p99 is badly elevated (~42s vs 1.8s baseline), which could look like a slow downstream dependency_failure on the notif-queue/Redis broker — but Redis itself responds in <2ms and the latency is purely queue-wait time, not slow processing.",
+      "Consumer CPU is at the top of its band (~0.46 / 0.5 core limit, ~92% with ~6% throttle), tempting a resource_exhaustion / 'add more CPU' conclusion — but each replica is already draining at its max single-threaded rate; the bottleneck is replica count (parallelism), not CPU headroom, and raising the CPU limit would not add consumer parallelism.",
+      "The notif-queue Redis pod shows a Normal 'Started' event ~9m before the incident, which could look like a Redis restart/crash that dropped consumer connections and stalled draining — but consumer connections are continuous, LLEN history shows no gap, and the backlog growth begins at the producer flood, not the restart.",
+      "{{SVC}} request_rate (producer enqueue) is high (~14k msgs/s), which can read as an organic-traffic saturation that will self-resolve — but it persists above consumer capacity, so the lag grows monotonically and will not drain without more consumers."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d4h",
+          "containers": [
+            {
+              "name": "consumer",
+              "image": "registry.rlvr/notifications-consumer:v2.7.4",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "250m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "env": [
+                { "name": "QUEUE_NAME", "value": "notif-queue" },
+                { "name": "CONSUMER_CONCURRENCY", "value": "1" },
+                { "name": "BATCH_SIZE", "value": "100" }
+              ],
+              "state": { "running": { "startedAt": "2026-06-09T10:14:02Z" } },
+              "last_state": {}
+            }
+          ],
+          "note": "Ready, 0 restarts, single-threaded consumer (CONSUMER_CONCURRENCY=1) draining at its max rate — the failure is throughput under-provisioning, not a crash or OOM"
+        },
+        {
+          "name": "{{POD2}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d4h",
+          "containers": [
+            {
+              "name": "consumer",
+              "image": "registry.rlvr/notifications-consumer:v2.7.4",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "250m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "env": [
+                { "name": "QUEUE_NAME", "value": "notif-queue" },
+                { "name": "CONSUMER_CONCURRENCY", "value": "1" },
+                { "name": "BATCH_SIZE", "value": "100" }
+              ],
+              "state": { "running": { "startedAt": "2026-06-09T10:14:02Z" } },
+              "last_state": {}
+            }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "11d4h",
+          "containers": [
+            {
+              "name": "consumer",
+              "image": "registry.rlvr/notifications-consumer:v2.7.4",
+              "ready": true,
+              "restart_count": 0,
+              "resources": {
+                "requests": { "memory": "256Mi", "cpu": "250m" },
+                "limits": { "memory": "512Mi", "cpu": "500m" }
+              },
+              "env": [
+                { "name": "QUEUE_NAME", "value": "notif-queue" },
+                { "name": "CONSUMER_CONCURRENCY", "value": "1" },
+                { "name": "BATCH_SIZE", "value": "100" }
+              ],
+              "state": { "running": { "startedAt": "2026-06-09T10:14:02Z" } },
+              "last_state": {}
+            }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "ConsumerLagHigh",
+          "object": "pod/{{POD}}",
+          "source": "prometheus",
+          "count": 41,
+          "first_seen": "2026-06-20T16:02:11Z",
+          "last_seen": "2026-06-20T16:09:48Z",
+          "message": "app_consumer_lag_k for {{WORKLOAD}} reached 800 (800k msgs) against a 50k SLO; enqueue ~14k/s vs total consume ~4.9k/s — backlog growing ~9.1k msgs/s"
+        },
+        {
+          "type": "Warning",
+          "reason": "ProducerFlood",
+          "object": "service/{{SVC}}-producer",
+          "source": "notifications-producer",
+          "count": 1,
+          "first_seen": "2026-06-20T16:01:38Z",
+          "last_seen": "2026-06-20T16:01:38Z",
+          "message": "Upstream batch fan-out enqueued ~600k notification jobs onto notif-queue in a short burst; enqueue rate jumped from ~4k/s to ~14k/s and stayed elevated"
+        },
+        {
+          "type": "Warning",
+          "reason": "DeliveryLatencyHigh",
+          "object": "pod/{{POD2}}",
+          "source": "notifications",
+          "count": 18,
+          "first_seen": "2026-06-20T16:02:30Z",
+          "last_seen": "2026-06-20T16:09:40Z",
+          "message": "End-to-end notification delivery p99 climbed to 42s — messages sit in notif-queue waiting (queue-wait), per-message processing still ~6ms"
+        },
+        {
+          "type": "Normal",
+          "reason": "Started",
+          "object": "pod/redis-0",
+          "source": "kubelet",
+          "count": 1,
+          "first_seen": "2026-06-20T15:53:07Z",
+          "last_seen": "2026-06-20T15:53:07Z",
+          "message": "Started container redis (routine probe-driven restart ~9m before incident; consumer connections continuous, LLEN history has no gap — adversarial, not a broker outage)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "namespace": "{{NS}}",
+      "pod": "{{POD}}",
+      "container": "consumer",
+      "lines": [
+        "2026-06-20T16:01:30Z INFO  consumer loop: notif-queue LLEN=8120 consumed_batch=100 consume_rate=1.61k/s lag_k=8",
+        "2026-06-20T16:01:40Z WARN  notif-queue LLEN=141200 rising fast: enqueue_rate~14k/s consume_rate=1.62k/s (this replica at max single-threaded throughput, CONSUMER_CONCURRENCY=1)",
+        "2026-06-20T16:02:11Z WARN  backlog growing: LLEN=372900 lag_k=373, 3 replicas draining ~4.9k/s combined vs ~14k/s inbound",
+        "2026-06-20T16:04:55Z ERROR ConsumerLag: notifications backlog grew to 800k msgs",
+        "2026-06-20T16:04:56Z WARN  oldest message age 39s (queue-wait); redis BRPOP latency 1.4ms, per-message handler 6ms — bottleneck is consumer parallelism, not Redis or handler speed",
+        "2026-06-20T16:07:20Z WARN  LLEN=803400 lag_k=803 still rising; cannot keep up at current replica count (3)",
+        "2026-06-20T16:09:48Z ERROR ConsumerLag: notifications backlog grew to 800k msgs"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 29,
+          "pods": "14/110",
+          "note": "Ready with headroom — failure is consumer-throughput-scoped, not node-scoped (adversarial)"
+        },
+        {
+          "name": "{{NODE2}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 23,
+          "pods": "11/110"
+        },
+        {
+          "name": "{{NODE3}}",
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False",
+            "NetworkUnavailable": "False"
+          },
+          "capacity": { "memory": "8159744Ki", "cpu": "4" },
+          "allocatable": { "memory": "7621632Ki", "cpu": "3920m" },
+          "memory_used_pct": 26,
+          "pods": "12/110"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "image": "registry.rlvr/notifications-consumer:v2.7.4",
+      "strategy": "RollingUpdate",
+      "desired_replicas": 3,
+      "available_replicas": 3,
+      "ready_replicas": 3,
+      "unavailable_replicas": 0,
+      "current_revision": 7,
+      "previous_revision": 6,
+      "previous_image": "registry.rlvr/notifications-consumer:v2.7.3",
+      "rollout_status": "Complete",
+      "last_rollout": "2026-06-09T10:14:02Z",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ],
+      "note": "revision 7 unchanged, last rollout 11d4h ago, image v2.7.4 stable, all 3 replicas Available — rules out bad_deploy; the lag coincides with the producer flood, not a deploy. Only 3 consumer replicas for ~14k/s inbound is the under-provisioning that drives the lag."
+    },
+    "prometheus_metrics.json": {
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "query": "max(app_consumer_lag_k{namespace=\"rlvr-target\",app=\"notifications\"})",
+      "primary_metric": "app_consumer_lag_k",
+      "slo_threshold": 50,
+      "direction": "lower",
+      "current_value": 803,
+      "unit": "thousand_messages",
+      "series": [
+        { "pod": "{{POD}}", "consume_rate_msgs_s": 1620, "cpu_util_pct": 92, "cpu_throttle_pct": 6 },
+        { "pod": "{{POD2}}", "consume_rate_msgs_s": 1635, "cpu_util_pct": 91, "cpu_throttle_pct": 5 },
+        { "pod": "{{POD3}}", "consume_rate_msgs_s": 1610, "cpu_util_pct": 90, "cpu_throttle_pct": 6 }
+      ],
+      "samples": [
+        { "t": "2026-06-20T16:01:00Z", "value": 8 },
+        { "t": "2026-06-20T16:02:00Z", "value": 141 },
+        { "t": "2026-06-20T16:03:00Z", "value": 373 },
+        { "t": "2026-06-20T16:05:00Z", "value": 800 },
+        { "t": "2026-06-20T16:09:00Z", "value": 803 }
+      ],
+      "related": [
+        { "metric": "app_queue_enqueue_rate_msgs_s", "value": 14010, "unit": "per_s", "note": "producer enqueue rate after the flood — far above consumer capacity" },
+        { "metric": "app_queue_consume_rate_msgs_s", "value": 4865, "unit": "per_s", "note": "combined drain rate of all 3 replicas at their single-threaded ceiling — the throughput bottleneck" },
+        { "metric": "app_queue_backlog_msgs", "value": 803400, "unit": "messages", "note": "notif-queue LLEN; growing ~9.1k/s = enqueue minus consume" },
+        { "metric": "app_notification_delivery_latency_p99", "value": 42.0, "unit": "seconds", "note": "queue-wait time, not slow processing (adversarial — looks like dependency_failure)" },
+        { "metric": "app_redis_brpop_latency_p99", "value": 0.0014, "unit": "seconds", "note": "Redis broker fast (1.4ms) — not a slow/down dependency (adversarial)" },
+        { "metric": "app_redis_up", "value": 1, "unit": "bool", "note": "notif-queue Redis reachable and serving (adversarial — not dependency_failure)" },
+        { "metric": "memory_util_pct", "value": 41.0, "unit": "percent", "note": "nominal — not resource_exhaustion" }
+      ],
+      "note": "app_consumer_lag_k ramps 8 -> 141 -> 373 -> 800 over 4m, breaching the 50 SLO ~16x. enqueue (14010/s) far exceeds consume (4865/s), so backlog grows monotonically. CPU ~92% is at the single-threaded ceiling of each replica — adding CPU would not add consumer parallelism; adding replicas would. Redis fast, memory nominal, nodes Ready — not dependency_failure or resource_exhaustion."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "ConsumerLag",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "{{SVC}} consumer backlog grew to 800k messages (SLO 50k)",
+            "description": "app_consumer_lag_k 803 (803k msgs) > 500 (500k) threshold; enqueue ~14k/s vs consume ~4.9k/s, backlog rising ~9.1k/s",
+            "error": "ConsumerLag: notifications backlog grew to 800k msgs"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T16:02:30Z",
+          "value": "803"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "saturation",
+    "required_keywords": [
+      "consumer lag",
+      "ConsumerLag",
+      "800k",
+      "backlog",
+      "producer flood",
+      "under-provisioned consumers",
+      "enqueue rate exceeds consume rate",
+      "app_consumer_lag_k",
+      "{{WORKLOAD}}"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "dependency_failure",
+      "resource_exhaustion",
+      "node_failure",
+      "config_error"
+    ],
+    "ruling_out_keywords": [
+      "revision 7 unchanged",
+      "last rollout 11d4h ago",
+      "0 restarts",
+      "app_redis_brpop_latency 1.4ms",
+      "app_redis_up=1",
+      "delivery latency is queue-wait",
+      "redis uptime continuous LLEN no gap",
+      "cpu at single-threaded ceiling",
+      "memory 41%",
+      "nodes Ready"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events"
+    ],
+    "max_investigation_loops": 4,
+    "model_response": "ROOT_CAUSE: The {{SVC}} consumer group is hit by consumer lag from under-provisioned consumers for its inbound load: after an upstream producer flood at 16:01:38 enqueued ~600k jobs and pushed the enqueue rate to ~14k msgs/s, the 3 {{WORKLOAD}} replicas can only drain a combined ~4.9k msgs/s (each pinned at its single-threaded ceiling of ~1.6k/s, CONSUMER_CONCURRENCY=1). Inbound exceeds drain by ~9.1k/s, so the notif-queue backlog grows monotonically — app_consumer_lag_k climbed 8 -> 141 -> 373 -> 800 (800k msgs) in 4 minutes, ~16x over the 50k SLO and past the 500k alert threshold. This is throughput saturation of the consumer group (too few parallel consumers for the offered load), not a crash, OOM, bad deploy, or broker outage.\nROOT_CAUSE_CATEGORY: saturation\nVALIDATED_CLAIMS:\n- app_consumer_lag_k = 803 (803k msgs) vs the 50 (50k) SLO, ramping 8 -> 141 -> 373 -> 800 over 4m; backlog rising ~9.1k msgs/s [evidence: prometheus_metrics]\n- enqueue rate exceeds consume rate: enqueue 14,010/s far exceeds combined consume rate 4,865/s; each of the 3 replicas is at ~1.6k/s, its single-threaded ceiling [evidence: prometheus_metrics]\n- A ProducerFlood event shows an upstream batch fan-out enqueued ~600k jobs and raised enqueue from ~4k/s to ~14k/s [evidence: k8s_events]\n- Logs from {{POD}} show 'ConsumerLag: notifications backlog grew to 800k msgs' and 'cannot keep up at current replica count (3)', with redis BRPOP 1.4ms and per-message handler 6ms — the bottleneck is parallelism, not Redis or handler speed [evidence: k8s_pod_logs]\n- ConsumerLag alert firing since 16:02:30 with value 803 [evidence: prometheus_alerts]\nNON_VALIDATED_CLAIMS:\n- Not a dependency_failure: app_redis_brpop_latency_p99=1.4ms and app_redis_up=1; the 42s delivery latency is queue-wait time while messages sit in the backlog, not slow processing by Redis [evidence: prometheus_metrics]\n- Not a bad deploy: {{WORKLOAD}} revision 7 is unchanged, last rollout 11d4h ago, image v2.7.4 stable, all 3 replicas Available; the lag coincides with the producer flood, not a deploy [evidence: k8s_deployments]\n- Not resource_exhaustion: consumer CPU ~92% is at the single-threaded ceiling (adding CPU adds no consumer parallelism), memory is 41%, 0 restarts, and all nodes are Ready with headroom [evidence: prometheus_metrics, k8s_pods, k8s_node_health]\n- Not a broker outage: the redis-0 'Started' event ~9m prior was a routine probe restart with continuous consumer connections and no gap in LLEN history [evidence: k8s_events]\nCAUSAL_CHAIN:\n- An upstream producer flood pushes the notif-queue enqueue rate to ~14k msgs/s\n- The 3 consumer replicas drain at only ~4.9k msgs/s combined (each maxed single-threaded at ~1.6k/s)\n- Inbound exceeds drain by ~9.1k/s, so the notif-queue backlog (LLEN) grows monotonically\n- app_consumer_lag_k climbs past 50k SLO to 800k and end-to-end delivery latency balloons to 42s (queue-wait)\n- The ConsumerLag alert fires; the lag will not drain without more consumer parallelism\n- Scaling the consumer group from 3 to 6 replicas raises combined drain above the ~14k/s inbound, the backlog falls, and app_consumer_lag_k returns below the 50k SLO"
+  },
+  "remediation": {
+    "fix_tool": "scale_consumers",
+    "canonical_fix": "kubectl scale deployment/notifications-consumer -n rlvr-target --replicas=6",
+    "trust_tier": "approval",
+    "primary_metric": "app_consumer_lag_k",
+    "direction": "lower",
+    "state_before": { "app_consumer_lag_k": 803 },
+    "state_after": { "app_consumer_lag_k": 12 },
+    "recovery_check": "app_consumer_lag_k < 50",
+    "resolved": true
+  }
+}

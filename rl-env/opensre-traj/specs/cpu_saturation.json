@@ -1,0 +1,345 @@
+{
+  "incident": "cpu_saturation",
+  "provider": "k8s",
+  "failure_mode": "cpu_saturation",
+  "default_severity": "critical",
+  "scenario_difficulty": 3,
+  "placeholder_defaults": {
+    "SVC": "checkout",
+    "NS": "rlvr-target",
+    "WORKLOAD": "checkout",
+    "POD": "checkout-7b6b9dfb7c-lv9ld",
+    "POD2": "checkout-7b6b9dfb7c-q4m2x",
+    "POD3": "checkout-7b6b9dfb7c-z8rkp",
+    "NODE": "gke-rlvr-bench-default-pool-fb893fdf-2hxn",
+    "NODE2": "gke-rlvr-bench-default-pool-fb893fdf-9c1d",
+    "NODE3": "gke-rlvr-bench-default-pool-fb893fdf-k7vp",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] sustained CPU saturation — {{POD}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "HighCPUUsage",
+      "severity": "critical",
+      "service": "{{SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "checkout pods pegged at 100% CPU with throttling for 2m+",
+      "description": "avg(rate(container_cpu_usage_seconds_total{namespace=\"{{NS}}\",pod=~\"{{WORKLOAD}}-.*\",container!=\"\"}[1m])) has held at 0.97 cores/sec (target 0.5) across {{POD}}, {{POD2}}, {{POD3}} for over 2 minutes; CFS throttling is active and checkout request latency is climbing.",
+      "error": "container_cpu_usage_seconds_total rate > 0.9 sustained 2m on workload {{WORKLOAD}}",
+      "suspected_symptom": "cpu_saturation",
+      "k8s_failure_mode": "cpu_saturation",
+      "context_sources": "prometheus_metrics,k8s_pods,k8s_pod_logs,k8s_deployments,k8s_events"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "A new checkout revision (rollout) completed ~14 minutes before the alert; this is benign — the rollout finished cleanly, all replicas are Ready, and CPU was nominal for ~12 minutes after it, so it is not a bad_deploy.",
+      "One pod {{POD3}} shows 1 restart from a routine eviction earlier today, but its current state is Running and Ready with no CrashLoopBackOff — not a crashloop.",
+      "Node {{NODE}} reports MemoryPressure=False but its allocatable CPU is nearly committed; memory_working_set is well under limit, so this is not memory_exhaustion/OOM.",
+      "Downstream payments p99 latency is slightly elevated, but payments error rate is 0 and traces show the slow span is checkout's own CPU-bound handler, not a payments dependency call — rules out dependency_failure."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "k8s_node_health"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{POD}}",
+          "workload": "{{WORKLOAD}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": true,
+          "restart_count": 0,
+          "containers": [
+            {
+              "name": "checkout",
+              "ready": true,
+              "state": "running",
+              "resources": {
+                "requests": { "cpu": "500m", "memory": "256Mi" },
+                "limits": { "cpu": "1000m", "memory": "512Mi" }
+              },
+              "usage": { "cpu": "985m", "memory": "210Mi" },
+              "cpu_throttled_seconds_total": 47.3,
+              "last_state": "none"
+            }
+          ]
+        },
+        {
+          "name": "{{POD2}}",
+          "workload": "{{WORKLOAD}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": true,
+          "restart_count": 0,
+          "containers": [
+            {
+              "name": "checkout",
+              "ready": true,
+              "state": "running",
+              "resources": {
+                "requests": { "cpu": "500m", "memory": "256Mi" },
+                "limits": { "cpu": "1000m", "memory": "512Mi" }
+              },
+              "usage": { "cpu": "972m", "memory": "198Mi" },
+              "cpu_throttled_seconds_total": 41.8,
+              "last_state": "none"
+            }
+          ]
+        },
+        {
+          "name": "{{POD3}}",
+          "workload": "{{WORKLOAD}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": true,
+          "restart_count": 1,
+          "containers": [
+            {
+              "name": "checkout",
+              "ready": true,
+              "state": "running",
+              "resources": {
+                "requests": { "cpu": "500m", "memory": "256Mi" },
+                "limits": { "cpu": "1000m", "memory": "512Mi" }
+              },
+              "usage": { "cpu": "961m", "memory": "203Mi" },
+              "cpu_throttled_seconds_total": 39.1,
+              "last_state": "terminated:Evicted (12h ago)"
+            }
+          ]
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "CPUThrottlingHigh",
+          "object": "pod/{{POD}}",
+          "count": 12,
+          "age": "2m",
+          "message": "Container checkout is being CPU throttled (throttled_periods/periods = 0.88) — usage at limit 1000m"
+        },
+        {
+          "type": "Warning",
+          "reason": "CPUThrottlingHigh",
+          "object": "pod/{{POD2}}",
+          "count": 11,
+          "age": "2m",
+          "message": "Container checkout is being CPU throttled (throttled_periods/periods = 0.84) — usage at limit 1000m"
+        },
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "deployment/{{WORKLOAD}}",
+          "count": 1,
+          "age": "14m",
+          "message": "Scaled up replica set {{WORKLOAD}}-7b6b9dfb7c to 3 (rollout completed cleanly)"
+        },
+        {
+          "type": "Normal",
+          "reason": "Started",
+          "object": "pod/{{POD3}}",
+          "count": 1,
+          "age": "12h",
+          "message": "Started container checkout after node eviction reschedule"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{POD}}",
+      "container": "checkout",
+      "lines": [
+        { "ts": "2026-06-20T18:41:02Z", "level": "WARN", "msg": "CPU pegged on checkout workers — worker pool saturated, 0 idle threads" },
+        { "ts": "2026-06-20T18:41:05Z", "level": "WARN", "msg": "CPU pegged on checkout workers — request queue depth 312, p99 handler time 1480ms" },
+        { "ts": "2026-06-20T18:41:09Z", "level": "WARN", "msg": "CPU pegged on checkout workers — CFS throttled this period (985m/1000m), shedding nothing" },
+        { "ts": "2026-06-20T18:41:13Z", "level": "ERROR", "msg": "request timeout serving /api/checkout: handler exceeded 2000ms while CPU-bound (no downstream call in flight)" }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{WORKLOAD}}",
+      "desired_replicas": 3,
+      "ready_replicas": 3,
+      "available_replicas": 3,
+      "updated_replicas": 3,
+      "unavailable_replicas": 0,
+      "current_revision": 7,
+      "rollout_status": "complete",
+      "last_rollout_age": "14m",
+      "strategy": "RollingUpdate",
+      "conditions": [
+        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+        { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "metric_query": "avg(rate(container_cpu_usage_seconds_total{namespace=\"{{NS}}\",pod=~\"{{WORKLOAD}}-.*\",container!=\"\"}[1m]))",
+      "primary_metric": "rate(container_cpu_usage_seconds_total[1m])",
+      "unit": "cores_per_sec",
+      "slo_threshold": 0.5,
+      "direction": "lower",
+      "current_value": 0.97,
+      "samples": [
+        { "t": "-12m", "value": 0.31 },
+        { "t": "-8m", "value": 0.34 },
+        { "t": "-4m", "value": 0.62 },
+        { "t": "-2m", "value": 0.91 },
+        { "t": "-1m", "value": 0.96 },
+        { "t": "0m", "value": 0.97 }
+      ],
+      "per_pod": {
+        "{{POD}}": 0.985,
+        "{{POD2}}": 0.972,
+        "{{POD3}}": 0.961
+      },
+      "supporting": {
+        "container_cpu_cfs_throttled_periods_ratio": 0.86,
+        "container_memory_working_set_bytes_max": 220200960,
+        "container_memory_limit_bytes": 536870912,
+        "checkout_http_request_duration_seconds_p99": 1.48,
+        "payments_upstream_error_rate": 0.0
+      }
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "HighCPUUsage",
+            "severity": "critical",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "workload_name": "{{WORKLOAD}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "checkout CPU usage rate > 0.9 cores/sec sustained 2m",
+            "description": "avg rate(container_cpu_usage_seconds_total) = 0.97 (target 0.5) on {{WORKLOAD}}"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:39:11Z"
+        },
+        {
+          "labels": {
+            "alertname": "ContainerCPUThrottled",
+            "severity": "warning",
+            "service": "{{SVC}}",
+            "namespace": "{{NS}}",
+            "workload_name": "{{WORKLOAD}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "checkout containers CFS-throttled (ratio 0.86)",
+            "description": "throttled_periods/periods crossed 0.8 on {{POD}}, {{POD2}}, {{POD3}}"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T18:39:40Z"
+        }
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "ready": true,
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False"
+          },
+          "allocatable": { "cpu": "2000m", "memory": "7300Mi" },
+          "allocated": { "cpu": "1850m", "memory": "3200Mi" },
+          "cpu_commit_ratio": 0.93
+        },
+        {
+          "name": "{{NODE2}}",
+          "ready": true,
+          "conditions": {
+            "Ready": "True",
+            "MemoryPressure": "False",
+            "DiskPressure": "False",
+            "PIDPressure": "False"
+          },
+          "allocatable": { "cpu": "2000m", "memory": "7300Mi" },
+          "allocated": { "cpu": "1790m", "memory": "3050Mi" },
+          "cpu_commit_ratio": 0.90
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "saturation",
+    "required_keywords": [
+      "cpu",
+      "saturation",
+      "throttl",
+      "checkout",
+      "1000m",
+      "insufficient capacity",
+      "scale"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "resource_exhaustion",
+      "dependency_failure",
+      "node_failure",
+      "config_error",
+      "data_quality",
+      "network_fault",
+      "healthy",
+      "unknown"
+    ],
+    "ruling_out_keywords": [
+      "rollout completed cleanly",
+      "all replicas Ready",
+      "memory under limit",
+      "no CrashLoopBackOff",
+      "payments error rate 0",
+      "CPU-bound handler not downstream call"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "describe_pod",
+      "get_logs",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "describe_pod",
+      "get_logs"
+    ],
+    "max_investigation_loops": 4,
+    "model_response": "ROOT_CAUSE: The checkout deployment is CPU-saturated. All three checkout pods ({{POD}}, {{POD2}}, {{POD3}}) are running at their 1000m CPU limit (avg rate 0.97 cores/sec vs 0.5 target) and are being CFS-throttled (throttle ratio 0.86), which queues requests and drives checkout p99 to 1.48s. There is insufficient capacity (CPU) for current request volume — the fix is to scale the deployment to more replicas (or raise CPU limits).\nROOT_CAUSE_CATEGORY: saturation\nVALIDATED_CLAIMS:\n- avg(rate(container_cpu_usage_seconds_total)) = 0.97 cores/sec, above the 0.5 SLO, sustained 2m+ [evidence: prometheus_metrics]\n- All checkout containers are at the 1000m CPU limit and CFS-throttled (throttled ratio ~0.86) [evidence: k8s_pods]\n- CPUThrottlingHigh events firing on {{POD}} and {{POD2}} [evidence: k8s_events]\n- Logs show 'CPU pegged on checkout workers', request queue depth 312, and a timeout that is CPU-bound with no downstream call in flight [evidence: k8s_pod_logs]\n- Deployment is fully Available/Progressing with 3/3 ready replicas, so capacity (not health) is the constraint [evidence: k8s_deployments]\nNON_VALIDATED_CLAIMS:\n- Exact incoming RPS increase is not directly measured; capacity shortfall is inferred from saturation + throttling\nCAUSAL_CHAIN:\n- Request volume exceeds the aggregate CPU headroom of 3 checkout replicas\n- Each pod hits its 1000m CPU limit and the kernel CFS-throttles it (ratio ~0.86)\n- Throttled workers cannot keep up; request queue grows (depth 312) and handler time rises to ~1.48s p99\n- Requests exceed the 2000ms timeout and fail; HighCPUUsage + ContainerCPUThrottled alerts fire\n- Remediation: add CPU capacity by scaling checkout replicas so per-pod CPU drops below the 0.5 SLO and throttling clears"
+  },
+  "remediation": {
+    "fix_tool": "scale_deployment",
+    "canonical_fix": "kubectl delete stresschaos -n chaos-mesh cpu-checkout; kubectl scale deployment/checkout -n rlvr-target --replicas=5",
+    "trust_tier": "approval",
+    "primary_metric": "rate(container_cpu_usage_seconds_total[1m])",
+    "direction": "lower",
+    "state_before": { "rate(container_cpu_usage_seconds_total[1m])": 0.97 },
+    "state_after": { "rate(container_cpu_usage_seconds_total[1m])": 0.34 },
+    "recovery_check": "rate(container_cpu_usage_seconds_total[1m]) < 0.5",
+    "resolved": true
+  }
+}

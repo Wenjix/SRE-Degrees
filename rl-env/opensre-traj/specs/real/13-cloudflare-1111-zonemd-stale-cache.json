@@ -1,0 +1,388 @@
+{
+  "incident": "cloudflare_1111_zonemd_stale_cache",
+  "provider": "k8s",
+  "source_company": "Cloudflare",
+  "source_url": "https://blog.cloudflare.com/1-1-1-1-lookup-failures-on-october-4th-2023/",
+  "failure_mode": "stale_root_zone_cache_zonemd_parse_fail",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "NS": "resolver-prod",
+    "CLUSTER": "edge-anycast-prod",
+    "VICTIM_SVC": "rec-1111",
+    "VICTIM_WORKLOAD": "rec-1111",
+    "VICTIM_POD": "rec-1111-7f8c9d6b54-stale1",
+    "VICTIM_POD2": "rec-1111-7f8c9d6b54-stale2",
+    "FRESH_POD": "rec-1111-7f8c9d6b54-fresh1",
+    "STATICZONE_SIDECAR": "static-zone-preload",
+    "NODE": "edge-pop-ord01-a1b2c3",
+    "NODE2": "edge-pop-ord01-d4e5f6",
+    "NODE3": "edge-pop-sjc02-7a8b9c"
+  },
+  "alert": {
+    "title": "[real-k8s] 1.1.1.1 SERVFAIL spike — {{VICTIM_SVC}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "ResolverServfailRateHigh",
+      "severity": "critical",
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{VICTIM_WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "{{VICTIM_SVC}} returning SERVFAIL to valid public DNS queries — error rate jumped 3% to 15% at 07:00 UTC",
+      "description": "rec_servfail_rate for {{VICTIM_SVC}} rose from 0.03 to 0.15 (SLO 0.005) starting precisely at 07:00 UTC. SERVFAILs correlate with DNSSEC validation failures against the DNS root zone, and the root-zone DNSSEC signatures (RRSIG) for the currently-loaded root appear to have just expired. This looks like an upstream IANA/root-server DNSSEC signing problem or a root-zone signature expiry outside our control.",
+      "error": "SERVFAIL: DNSSEC validation failed — no valid RRSIG for root zone; signatures expired at 2023-10-04T07:00:00Z",
+      "suspected_symptom": "root_zone_dnssec_signature_expiry_upstream",
+      "k8s_failure_mode": "dns_resolution_failure",
+      "context_sources": "prometheus_alerts,k8s_pod_logs,k8s_events,prometheus_metrics,k8s_deployments,k8s_pods"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The loud symptom and the firing alert both point at 'root-zone DNSSEC signatures expired at 07:00 UTC', framing this as an external IANA / root-server / DNSSEC signing failure outside Cloudflare's control — but the signatures that expired belong to a 13-day-old root zone snapshot from 2023-09-21 that the resolver should have replaced long ago; the live root zone has valid current signatures.",
+      "Upstream root nameservers are reachable and serving a FRESH, validly-signed root zone (current RRSIG, ZONEMD present) — querying them directly returns NOERROR with valid DNSSEC. The external DNS dependency 'looks guilty' but is healthy; the fault is that our static_zone preload never adopted that fresh root.",
+      "The resolver pods are Running and Ready with 0 restarts, passing liveness/readiness probes — pod status 'looks healthy' even though they are serving DNSSEC validation off a frozen, stale root-zone snapshot. The smoking gun is in the static_zone preload LOGS, not pod status.",
+      "Only the largest data centers / long-uptime pods are SERVFAILing while freshly-scheduled pods answer NOERROR — this looks like a partial/regional capacity or hot-shard problem, but it is purely an artifact of which pods have NOT restarted in 13 days and therefore still hold the stale parsed root in memory.",
+      "An operator applies an override-rule tag (rec_disable_static) to disable static_zone per-request and a few sampled queries recover, which 'looks like the fix is working' — but cache-miss queries forwarded internally do not carry the tag, so the override silently fails to propagate and SERVFAILs persist (this is the TRAP).",
+      "Victim CPU (0.31 cores) and memory (41%) are nominal with zero OOM/restarts, and the last app deploy was 9 days before the incident — this is not resource_exhaustion and not a bad_deploy of the resolver binary."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "{{NS}}",
+      "pods": [
+        {
+          "name": "{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "rec-1111:v2.14.0",
+          "started": "2023-09-21T05:12:40Z",
+          "uptime_days": 13,
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING-GUN CONTEXT: started 2023-09-21, has NOT restarted in 13 days, so it still holds the stale root-zone snapshot preloaded by static_zone on that date. Pod status is Ready/healthy — misleading. This is the pod that SERVFAILs."
+        },
+        {
+          "name": "{{VICTIM_POD2}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "rec-1111:v2.14.0",
+          "started": "2023-09-21T05:12:40Z",
+          "uptime_days": 13,
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Same as victim pod 1: 13-day uptime, frozen stale root in memory, SERVFAILing. Status Ready (adversarial)."
+        },
+        {
+          "name": "{{FRESH_POD}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 1,
+          "image": "rec-1111:v2.14.0",
+          "started": "2023-10-04T07:18:02Z",
+          "uptime_days": 0,
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "CONTRAST POD: restarted at 07:18 (after onset), so static_zone re-preloaded — but parsing the CURRENT root still fails on the ZONEMD record, so it falls back to a fresh upstream root fetch and answers NOERROR. Shows the stale-snapshot pods are the ones failing; same image, so NOT a bad deploy."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "{{NS}}",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "StaticZoneParseFailed",
+          "object": "pod/{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "count": 1,
+          "first_seen": "2023-09-21T05:12:41Z",
+          "last_seen": "2023-09-21T05:12:41Z",
+          "message": "static-zone-preload: failed to parse root zone update 2023-09-22 onward: unknown RR type ZONEMD (type 63) at root apex — retaining previously parsed root snapshot from 2023-09-21 (SMOKING GUN: silent parse failure 13 days before symptom; preload froze on the old root)"
+        },
+        {
+          "type": "Warning",
+          "reason": "DNSSECValidationFailed",
+          "object": "pod/{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "count": 50421,
+          "first_seen": "2023-10-04T07:00:01Z",
+          "last_seen": "2023-10-04T09:58:30Z",
+          "message": "DNSSEC validation SERVFAIL: no valid RRSIG for '.' — loaded root zone (serial from 2023-09-21) signatures expired at 07:00:00Z (downstream symptom of the frozen snapshot, not an upstream root failure)"
+        },
+        {
+          "type": "Normal",
+          "reason": "OverrideRuleApplied",
+          "object": "deployment/{{VICTIM_WORKLOAD}}",
+          "namespace": "{{NS}}",
+          "count": 1,
+          "first_seen": "2023-10-04T09:25:00Z",
+          "last_seen": "2023-10-04T09:25:00Z",
+          "message": "Applied override-rule tag rec_disable_static to disable static_zone per-request; sampled direct queries recovered (TRAP: forwarded cache-miss queries do not carry this tag — SERVFAILs persist on the forwarding path)"
+        },
+        {
+          "type": "Normal",
+          "reason": "RootZoneFetchOK",
+          "object": "pod/{{FRESH_POD}}",
+          "namespace": "{{NS}}",
+          "count": 1,
+          "first_seen": "2023-10-04T07:18:05Z",
+          "last_seen": "2023-10-04T07:18:05Z",
+          "message": "Live root nameserver fetch succeeded: current root zone serial, valid RRSIG, ZONEMD present — upstream root is HEALTHY and validly signed (ADVERSARIAL: external DNS/DNSSEC is not the fault)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{VICTIM_POD}}",
+      "container": "static-zone-preload",
+      "namespace": "{{NS}}",
+      "lines": [
+        "2023-09-21T05:12:40Z INFO  static_zone: preloaded root zone serial 2023092101, ZONEMD absent, 1503 records, DNSSEC OK",
+        "2023-09-22T05:10:11Z ERROR static_zone: parse_root_update failed: unknown resource record type ZONEMD (type 63) at owner '.' — record skipped, UPDATE REJECTED (SMOKING GUN)",
+        "2023-09-22T05:10:11Z WARN  static_zone: retaining last-good parsed root (serial 2023092101) — preloaded snapshot NOT advanced; no operator alert emitted on stale root",
+        "2023-09-23T05:10:09Z ERROR static_zone: parse_root_update failed: unknown resource record type ZONEMD (type 63) — record skipped, still serving root serial 2023092101",
+        "2023-10-03T05:10:07Z ERROR static_zone: parse_root_update failed: unknown resource record type ZONEMD (type 63) — root snapshot frozen at serial 2023092101 for 12 days",
+        "2023-10-04T07:00:01Z ERROR resolver: DNSSEC validate '.' -> SERVFAIL: RRSIG expired (expiry 2023-10-04T07:00:00Z) for cached root serial 2023092101; no newer parsed root available (SMOKING GUN: serving DNSSEC off a 13-day-stale preloaded root)",
+        "2023-10-04T07:00:02Z WARN  resolver: serve-stale (RFC 8767) cannot rescue '.' apex — root RRSIG hard-expired, validation mandatory; emitting SERVFAIL"
+      ],
+      "secondary_logs": {
+        "pod": "{{VICTIM_POD}}",
+        "container": "rec-1111",
+        "namespace": "{{NS}}",
+        "lines": [
+          "2023-10-04T07:00:03Z ERROR query example.com A -> SERVFAIL: chain-of-trust to '.' broken (loaded root signatures expired)",
+          "2023-10-04T09:25:30Z WARN  override rec_disable_static present on direct query path; ABSENT on internally-forwarded cache-miss query -> still validating against stale static root -> SERVFAIL (TRAP confirmed: tag does not survive forwarding)"
+        ],
+        "fresh_pod_logs": {
+          "pod": "{{FRESH_POD}}",
+          "container": "static-zone-preload",
+          "lines": [
+            "2023-10-04T07:18:03Z ERROR static_zone: parse_root_update failed: unknown RR type ZONEMD (type 63) — preload of current root still fails",
+            "2023-10-04T07:18:04Z INFO  resolver: static_zone empty -> falling back to live root fetch -> current serial, valid RRSIG, ZONEMD present -> validation OK, answering NOERROR (proves upstream root is healthy; only stale-snapshot pods fail)"
+          ]
+        }
+      }
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{VICTIM_WORKLOAD}}",
+      "desired": 3,
+      "updated": 3,
+      "ready": 3,
+      "available": 3,
+      "current_revision": 47,
+      "image": "rec-1111:v2.14.0",
+      "last_rollout": "2023-09-25T14:02:00Z",
+      "rollout_status": "Complete",
+      "note": "Resolver deployment rolled out cleanly 9 days before onset and all replicas Available — rules out bad_deploy of the resolver. No code change at onset; the change that mattered was external (ZONEMD added to the root zone on 2023-09-21) interacting with the static_zone parser. Note last_rollout post-dates the parse failure, but those pods kept the same frozen in-memory root because static_zone preloads from its own update channel, not from a pod restart of the current root."
+    },
+    "prometheus_metrics.json": {
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "samples": [
+        {
+          "metric": "rec_servfail_rate",
+          "query": "sum(rate(rec_responses_total{namespace=\"{{NS}}\",service=\"{{VICTIM_SVC}}\",rcode=\"SERVFAIL\"}[1m])) / sum(rate(rec_responses_total{namespace=\"{{NS}}\",service=\"{{VICTIM_SVC}}\"}[1m]))",
+          "value": 0.15,
+          "slo_threshold": 0.005,
+          "breached": true,
+          "unit": "ratio",
+          "note": "Loud victim symptom: SERVFAIL rate 3% -> 15% at 07:00 UTC"
+        },
+        {
+          "metric": "static_zone_root_serial_age_seconds",
+          "value": 1123200,
+          "unit": "seconds",
+          "note": "SMOKING GUN METRIC: the parsed/preloaded root-zone snapshot is ~13 days old (1,123,200s = 13d). It has not advanced since 2023-09-21 because every update parse failed on ZONEMD."
+        },
+        {
+          "metric": "static_zone_parse_failures_total",
+          "value": 13,
+          "unit": "count",
+          "note": "SMOKING GUN: one silent parse failure per daily root update for 13 consecutive days (unknown RR type ZONEMD); the preload never adopted a fresh root."
+        },
+        {
+          "metric": "root_dnssec_rrsig_seconds_to_expiry",
+          "value": -10800,
+          "unit": "seconds",
+          "note": "SMOKING GUN: RRSIG for the LOADED (stale) root expired ~3h ago. The live upstream root's RRSIG is valid; only the frozen snapshot's signatures expired."
+        },
+        {
+          "metric": "rec_servfail_rate_by_pod_uptime_gt_13d",
+          "value": 0.42,
+          "unit": "ratio",
+          "note": "SERVFAILs are concentrated entirely on pods with >13d uptime (stale snapshot in memory); freshly-restarted pods SERVFAIL ~0 — confirms stale-cache, not upstream."
+        },
+        { "metric": "upstream_root_fetch_success_rate", "value": 1.0, "unit": "ratio", "note": "ADVERSARIAL: live root nameservers answer 100% with valid current RRSIG + ZONEMD — external root/DNSSEC is HEALTHY" },
+        { "metric": "upstream_root_rrsig_valid", "value": 1, "unit": "bool", "note": "ADVERSARIAL: the CURRENT root zone is validly signed; the expiry only affects the 13-day-old snapshot we froze internally" },
+        { "metric": "cpu_cores", "value": 0.31, "unit": "cores", "note": "nominal — not resource_exhaustion" },
+        { "metric": "memory_util_pct", "value": 41.0, "unit": "percent", "note": "nominal — not resource_exhaustion" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "ResolverServfailRateHigh",
+            "severity": "critical",
+            "service": "{{VICTIM_SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "1.1.1.1 SERVFAIL rate breached SLO; correlates with root-zone DNSSEC signature expiry",
+            "error": "SERVFAIL: DNSSEC validation failed — root RRSIG expired 2023-10-04T07:00:00Z"
+          },
+          "state": "firing",
+          "activeAt": "2023-10-04T07:00:30Z",
+          "value": "0.15"
+        },
+        {
+          "labels": {
+            "alertname": "StaleRootZoneSnapshot",
+            "severity": "warning",
+            "component": "static-zone-preload",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "Preloaded root zone snapshot has not advanced in 13 days (parse failures on ZONEMD)",
+            "error": "static_zone_root_serial_age_seconds=1123200; static_zone_parse_failures_total=13 (unknown RR type ZONEMD)"
+          },
+          "state": "firing",
+          "activeAt": "2023-10-04T07:01:00Z",
+          "value": "1123200",
+          "note": "This is the alert that actually localizes root cause — but the postmortem notes there was NO stale-root alert at the time; it is added here as the signal the agent must surface."
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "spans": [
+        {
+          "trace_id": "a1b2c3d4e5f60718",
+          "name": "resolve example.com A (stale-snapshot pod)",
+          "pod": "{{VICTIM_POD}}",
+          "duration_ms": 4.2,
+          "status": "SERVFAIL",
+          "events": [
+            { "t_ms": 0.0, "event": "query received" },
+            { "t_ms": 0.6, "event": "validate chain-of-trust to '.'" },
+            { "t_ms": 1.1, "event": "load root keys from static_zone snapshot serial 2023092101" },
+            { "t_ms": 2.0, "event": "RRSIG for '.' expired 07:00:00Z -> validation FAIL (SMOKING GUN)" },
+            { "t_ms": 4.2, "event": "emit SERVFAIL" }
+          ]
+        },
+        {
+          "trace_id": "f0e1d2c3b4a59687",
+          "name": "resolve example.com A (fresh pod)",
+          "pod": "{{FRESH_POD}}",
+          "duration_ms": 31.7,
+          "status": "NOERROR",
+          "events": [
+            { "t_ms": 0.0, "event": "query received" },
+            { "t_ms": 0.9, "event": "static_zone empty (ZONEMD parse failed) -> live root fetch" },
+            { "t_ms": 22.4, "event": "fetched current root: valid RRSIG + ZONEMD present" },
+            { "t_ms": 28.0, "event": "validate chain-of-trust OK" },
+            { "t_ms": 31.7, "event": "emit NOERROR (proves upstream root healthy; only stale pods fail)" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "config_error",
+    "root_cause_subtype": "static_zone root-zone preloader silently failed to parse a newly-added ZONEMD record, froze a 13-day-stale root snapshot in memory, and SERVFAILed when that snapshot's DNSSEC signatures expired",
+    "required_keywords": [
+      "static_zone",
+      "ZONEMD",
+      "parse",
+      "stale",
+      "root zone",
+      "preload",
+      "DNSSEC",
+      "RRSIG",
+      "13 days",
+      "snapshot",
+      "SERVFAIL"
+    ],
+    "forbidden_categories": [
+      "dependency_failure",
+      "resource_exhaustion",
+      "bad_deploy",
+      "network_fault"
+    ],
+    "ruling_out_keywords": [
+      "upstream_root_fetch_success_rate=1.0",
+      "upstream_root_rrsig_valid=1",
+      "live root ZONEMD present valid RRSIG",
+      "fresh pod answers NOERROR",
+      "resolver rollout Complete 9d prior",
+      "same image v2.14.0",
+      "cpu 0.31 cores",
+      "memory 41%",
+      "SERVFAILs only on >13d-uptime pods"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "query_traces",
+      "get_deployment_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "query_traces"
+    ],
+    "max_investigation_loops": 4,
+    "causal_chain": "ZONEMD added to root zone 2023-09-21 -> static_zone parser silently fails on unknown RR type 63 -> old root snapshot (serial 2023092101) retained in memory -> 13 days later that snapshot's DNSSEC RRSIGs expire at 07:00 UTC -> long-uptime pods serving DNSSEC off the stale root SERVFAIL -> per-request override-rule (rec_disable_static) does not propagate to internally-forwarded cache-miss queries -> must disable the static_zone preload app entirely",
+    "model_response": "ROOT_CAUSE: The root-zone preloader (static_zone) could not parse a new ZONEMD record (RR type 63) that IANA added to the root zone on 2023-09-21. Each daily root update was silently rejected, so static_zone kept serving the last-good parsed snapshot (root serial 2023092101) for 13 days with no operator alert. At 07:00 UTC on 2023-10-04 the DNSSEC signatures (RRSIG) of that frozen 13-day-old root expired. Resolver pods that had not restarted in 13 days were still validating the chain-of-trust against the stale root, so DNSSEC validation hard-failed and they returned SERVFAIL — the loud 3%->15% spike. This is an internal stale-cache / silent-parse-failure bug, not an upstream root or DNSSEC signing failure.\nROOT_CAUSE_CATEGORY: config_error\nVALIDATED_CLAIMS:\n- static-zone-preload logs show 13 consecutive daily 'parse_root_update failed: unknown RR type ZONEMD (type 63)' errors and explicit 'retaining last-good parsed root (serial 2023092101)' [evidence: k8s_pod_logs]\n- static_zone_root_serial_age_seconds=1,123,200 (~13d) and static_zone_parse_failures_total=13 confirm the snapshot never advanced [evidence: prometheus_metrics]\n- root_dnssec_rrsig_seconds_to_expiry is negative for the LOADED root (expired ~3h ago); resolver log/trace show 'RRSIG for . expired 07:00:00Z -> validation FAIL -> SERVFAIL' [evidence: prometheus_metrics, k8s_pod_logs, traces]\n- SERVFAILs are concentrated on pods with >13d uptime (started 2023-09-21, 0 restarts); a freshly-restarted pod answers NOERROR by falling back to a live root fetch [evidence: k8s_pods, prometheus_metrics, traces]\n- StaleRootZoneSnapshot signal fires alongside the loud ResolverServfailRateHigh alert [evidence: prometheus_alerts]\nNON_VALIDATED_CLAIMS:\n- NOT an upstream root / external DNSSEC signing failure (the loud red herring): upstream_root_fetch_success_rate=1.0, upstream_root_rrsig_valid=1, and the fresh pod's live root fetch returns the CURRENT root with valid RRSIG and ZONEMD present. Only the 13-day-old snapshot's signatures expired [evidence: prometheus_metrics, k8s_events, k8s_pod_logs, traces]\n- NOT a bad deploy of the resolver: rollout Complete 9 days prior, all replicas Available, identical image v2.14.0 on failing and healthy pods [evidence: k8s_deployments, k8s_pods]\n- NOT resource exhaustion: cpu 0.31 cores, memory 41%, no OOM/restarts [evidence: prometheus_metrics]\n- The per-request override-rule rec_disable_static is NOT a valid fix (the trap): the tag survives only on the direct query path; internally-forwarded cache-miss queries do not carry it and keep validating against the stale static root, so SERVFAILs persist. Sampled-query 'recovery' is misleading [evidence: k8s_events, k8s_pod_logs]\nCAUSAL_CHAIN:\n- IANA adds ZONEMD (RR type 63) to the root zone on 2023-09-21\n- static_zone preloader cannot parse the unknown RR type and silently rejects every daily root update, retaining the 2023-09-21 snapshot\n- 13 days later the snapshot's DNSSEC RRSIGs expire at 07:00 UTC\n- long-uptime pods validate against the stale root and return SERVFAIL; serve-stale (RFC 8767) cannot rescue the hard-expired root apex\n- the rec_disable_static override does not propagate across internal cache-miss forwarding, so a per-request disable does not stop the bleeding\nFIX: Disable the static_zone preloading application entirely (not via a per-request override tag) so all resolver pods fall back to fetching the current, validly-signed root — this resolved the incident at 10:30. Then make the parser tolerate unknown RR types (e.g. ZONEMD), bound the lifetime of cached root data, and add alerting on a stale root-zone serial. Do NOT chase the upstream root / DNSSEC signing path and do NOT rely on the rec_disable_static override tag."
+  },
+  "remediation": {
+    "fix_tool": "restart_service",
+    "canonical_fix": "Disable the static_zone preloading application entirely (cluster-wide), not via the per-request rec_disable_static override tag, so every resolver pod stops validating against the frozen 13-day-old root and falls back to the current, validly-signed root zone (resolved at 10:30). Follow up: make the root-zone parser tolerate unknown RR types such as ZONEMD, bound the lifetime of cached root-zone data, and add alerting on a stale root-zone serial.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "Apply the rec_disable_static override-rule tag to disable static_zone per-request — DID NOT WORK: the tag is not carried on internally-forwarded cache-miss queries, so those queries keep validating against the stale static root and SERVFAILs persist; sampled-query 'recovery' was misleading",
+      "Escalate to / wait on the upstream root operator or DNSSEC signer to 're-sign the root' — wrong target: the live root is already validly signed (upstream_root_rrsig_valid=1), only the internal stale snapshot expired",
+      "renew_certificate / treat this as a TLS-or-key expiry to rotate — wrong: the expiry is the cached root zone's DNSSEC RRSIG on a frozen snapshot, fixed by dropping the stale snapshot, not by rotating any credential"
+    ],
+    "primary_metric": "rec_servfail_rate",
+    "direction": "lower",
+    "state_before": { "rec_servfail_rate": 0.15, "static_zone_root_serial_age_seconds": 1123200 },
+    "state_after": { "rec_servfail_rate": 0.002, "static_zone_root_serial_age_seconds": 0 },
+    "recovery_check": "rec_servfail_rate < 0.005 AND static_zone_root_serial_age_seconds < 86400",
+    "resolved": true
+  }
+}

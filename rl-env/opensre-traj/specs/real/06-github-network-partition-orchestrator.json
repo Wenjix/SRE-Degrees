@@ -1,0 +1,443 @@
+{
+  "incident": "github_network_partition_orchestrator",
+  "provider": "k8s",
+  "source_company": "GitHub",
+  "source_url": "https://github.blog/news-insights/company-news/oct21-post-incident-analysis/",
+  "failure_mode": "raft_partition_split_brain",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "SVC": "mysql-primary",
+    "NS": "data-east",
+    "WORKLOAD": "mysql-primary",
+    "POD": "mysql-primary-east-0",
+    "POD_WEST": "mysql-primary-west-0",
+    "ORCH_POD_A": "orchestrator-west-7d9c5f6b8c-2lq4n",
+    "ORCH_POD_B": "orchestrator-west-7d9c5f6b8c-h8xkp",
+    "ORCH_POD_EAST": "orchestrator-east-7d9c5f6b8c-r3v2m",
+    "NODE_EAST": "gke-rlvr-bench-east-pool-aa11bb22-e0kq",
+    "NODE_WEST": "gke-rlvr-bench-west-pool-cc33dd44-w7nm",
+    "CLUSTER": "rlvr-bench"
+  },
+  "alert": {
+    "title": "[synthetic-k8s] MySQL replication lag + write errors — mysql-primary",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "MySQLReplicationDivergence",
+      "severity": "critical",
+      "service": "mysql-primary",
+      "namespace": "data-east",
+      "workload_type": "statefulset",
+      "workload_name": "mysql-primary",
+      "cluster_name": "rlvr-bench"
+    },
+    "commonAnnotations": {
+      "summary": "mysql-primary (East) is read-only and replication is diverging across coasts",
+      "description": "mysql_repl_lag_seconds for the data-east cluster spiked to 2410s and write attempts against the East primary are returning errors (read_only=ON). Application writes are now landing on the West primary instead. Replica positions between East and West have diverged. Looks like a database failure on the East primary.",
+      "error": "ERROR 1290 (HY000): The MySQL server is running with the --read-only option so it cannot execute this statement",
+      "suspected_symptom": "database_primary_write_failure",
+      "k8s_failure_mode": "replication_divergence",
+      "context_sources": "prometheus_alerts,prometheus_metrics,k8s_pod_logs,k8s_events,traces"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "mysql-primary-east-0 LOOKS like the failed component: it is now read_only=ON and rejecting writes with ERROR 1290 — the loud symptom that screams 'the database broke'",
+      "mysql_repl_lag_seconds = 2410s on data-east tempts a naive 'failover back to East' or 'promote a fresh replica' fix to restore write capacity quickly",
+      "orchestrator (the Raft topology manager) reports a perfectly healthy, settled cluster — all West orchestrator pods Ready, leader elected, no errors — so it looks innocent even though its leader-deselection IS the root cause",
+      "both East and West MySQL pods are Running and 1/1 Ready with zero restarts and nominal CPU/memory — there is no crash, OOM, or resource exhaustion to blame",
+      "the application tier shows no bad deploy: image and StatefulSet revision are unchanged for 6 days, ruling out a code regression",
+      "a 100G optical link in the East datacenter hub was swapped during a maintenance window — easily dismissed as 'routine network maintenance, already completed'"
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "data-east",
+      "pods": [
+        {
+          "name": "mysql-primary-east-0",
+          "node": "gke-rlvr-bench-east-pool-aa11bb22-e0kq",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "mysql:8.0.34",
+          "started": "2026-06-14T08:00:00Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "East primary is HEALTHY at the process level — it was demoted to read_only by orchestrator after the Raft re-election, it did not crash (adversarial: looks like the victim)"
+        },
+        {
+          "name": "mysql-primary-west-0",
+          "node": "gke-rlvr-bench-west-pool-cc33dd44-w7nm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "mysql:8.0.34",
+          "started": "2026-06-14T08:00:01Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "West replica was PROMOTED to writable primary by orchestrator after West quorum re-formed; it now holds ~40 minutes of writes that never replicated back to East"
+        },
+        {
+          "name": "orchestrator-west-7d9c5f6b8c-2lq4n",
+          "node": "gke-rlvr-bench-west-pool-cc33dd44-w7nm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "orchestrator:3.2.6",
+          "started": "2026-06-14T08:00:02Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Raft topology manager — currently the elected leader; looks perfectly healthy, but its leader-deselection during the partition is the real root cause (adversarial: appears innocent)"
+        },
+        {
+          "name": "orchestrator-west-7d9c5f6b8c-h8xkp",
+          "node": "gke-rlvr-bench-west-pool-cc33dd44-w7nm",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "orchestrator:3.2.6",
+          "started": "2026-06-14T08:00:02Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "orchestrator-east-7d9c5f6b8c-r3v2m",
+          "node": "gke-rlvr-bench-east-pool-aa11bb22-e0kq",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "orchestrator:3.2.6",
+          "started": "2026-06-14T08:00:02Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "East orchestrator node fell out of the Raft quorum during the 43s link loss and was NOT readmitted as a voting member before West promoted — quorum re-formed WITHOUT East"
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "data-east",
+      "events": [
+        {
+          "type": "Warning",
+          "reason": "RaftLeaderDeselection",
+          "object": "pod/orchestrator-east-7d9c5f6b8c-r3v2m",
+          "count": 1,
+          "first_seen": "2026-06-20T22:52:00Z",
+          "last_seen": "2026-06-20T22:52:00Z",
+          "message": "orchestrator/raft: lost contact with peers across the East-West link for 43s; East leader stepped down (leadership deselection per Raft consensus)"
+        },
+        {
+          "type": "Warning",
+          "reason": "QuorumReformedWithoutEast",
+          "object": "pod/orchestrator-west-7d9c5f6b8c-2lq4n",
+          "count": 1,
+          "first_seen": "2026-06-20T22:52:01Z",
+          "last_seen": "2026-06-20T22:52:01Z",
+          "message": "orchestrator/raft: West nodes established quorum and elected new leader; East node not present in voting set"
+        },
+        {
+          "type": "Normal",
+          "reason": "PrimaryPromoted",
+          "object": "pod/mysql-primary-west-0",
+          "count": 1,
+          "first_seen": "2026-06-20T22:52:03Z",
+          "last_seen": "2026-06-20T22:52:03Z",
+          "message": "orchestrator failed over clusters to direct writes to the West data center; mysql-primary-west-0 promoted to writable primary"
+        },
+        {
+          "type": "Normal",
+          "reason": "PrimaryDemotedReadOnly",
+          "object": "pod/mysql-primary-east-0",
+          "count": 1,
+          "first_seen": "2026-06-20T22:52:03Z",
+          "last_seen": "2026-06-20T22:52:03Z",
+          "message": "mysql-primary-east-0 set read_only=ON by orchestrator after losing primary role (NOT a crash — adversarial loud symptom)"
+        },
+        {
+          "type": "Warning",
+          "reason": "OpticalLinkFlap",
+          "object": "node/gke-rlvr-bench-east-pool-aa11bb22-e0kq",
+          "count": 1,
+          "first_seen": "2026-06-20T22:51:17Z",
+          "last_seen": "2026-06-20T22:52:00Z",
+          "message": "NetworkUnavailable=True for 43s on East hub uplink during 100G optical equipment replacement, then cleared — link restored (the real trigger, easily dismissed as routine maintenance)"
+        },
+        {
+          "type": "Warning",
+          "reason": "ReplicationDivergence",
+          "object": "service/mysql-primary",
+          "count": 1,
+          "first_seen": "2026-06-20T22:53:10Z",
+          "last_seen": "2026-06-20T23:30:00Z",
+          "message": "GTID sets on East and West have diverged: both data centers now contain writes not present in the other (split-brain). Simple failback would lose ~40min of writes."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "orchestrator-west-7d9c5f6b8c-2lq4n",
+      "container": "orchestrator",
+      "lines": [
+        "2026-06-20T22:51:17Z WARN  raft: heartbeat to peer orchestrator-east (10.40.2.7) timed out; East-West link unreachable",
+        "2026-06-20T22:51:30Z WARN  raft: still no quorum heartbeat from East peer; election timer running",
+        "2026-06-20T22:52:00Z INFO  raft: East peer down >timeout; East leader deselected per Raft consensus",
+        "2026-06-20T22:52:01Z INFO  raft: West nodes formed quorum (2/3 voters), elected leader=orchestrator-west-2lq4n term=48",
+        "2026-06-20T22:52:03Z INFO  topology: failing over clusters to West DC; promoting mysql-primary-west-0 to writable primary",
+        "2026-06-20T22:52:03Z INFO  topology: demoting mysql-primary-east-0 to read_only=ON",
+        "2026-06-20T22:52:46Z INFO  raft: East peer reachable again (link restored after 43s) — readmitted as FOLLOWER, leader unchanged",
+        "2026-06-20T22:53:10Z WARN  topology: applications now writing to West primary; East primary holds writes 22:51:17-22:52:03 that were never replicated West",
+        "2026-06-20T23:30:00Z ERROR topology: GTID divergence detected East<->West; failback to East would discard West writes accepted since promotion (DATA LOSS)"
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "gke-rlvr-bench-east-pool-aa11bb22-e0kq",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "Ready NOW; NetworkUnavailable flapped True for exactly 43s at 22:51:17 during the optical swap, then cleared — the brief partition is the trigger, the node is otherwise healthy"
+        },
+        {
+          "name": "gke-rlvr-bench-west-pool-cc33dd44-w7nm",
+          "ready": "True",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "7920m", "memory": "29Gi" },
+          "note": "West node fully healthy throughout — it never lost connectivity, which is why its orchestrator quorum survived and promoted the West primary"
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "data-east",
+      "deployment": "mysql-primary",
+      "kind": "statefulset",
+      "desired": 2,
+      "updated": 2,
+      "ready": 2,
+      "available": 2,
+      "current_revision": 11,
+      "image": "mysql:8.0.34",
+      "last_rollout": "2026-06-14T08:00:00Z",
+      "rollout_status": "Complete",
+      "note": "StatefulSet unchanged for 6 days, all replicas Ready — rules out bad_deploy; the divergence is a topology/consensus event, not a rollout"
+    },
+    "prometheus_metrics.json": {
+      "service": "mysql-primary",
+      "namespace": "data-east",
+      "samples": [
+        {
+          "metric": "mysql_repl_lag_seconds",
+          "query": "max(mysql_slave_status_seconds_behind_master{namespace=\"data-east\",service=\"mysql-primary\"})",
+          "value": 2410,
+          "slo_threshold": 30,
+          "breached": true,
+          "unit": "seconds",
+          "note": "loud symptom — divergence, not classic lag; East and West are no longer replicas of one truth"
+        },
+        {
+          "metric": "mysql_write_error_rate_east",
+          "value": 1.0,
+          "unit": "ratio",
+          "note": "100% of writes to East primary fail with ERROR 1290 read_only — because orchestrator demoted it, not because it is broken"
+        },
+        {
+          "metric": "orchestrator_raft_leader_changes_total",
+          "value": 1,
+          "unit": "count",
+          "note": "SMOKING GUN: exactly one Raft leadership change at 22:52, coincident with the 43s link loss — quorum re-formed without East"
+        },
+        {
+          "metric": "orchestrator_raft_quorum_members",
+          "value": 2,
+          "unit": "count",
+          "note": "voting set dropped to 2 (both West) — East node excluded from the quorum that promoted West"
+        },
+        {
+          "metric": "east_west_link_up",
+          "value": 1,
+          "unit": "bool",
+          "note": "link is UP again now (was down 43s at 22:51:17) — the partition was transient, the divergence it caused is permanent"
+        },
+        {
+          "metric": "mysql_gtid_divergence_count",
+          "value": 1,
+          "unit": "bool",
+          "note": "SMOKING GUN: East and West GTID sets each contain transactions absent from the other (split-brain)"
+        },
+        {
+          "metric": "cpu_cores",
+          "value": 0.44,
+          "unit": "cores",
+          "note": "nominal on both primaries — not resource_exhaustion / saturation"
+        },
+        {
+          "metric": "memory_util_pct",
+          "value": 38.0,
+          "unit": "percent",
+          "note": "nominal — not OOM / resource_exhaustion"
+        }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "MySQLReplicationDivergence",
+            "severity": "critical",
+            "service": "mysql-primary",
+            "namespace": "data-east",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "mysql-primary (East) read-only; replication diverging across coasts",
+            "error": "ERROR 1290 (HY000): server running with --read-only"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:53:30Z",
+          "value": "2410"
+        },
+        {
+          "labels": {
+            "alertname": "OrchestratorRaftLeaderChange",
+            "severity": "warning",
+            "service": "orchestrator",
+            "namespace": "data-east",
+            "cluster_name": "rlvr-bench"
+          },
+          "annotations": {
+            "summary": "orchestrator Raft leadership changed and quorum re-formed without the East node",
+            "error": "raft: East peer deselected; West quorum elected leader term=48"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-20T22:52:01Z",
+          "value": "1"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "mysql-primary",
+      "namespace": "data-east",
+      "spans": [
+        {
+          "trace_id": "a1f33c0e",
+          "operation": "app.commit_write",
+          "target": "mysql-primary-east-0",
+          "status": "error",
+          "duration_ms": 4,
+          "error": "ERROR 1290 read_only — write rejected by demoted East primary",
+          "ts": "2026-06-20T22:53:05Z"
+        },
+        {
+          "trace_id": "a1f33c0e",
+          "operation": "app.commit_write.retry",
+          "target": "mysql-primary-west-0",
+          "status": "ok",
+          "duration_ms": 11,
+          "note": "same logical write succeeds on West primary — confirms writes are now landing on West, building divergence",
+          "ts": "2026-06-20T22:53:05Z"
+        },
+        {
+          "trace_id": "b7240d91",
+          "operation": "orchestrator.topology_recovery",
+          "target": "orchestrator-west-2lq4n",
+          "status": "ok",
+          "duration_ms": 60000,
+          "note": "orchestrator believes topology is healthy and settled — it has no notion that East holds unreplicated writes",
+          "ts": "2026-06-20T22:52:03Z"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "network_fault",
+    "root_cause_subtype": "transient intersite Raft partition causing leader deselection and split-brain MySQL primaries (orchestrator topology failover)",
+    "required_keywords": [
+      "partition",
+      "43s",
+      "Raft",
+      "leader deselection",
+      "quorum without East",
+      "West promoted",
+      "split-brain",
+      "GTID divergence",
+      "non-replicated writes"
+    ],
+    "forbidden_categories": [
+      "resource_exhaustion",
+      "bad_deploy",
+      "saturation",
+      "node_failure",
+      "data_quality"
+    ],
+    "ruling_out_keywords": [
+      "east_west_link_up=1 now",
+      "optical swap completed",
+      "mysql pods Running 1/1 0 restarts",
+      "no crash / not OOM",
+      "cpu 0.44 cores",
+      "memory 38%",
+      "StatefulSet revision unchanged 6 days",
+      "East read_only set by orchestrator (demotion, not failure)"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_events",
+      "get_logs",
+      "describe_pod",
+      "query_traces",
+      "get_node_status"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_events",
+      "get_logs"
+    ],
+    "max_investigation_loops": 5,
+    "causal_chain": "100G optic replacement -> 43s loss of E-W link -> Raft leader deselection -> West quorum promotes West primary -> connectivity returns -> apps write West -> both coasts hold non-replicated writes -> failback impossible without data loss -> backup-restore + slow re-replication",
+    "model_response": "ROOT_CAUSE: A transient 43-second network partition of the East-West link (caused by a 100G optical equipment swap in the East hub) made orchestrator's Raft consensus deselect the East leader (Raft leader deselection). The remaining West nodes formed quorum WITHOUT East, elected a new leader, and failed the MySQL cluster over by promoting mysql-primary-west-0 to writable primary and demoting mysql-primary-east-0 to read_only=ON. When the link came back 43s later, applications were already writing to West, while East still held the writes it accepted just before demotion. Both data centers now hold non-replicated, divergent writes (split-brain / GTID divergence). The 'East database failure' is the LOUD symptom; the East primary is healthy and was merely demoted. This is a network_fault (intersite partition) that produced a consensus-driven split-brain, not a database, resource, or deploy fault.\nROOT_CAUSE_CATEGORY: network_fault\nVALIDATED_CLAIMS:\n- East hub link flapped NetworkUnavailable=True for exactly 43s at 22:51:17 during the optical swap, then cleared [evidence: k8s_events, k8s_node_health]\n- orchestrator_raft_leader_changes_total=1 at 22:52 and quorum_members dropped to 2 (both West) — East excluded from the voting set [evidence: prometheus_metrics, k8s_events]\n- orchestrator logs show East leader deselected, West quorum elected leader term=48, West primary promoted, East demoted read_only [evidence: k8s_pod_logs]\n- mysql_gtid_divergence_count=1: East and West GTID sets each contain transactions absent from the other [evidence: prometheus_metrics, k8s_events]\n- Traces show the same write rejected on East (ERROR 1290 read_only) then succeeding on West — writes are accumulating on West [evidence: traces]\nNON_VALIDATED_CLAIMS:\n- NOT a database failure on East: mysql-primary-east-0 is Running 1/1 with 0 restarts; it is read_only because orchestrator demoted it, not because it crashed [evidence: k8s_pods, k8s_events]. Therefore failing back to East is WRONG — it would discard ~40min of writes already committed on West (data loss).\n- NOT a stale replica to promote: promoting another replica / adding read replicas feeds them into the divergent topology and overloads the surviving primary — it does not resolve split-brain.\n- NOT resource_exhaustion / saturation: cpu 0.44 cores, memory 38% nominal on both primaries [evidence: prometheus_metrics].\n- NOT a bad deploy: StatefulSet revision unchanged for 6 days, all replicas Ready [evidence: k8s_deployments].\n- NOT an ongoing network outage: east_west_link_up=1 now; the partition was transient (43s) — the lasting damage is the divergence it caused [evidence: prometheus_metrics].\nCAUSAL_CHAIN:\n- 100G optical equipment replacement in East hub briefly severs the East-West link for 43s\n- orchestrator Raft deselects the East leader; West nodes form quorum without East and elect a new leader\n- orchestrator promotes mysql-primary-west-0 to primary and demotes mysql-primary-east-0 to read_only\n- link is restored after 43s, but applications are now committing to West\n- East holds pre-demotion writes never replicated to West, and West holds post-promotion writes never on East -> split-brain / GTID divergence\n- a simple failback would lose one side's writes -> integrity must be chosen over availability\nFIX: Choose data integrity over availability. Do NOT fail back to East and do NOT promote additional replicas. Pause write-heavy paths (e.g. webhook delivery and Pages-style builds) to stop further divergence, then restore the diverged cluster from backups and rebuild replication from the chosen surviving primary, accepting extended degradation. This is a human-coordinated restore — escalate with full split-brain context."
+  },
+  "remediation": {
+    "fix_tool": "escalate_to_human",
+    "canonical_fix": "Choose integrity over availability: pause write-heavy paths (webhooks/Pages), do NOT fail back to East, restore the diverged cluster from backup and rebuild replication from the surviving primary; accept extended degradation.",
+    "trust_tier": "approval",
+    "primary_metric": "mysql_gtid_divergence_count",
+    "direction": "lower",
+    "state_before": { "mysql_gtid_divergence_count": 1, "mysql_repl_lag_seconds": 2410 },
+    "state_after": { "mysql_gtid_divergence_count": 0, "mysql_repl_lag_seconds": 4 },
+    "recovery_check": "mysql_gtid_divergence_count == 0 and mysql_repl_lag_seconds < 30",
+    "trap_actions": [
+      "failover_service",
+      "rollback_deployment",
+      "scale_deployment"
+    ],
+    "resolved": true
+  }
+}

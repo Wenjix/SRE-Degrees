@@ -1,0 +1,96 @@
+# CIDG paired-positive LEAF scenario — the tempting tool IS the correct fix.
+#
+# Purpose: teach the harness the CONDITION, not the tool-name. increase_memory_limit
+# and restart_pod can be naive band-aids in a cascade (e.g. raising memory to mask a
+# pool_leak that herds a shared datastore). Here they are the CORRECT fix, because
+# the topology is a DEGENERATE isolated leaf: a real per-process memory leak with no
+# downstream victim and no shared resource to herd.
+#
+# Isolated leaf service `image-resizer` leaks heap on every request (unbounded cache
+# of decoded frames). RSS climbs toward the container mem_limit, the kernel OOM-kills
+# the pod, it restarts cold, and the cycle repeats — OOMKilled restarts + rising RSS
+# on ONE node. The loudest alert (OOMKilled / high memory on image-resizer) IS the
+# root cause. Correct response: raise the memory limit to give headroom, then restart
+# the pod to clear the already-leaked heap.
+
+meta:
+  id: leaf-oom-positive
+  title: "Isolated leaf service memory leak / OOMKilled (raise-limit + restart is correct)"
+  source: "Synthetic paired-positive for increase_memory_limit (condition-learning leaf)"
+  urls: []
+  failure_class: leaf-oom
+  clouds: [gke, lke]
+
+topology:
+  nodes:
+    - name: image-resizer          # isolated, stateless leaf; no dependents
+      kind: service
+      resources: { replicas: 2, mem_limit_mb: 512 }
+      limits: { oom_kill: true }
+  edges: []                        # degenerate single-node topology: NO cascade path
+
+root_cause:
+  location: image-resizer
+  kind: mem_leak
+  severity: 0.7
+  hidden: false                    # NOT hidden — OOMKilled events name the cause directly
+  persistent: false                # restart_pod clears the leaked heap; no reset_by hysteresis
+  reset_by: []
+  rate_law:
+    var: rss_mb                    # observable RSS, surfaced in describe_pod / metrics
+    per_tick: 40
+    driver: request_rate
+    driver_gain: 0.5
+    cap: 512                       # crossing mem_limit_mb trips the OOM kill
+    worsened_by: []                # the correct fix pushes no counter toward the cap
+  params:
+    leak_mb_per_request: 0.4
+
+fault:
+  chaos_kind: stresschaos
+  exec_cmd: "stress-ng --vm 1 --vm-bytes 90% --vm-keep on image-resizer (simulated heap leak)"
+  sim: { set: { mem_leak: true } }
+  duration_s: 90
+
+observation:
+  alerting: uniform                # only one node can alert — loudness trivially = cause
+  monitoring_degrades: false
+  smoking_guns: []                 # OOMKilled is on the surface, nothing buried
+
+slo:
+  - { metric: error_rate_pct, node: image-resizer, direction: higher_bad, threshold: 5, sustain_ticks: 3 }
+  - { metric: pod_restarts, node: image-resizer, direction: higher_bad, threshold: 2, sustain_ticks: 3 }
+
+# Tempting wrong moves: scale_deployment adds replicas that ALL leak and OOM the same
+# way (the leak is per-process, not load-shared), and clear_cache does not free the
+# leaked heap. Neither restores SLO.
+trap_actions:
+  - { tool: scale_deployment, args: { target: image-resizer, replicas: 6 } }
+  - { tool: clear_cache, args: { target: image-resizer } }
+
+canonical_fix:
+  ordering_notes: >
+    Raise the memory limit FIRST to give the pod headroom, THEN restart to clear the
+    heap that has already leaked — a cold restart on the old limit would just OOM
+    again under load. increase_memory_limit + restart_pod (band-aids in a cascade)
+    are exactly right on this isolated leaf.
+  steps:
+    - { tool: increase_memory_limit, args: { target: image-resizer, mem_limit_mb: 1024 } }
+    - { tool: restart_pod, args: { target: image-resizer } }
+
+paired_positive: gcp-service-control   # sibling where masking memory is the naive band-aid
+
+assertions:
+  cascades: false
+  loudest_alert_not_cause: false       # the alert IS the cause
+  fix_resolves: true
+  buried_gun_exists: false
+  hysteresis: false
+  monitoring_degrades: false
+
+chance:
+  flap_prob: 0.0
+  jitter: 0.02
+  partial_recovery_prob: 0.0
+
+seed: 2101

@@ -1,0 +1,53 @@
+{
+  "total_trajectories": 150000,
+  "output_file": "incidents.jsonl",
+  "incident_types": {
+    "memory_leak": 10113,
+    "cpu_saturation": 10076,
+    "cache_stampede": 10075,
+    "latency_spike": 10071,
+    "node_not_ready": 10065,
+    "oom_kill": 10054,
+    "cert_expiry": 10051,
+    "bad_deploy_errors": 10050,
+    "dns_failure": 10043,
+    "disk_pressure": 9995,
+    "crashloop": 9968,
+    "consumer_lag": 9962,
+    "stuck_rollout": 9929,
+    "db_pool_exhaustion": 9799,
+    "upstream_5xx": 9749
+  },
+  "fix_trust_tier": {
+    "autonomous": 30113,
+    "approval": 109822,
+    "blocked": 10065
+  },
+  "tool_frequency": {
+    "end_incident": 150000,
+    "get_metrics": 89949,
+    "get_logs": 69948,
+    "describe_pod": 50140,
+    "get_events": 30103,
+    "rollback_deployment": 29947,
+    "scale_deployment": 29946,
+    "get_node_status": 20060,
+    "query_traces": 19820,
+    "restart_service": 10113,
+    "clear_cache": 10075,
+    "drain_node": 10065,
+    "increase_memory_limit": 10054,
+    "get_alerts": 10051,
+    "renew_certificate": 10051,
+    "restart_pod": 10043,
+    "rotate_logs": 9995,
+    "scale_consumers": 9962,
+    "get_deployment_status": 9929,
+    "failover_service": 9749
+  },
+  "difficulty_mean": 0.509,
+  "difficulty_min": 0.13,
+  "difficulty_max": 0.92,
+  "steps_mean": 7,
+  "n_tools_in_registry": 25
+}

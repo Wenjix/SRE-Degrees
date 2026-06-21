@@ -1,0 +1,461 @@
+{
+  "incident": "cloudflare_bgp_reorder_withdraw",
+  "provider": "k8s",
+  "source_company": "Cloudflare",
+  "source_url": "https://blog.cloudflare.com/cloudflare-outage-on-june-21-2022/",
+  "failure_mode": "bgp_policy_term_reorder_implicit_withdraw",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "placeholder_defaults": {
+    "NS": "edge-network",
+    "CLUSTER": "cf-global-anycast",
+    "VICTIM_SVC": "multimog-lb",
+    "VICTIM_WORKLOAD": "multimog-lb",
+    "VICTIM_POD": "multimog-lb-7f6c9d8b54-2xq9p",
+    "VICTIM_POD2": "multimog-lb-7f6c9d8b54-l4r7m",
+    "ROUTER_AGENT_POD": "bgp-route-agent-mcp-iad-6b5f7c9d44-tq8wz",
+    "ROUTER_AGENT_POD2": "bgp-route-agent-mcp-cdg-6b5f7c9d44-9hkpv",
+    "EDGE_PROXY_POD": "edge-http-proxy-58d7c6f9b7-rm3kx",
+    "MCP_SITE": "MCP (Multiple Cloud Provider) data centers",
+    "NODE": "node-mcp-iad-a7f2",
+    "NODE2": "node-mcp-cdg-c3e9",
+    "NODE3": "node-core-ord-b1d4"
+  },
+  "alert": {
+    "title": "[real-k8s] sudden 50% global traffic drop on config rollout — {{VICTIM_SVC}}",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "GlobalTrafficDropMCPSitesOffline",
+      "severity": "critical",
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "workload_type": "deployment",
+      "workload_name": "{{VICTIM_WORKLOAD}}",
+      "cluster_name": "{{CLUSTER}}"
+    },
+    "commonAnnotations": {
+      "summary": "Global request volume fell ~50% within minutes of a configuration rollout; 19 MCP (Multiple Cloud Provider) data centers stopped serving and {{VICTIM_SVC}} cannot forward traffic between metals inside those sites",
+      "description": "edge_request_rate dropped from ~1.0 (normalized) to 0.50 in under 3 minutes, coinciding exactly with a config rollout window. The 19 affected MCP sites are only ~4% of the fleet but carry ~50% of requests. Inside those sites, {{VICTIM_SVC}} (Multimog load balancer) is failing to forward traffic between metals and to customer origins, dropping connections and overloading the few small clusters still reachable. From the LB vantage point this looks like a load-balancer overload / capacity collapse at the edge. Investigate to find the true root cause.",
+      "error": "GlobalTrafficDropMCPSitesOffline: edge_request_rate=0.50 (was 1.0), multimog_forward_error_rate=0.62, intra_site_metal_reachability=0.0 across 19 MCP sites",
+      "suspected_symptom": "edge_loadbalancer_overload_capacity_collapse",
+      "k8s_failure_mode": "bgp_policy_term_reorder_implicit_withdraw",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,k8s_deployments,query_traces,k8s_node_health"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "The LOUD symptom is {{VICTIM_SVC}} (Multimog LB) overload inside the 19 MCP sites: multimog_forward_error_rate 0.62, connections dropped, the few reachable small clusters saturating. It looks like an edge load-balancer that simply fell over or is under-provisioned, but Multimog is a DOWNSTREAM VICTIM — it cannot forward because the site-local prefixes its metals use to reach each other were withdrawn from iBGP, so there is no route to forward over.",
+      "The {{VICTIM_SVC}} pods are healthy at the pod lifecycle level: Running, 0 restarts, 0 OOMKills, deployment revision unchanged, image stable — there was NO bad_deploy of the load balancer and no code change to it before the incident, so 'Multimog regressed / crashed' does not hold.",
+      "The change that landed was peer-reviewed by multiple engineers, included a dry-run, and used a stepped rollout procedure — every change-management guardrail passed. This makes operators trust the diff and look elsewhere, but the staged rollout was simply not granular enough to catch the error before it hit all data centers in the affected MCP locations.",
+      "The config diff itself looks completely harmless: it 'added some additional information' — informational BGP communities attached to site-local prefixes. A human reading the diff sees an additive, cosmetic change. The damage is a SILENT side effect of REORDERING the policy terms in AGGREGATES-OUT, which moved the site-local advertisement BEHIND a catch-all REJECT-THE-REST term, turning a community-add into an implicit withdraw.",
+      "Core (non-MCP) data centers and the global anycast control plane look fine — only the 19 MCP sites are affected. This tempts a 'localized site / regional capacity' or 'MCP provider network' explanation, but core sites are unaffected only because the reordered AGGREGATES-OUT policy is applied to the MCP site-local prefixes specifically; it is a policy-scope artifact, not a provider fault.",
+      "The first instinct during recovery is a standard rollback/revert of the config. But multiple network engineers reverting concurrently, without a lock or commit-confirm, walked over each other's changes and reverted previous reverts, so the bad state reappeared sporadically — a naive 'just revert' is the TRAP, not the fix."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "multiple ({{NS}} + edge-network-routing)",
+      "pods": [
+        {
+          "name": "{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "multimog-lb:5.12.3",
+          "started": "2026-06-14T09:02:11Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Victim Multimog LB is healthy at the pod lifecycle layer; it simply has no intra-site route to forward over because site-local prefixes were withdrawn from iBGP. Loud symptom, not root cause."
+        },
+        {
+          "name": "{{VICTIM_POD2}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "multimog-lb:5.12.3",
+          "started": "2026-06-14T09:02:11Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ]
+        },
+        {
+          "name": "{{ROUTER_AGENT_POD}}",
+          "namespace": "edge-network-routing",
+          "node": "{{NODE}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "bgp-route-agent:2.8.0",
+          "started": "2026-06-21T06:25:40Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: pod status is Ready, but this agent just applied the reordered AGGREGATES-OUT policy at 06:27Z and is now WITHDRAWING the site-local prefixes from iBGP. Pod-status health is misleading — the failure is in the BGP policy it programmed, visible only in its logs and the route-export metrics."
+        },
+        {
+          "name": "{{ROUTER_AGENT_POD2}}",
+          "namespace": "edge-network-routing",
+          "node": "{{NODE2}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "bgp-route-agent:2.8.0",
+          "started": "2026-06-21T06:27:02Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL: second MCP-site route agent, also Running/Ready, also applying the bad policy. The smoking gun is in its logs (REJECT match on site-locals), not its pod status."
+        },
+        {
+          "name": "{{EDGE_PROXY_POD}}",
+          "namespace": "{{NS}}",
+          "node": "{{NODE3}}",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "image": "edge-http-proxy:4.30.1",
+          "started": "2026-06-12T04:18:55Z",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "ADVERSARIAL RED HERRING: edge proxy on a CORE (non-MCP) node is healthy and serving normally — core sites are unaffected. This makes it look like the MCP sites just need more LB capacity, but core is fine only because the reordered policy targets MCP site-local prefixes."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "multiple",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "BGPPolicyApplied",
+          "object": "pod/{{ROUTER_AGENT_POD}}",
+          "namespace": "edge-network-routing",
+          "count": 1,
+          "first_seen": "2026-06-21T06:27:01Z",
+          "last_seen": "2026-06-21T06:27:01Z",
+          "message": "Applied AGGREGATES-OUT export policy revision 482 (change: 'add informational communities to site-local prefixes'); stepped rollout reached this MCP site"
+        },
+        {
+          "type": "Warning",
+          "reason": "PrefixWithdrawn",
+          "object": "pod/{{ROUTER_AGENT_POD}}",
+          "namespace": "edge-network-routing",
+          "count": 38,
+          "first_seen": "2026-06-21T06:27:04Z",
+          "last_seen": "2026-06-21T06:41:12Z",
+          "message": "Site-local prefixes (10.SITE.0.0/16 metal-to-metal ranges) WITHDRAWN from iBGP after policy rev 482 — terms reordered so site-locals match REJECT-THE-REST before the advertise term (SMOKING GUN: implicit withdraw, not the intended community-add)"
+        },
+        {
+          "type": "Warning",
+          "reason": "IntraSiteUnreachable",
+          "object": "pod/{{VICTIM_POD}}",
+          "namespace": "{{NS}}",
+          "count": 514,
+          "first_seen": "2026-06-21T06:27:30Z",
+          "last_seen": "2026-06-21T06:55:40Z",
+          "message": "No route to peer metals: connect: network is unreachable — {{VICTIM_SVC}} cannot forward between metals or to customer origins (victim symptom, downstream of withdrawn site-locals)"
+        },
+        {
+          "type": "Warning",
+          "reason": "RevertCollision",
+          "object": "pod/{{ROUTER_AGENT_POD2}}",
+          "namespace": "edge-network-routing",
+          "count": 6,
+          "first_seen": "2026-06-21T06:48:10Z",
+          "last_seen": "2026-06-21T07:30:22Z",
+          "message": "ADVERSARIAL/TRAP: concurrent uncommitted reverts detected on AGGREGATES-OUT — revision oscillating 482->481->482; engineers reverting previous reverts without a lock or commit-confirm; bad state reappearing sporadically"
+        },
+        {
+          "type": "Normal",
+          "reason": "EdgeProxyHealthy",
+          "object": "pod/{{EDGE_PROXY_POD}}",
+          "namespace": "{{NS}}",
+          "count": 1,
+          "first_seen": "2026-06-21T06:40:00Z",
+          "last_seen": "2026-06-21T06:40:00Z",
+          "message": "Edge proxy on core (non-MCP) site serving normally; no errors (ADVERSARIAL — core sites are not affected, this is a policy-scope artifact)"
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pod": "{{ROUTER_AGENT_POD}}",
+      "container": "bgp-route-agent",
+      "namespace": "edge-network-routing",
+      "lines": [
+        "2026-06-21T06:27:01Z INFO  applying export policy AGGREGATES-OUT rev=482 diff='add informational communities to site-local prefixes' reviewers=4 dry_run=passed",
+        "2026-06-21T06:27:03Z DEBUG policy term order: [1:match-customer-origins->advertise, 2:REJECT-THE-REST, 3:match-site-locals->advertise(+community)]  (SMOKING GUN: site-local advertise term is now AFTER REJECT-THE-REST)",
+        "2026-06-21T06:27:04Z WARN  prefix 10.IAD.0.0/16 matched term 2 REJECT-THE-REST before term 3 advertise -> NOT exported (implicit withdraw)",
+        "2026-06-21T06:27:04Z WARN  prefix 10.IAD.1.0/16 matched term 2 REJECT-THE-REST before term 3 advertise -> NOT exported (implicit withdraw)",
+        "2026-06-21T06:27:05Z ERROR site-local advertisement set is EMPTY after policy eval; 38 metal-to-metal prefixes withdrawn from iBGP (intended action was community-add, NOT withdraw)",
+        "2026-06-21T06:27:30Z ERROR iBGP peers no longer receiving site-local routes; metals in this MCP site cannot reach each other",
+        "2026-06-21T06:48:10Z WARN  AGGREGATES-OUT revision changed out-of-band to 481 by another session, then back to 482 — uncommitted concurrent edits (TRAP: revert collision, no commit-confirm lock held)"
+      ],
+      "secondary_logs": {
+        "pod": "{{VICTIM_POD}}",
+        "container": "multimog-lb",
+        "namespace": "{{NS}}",
+        "lines": [
+          "2026-06-21T06:27:31Z ERROR forward to peer metal failed: dial tcp 10.IAD.1.7:443: connect: network is unreachable (no route — site-local prefix withdrawn upstream)",
+          "2026-06-21T06:27:31Z ERROR forward to customer origin failed: network is unreachable; shedding connections",
+          "2026-06-21T06:28:05Z WARN  the few still-reachable small clusters are saturating; multimog_forward_error_rate climbing (ADVERSARIAL: looks like LB overload, but it is loss of intra-site routes, not capacity)"
+        ],
+        "edge_proxy_logs": {
+          "pod": "{{EDGE_PROXY_POD}}",
+          "container": "edge-http-proxy",
+          "namespace": "{{NS}}",
+          "lines": [
+            "2026-06-21T06:40:00Z INFO  core site request handling nominal; upstream reachable; 0 forward errors (core/non-MCP unaffected — ADVERSARIAL)"
+          ]
+        }
+      }
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "{{NODE}}",
+          "ready": "True",
+          "site_type": "MCP",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "31900m", "memory": "125Gi" },
+          "note": "MCP-site node is Ready and resourced fine; the fault is that site-local prefixes were withdrawn from iBGP by policy rev 482, so on-node metals have no route to peer metals. Not a node-health or resource problem."
+        },
+        {
+          "name": "{{NODE2}}",
+          "ready": "True",
+          "site_type": "MCP",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "31900m", "memory": "125Gi" },
+          "note": "Second affected MCP node; same withdrawn-route condition. NetworkUnavailable=False because the NIC/CNI are fine — the loss is at the BGP export policy layer, not the node network."
+        },
+        {
+          "name": "{{NODE3}}",
+          "ready": "True",
+          "site_type": "core",
+          "MemoryPressure": "False",
+          "DiskPressure": "False",
+          "PIDPressure": "False",
+          "NetworkUnavailable": "False",
+          "allocatable": { "cpu": "31900m", "memory": "125Gi" },
+          "note": "Core (non-MCP) node, unaffected — its prefixes are not governed by the reordered MCP AGGREGATES-OUT policy, so it still routes and serves (this is why core sites look fine; ADVERSARIAL)."
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "{{NS}}",
+      "deployment": "{{VICTIM_WORKLOAD}}",
+      "desired": 4,
+      "updated": 4,
+      "ready": 4,
+      "available": 4,
+      "current_revision": 27,
+      "image": "multimog-lb:5.12.3",
+      "last_rollout": "2026-06-14T09:02:11Z",
+      "rollout_status": "Complete",
+      "note": "Victim Multimog deployment rolled out cleanly 7 days before the incident and all replicas are Available — rules out bad_deploy of the victim. The relevant change is the BGP AGGREGATES-OUT export policy rev 482 (routing config), not an LB app deploy."
+    },
+    "prometheus_metrics.json": {
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "samples": [
+        {
+          "metric": "edge_request_rate_normalized",
+          "query": "sum(rate(edge_requests_total{cluster=\"{{CLUSTER}}\"}[1m])) / scalar(baseline_edge_request_rate)",
+          "value": 0.50,
+          "slo_threshold": 0.95,
+          "breached": true,
+          "unit": "ratio",
+          "note": "Loud global symptom: ~50% of requests gone, coinciding with the config rollout window at 06:27Z"
+        },
+        {
+          "metric": "multimog_forward_error_rate",
+          "query": "sum(rate(multimog_forward_errors_total{namespace=\"{{NS}}\"}[1m])) / sum(rate(multimog_forward_attempts_total{namespace=\"{{NS}}\"}[1m]))",
+          "value": 0.62,
+          "slo_threshold": 0.01,
+          "breached": true,
+          "unit": "ratio",
+          "note": "Loud victim symptom: Multimog cannot forward inside MCP sites (network unreachable), so it looks overloaded"
+        },
+        {
+          "metric": "bgp_site_local_prefixes_advertised",
+          "query": "min(bgp_export_prefixes{policy=\"AGGREGATES-OUT\",kind=\"site_local\",site_type=\"MCP\"})",
+          "value": 0,
+          "expected": 38,
+          "unit": "prefixes",
+          "note": "SMOKING GUN METRIC: site-local prefix advertisement count fell from 38 to 0 across MCP sites at 06:27Z — the prefixes were withdrawn from iBGP, exactly when policy rev 482 applied"
+        },
+        {
+          "metric": "bgp_aggregates_out_reject_match_rate_1m",
+          "query": "sum(rate(bgp_policy_term_match_total{policy=\"AGGREGATES-OUT\",term=\"REJECT-THE-REST\",prefix_kind=\"site_local\"}[1m]))",
+          "value": 6.3,
+          "unit": "matches_per_s",
+          "note": "SMOKING GUN: site-local prefixes are now matching the REJECT-THE-REST term (which they never did before rev 482) — confirms the term reorder placed advertise behind reject"
+        },
+        {
+          "metric": "intra_site_metal_reachability",
+          "value": 0.0,
+          "unit": "ratio",
+          "note": "SMOKING GUN: metal-to-metal reachability inside the 19 MCP sites collapsed to 0 — there is no route to forward over; Multimog overload is a consequence of this"
+        },
+        { "metric": "bgp_route_agent_up", "value": 1, "unit": "bool", "note": "ADVERSARIAL: route agents are up and Ready — the agent is not crashed, it is correctly executing a wrong policy" },
+        { "metric": "core_site_edge_request_rate_normalized", "value": 0.99, "unit": "ratio", "note": "ADVERSARIAL: core (non-MCP) sites serving ~normally — the problem is scoped to the MCP AGGREGATES-OUT policy, not a global control-plane or provider fault" },
+        { "metric": "multimog_cpu_cores", "value": 1.1, "unit": "cores", "note": "nominal headroom — Multimog is not CPU-bound; it is route-starved, not resource_exhausted" },
+        { "metric": "multimog_memory_util_pct", "value": 41.0, "unit": "percent", "note": "nominal — not resource_exhaustion / OOM" }
+      ]
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "GlobalTrafficDropMCPSitesOffline",
+            "severity": "critical",
+            "service": "{{VICTIM_SVC}}",
+            "namespace": "{{NS}}",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "Global request volume down ~50%; 19 MCP sites not serving; Multimog forward errors high",
+            "error": "edge_request_rate=0.50, multimog_forward_error_rate=0.62"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-21T06:27:45Z",
+          "value": "0.50"
+        },
+        {
+          "labels": {
+            "alertname": "BGPSiteLocalPrefixesWithdrawn",
+            "severity": "critical",
+            "component": "bgp-route-agent",
+            "namespace": "edge-network-routing",
+            "cluster_name": "{{CLUSTER}}"
+          },
+          "annotations": {
+            "summary": "Site-local prefix advertisement count dropped to 0 on MCP sites after AGGREGATES-OUT policy rev 482",
+            "error": "bgp_site_local_prefixes_advertised=0 (expected 38); REJECT-THE-REST matching site-locals"
+          },
+          "state": "firing",
+          "activeAt": "2026-06-21T06:27:10Z",
+          "value": "0"
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "{{VICTIM_SVC}}",
+      "namespace": "{{NS}}",
+      "spans": [
+        {
+          "trace_id": "a91f3c7e2d8b40119f6c5a2e7b0d3c44",
+          "name": "edge_request -> multimog_forward -> peer_metal",
+          "duration_ms": 0,
+          "status": "ERROR",
+          "error": "connect: network is unreachable to 10.IAD.1.7:443 (no iBGP route to peer metal; site-local prefix withdrawn)",
+          "site_type": "MCP",
+          "note": "SMOKING GUN in trace: forward fails immediately with network-unreachable, NOT a timeout/overload — there is simply no route, confirming routing withdraw over LB capacity"
+        },
+        {
+          "trace_id": "c20a8d1b6f4e470aa3e9b7c1d5028f9e",
+          "name": "edge_request -> edge_http_proxy -> origin",
+          "duration_ms": 38,
+          "status": "OK",
+          "site_type": "core",
+          "note": "ADVERSARIAL: identical request shape on a core site succeeds in 38ms — confirms the failure is scoped to MCP site-local routing, not a global LB or origin fault"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "config_error",
+    "root_cause_subtype": "BGP export-policy term reorder (AGGREGATES-OUT) placed site-local advertise behind REJECT-THE-REST, silently turning an intended community-add into an implicit prefix withdraw; concurrent uncoordinated reverts kept re-introducing the bad state",
+    "required_keywords": [
+      "BGP",
+      "AGGREGATES-OUT",
+      "term reorder",
+      "REJECT-THE-REST",
+      "site-local",
+      "prefix",
+      "implicit withdraw",
+      "iBGP",
+      "Multimog",
+      "MCP",
+      "community"
+    ],
+    "forbidden_categories": [
+      "saturation",
+      "resource_exhaustion",
+      "bad_deploy",
+      "node_failure",
+      "dependency_failure"
+    ],
+    "ruling_out_keywords": [
+      "multimog pods Running 0 restarts (status misleading)",
+      "multimog rollout Complete 7d prior",
+      "multimog_cpu_cores=1.1 nominal",
+      "multimog_memory_util_pct=41",
+      "core_site_edge_request_rate=0.99 unaffected",
+      "core site trace OK 38ms",
+      "bgp_route_agent_up=1 (agent not crashed)",
+      "NetworkUnavailable=False on nodes",
+      "diff peer-reviewed + dry-run passed (guardrails passed but missed reorder)"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_deployment_status",
+      "get_logs",
+      "get_events",
+      "query_traces"
+    ],
+    "required_queries": [
+      "get_metrics",
+      "get_logs",
+      "get_events",
+      "query_traces"
+    ],
+    "max_investigation_loops": 5,
+    "causal_chain": "harmless-looking diff reorders AGGREGATES-OUT terms → site-locals match REJECT-THE-REST before the advertise term → site-local prefixes implicitly withdrawn from iBGP → MCP-site metals lose mutual reachability → Multimog LB cannot forward → few reachable small clusters overload → ~50% global traffic drop; concurrent uncoordinated reverts re-introduce the bad state sporadically",
+    "model_response": "ROOT_CAUSE: A BGP export-policy change to AGGREGATES-OUT (revision 482), intended only to add informational communities to site-local prefixes, also performed a term reorder (REORDERED the policy terms) so the site-local advertise term landed BEHIND a catch-all REJECT-THE-REST term. As a result the 38 site-local (metal-to-metal) prefixes matched REJECT first and were silently WITHDRAWN from iBGP instead of re-advertised with the new community. Inside the 19 MCP (Multiple Cloud Provider) data centers, metals lost the routes they use to reach each other and customer origins, so {{VICTIM_SVC}} (Multimog) had nothing to forward over and the few still-reachable small clusters overloaded — producing the loud 'LB overload / 50% global traffic drop' symptom. The change passed peer review and a dry-run; the staged rollout was just not granular enough to catch it before all affected sites took it.\nROOT_CAUSE_CATEGORY: config_error\nVALIDATED_CLAIMS:\n- Route-agent logs show the AGGREGATES-OUT term order is [customer-origins->advertise, REJECT-THE-REST, site-locals->advertise(+community)] and that site-local prefixes 'matched term 2 REJECT-THE-REST before term 3 advertise -> NOT exported (implicit withdraw)' [evidence: k8s_pod_logs]\n- Site-local prefix advertisement count dropped 38 -> 0 on MCP sites at 06:27Z, exactly when policy rev 482 applied, and REJECT-THE-REST is now matching site-local prefixes at 6.3/s (it never did before) [evidence: prometheus_metrics, prometheus_alerts]\n- Events confirm PrefixWithdrawn (38 metal-to-metal prefixes) immediately after BGPPolicyApplied rev 482, then IntraSiteUnreachable on the victim [evidence: k8s_events]\n- intra_site_metal_reachability collapsed to 0.0 and a Multimog trace fails instantly with 'connect: network is unreachable' (no route), not a timeout — confirming route loss, not capacity [evidence: prometheus_metrics, traces]\n- edge_request_rate fell to 0.50 and multimog_forward_error_rate to 0.62, coinciding with the rollout window [evidence: prometheus_metrics, prometheus_alerts]\nNON_VALIDATED_CLAIMS:\n- NOT a load-balancer overload / under-provisioning (the loud red herring): Multimog pods are Running with 0 restarts, rollout Complete 7 days prior, CPU 1.1 cores and memory 41% nominal; the LB is route-starved, not resource-bound. Scaling or restarting Multimog would not restore the withdrawn routes [evidence: k8s_pods, k8s_deployments, prometheus_metrics]\n- NOT a bad deploy of the victim or a Multimog regression: no image/revision change before the incident; the only change is the BGP routing policy [evidence: k8s_deployments]\n- NOT a global control-plane or MCP-provider network fault: core (non-MCP) sites serve at 0.99 normalized, the core trace succeeds in 38ms, and nodes report NetworkUnavailable=False — the failure is scoped exactly to the MCP AGGREGATES-OUT policy [evidence: prometheus_metrics, traces, k8s_node_health]\n- The diff 'looks harmless' and passed peer review + dry-run, but those guardrails did not model the term-ordering side effect; trusting the diff and looking elsewhere is the misdirection [evidence: k8s_pod_logs, k8s_events]\n- A naive concurrent revert is the TRAP: events/logs show AGGREGATES-OUT oscillating 482->481->482 as multiple engineers reverted each other's reverts without a lock or commit-confirm, so the bad state reappeared sporadically [evidence: k8s_events, k8s_pod_logs]\nCAUSAL_CHAIN:\n- AGGREGATES-OUT policy rev 482 reorders terms; site-local advertise term moves behind REJECT-THE-REST\n- Site-local (metal-to-metal) prefixes match REJECT first and are implicitly withdrawn from iBGP (advertised count 38 -> 0)\n- MCP-site metals lose mutual reachability; {{VICTIM_SVC}} has no route to forward over and sheds connections\n- The few still-reachable small clusters overload; ~50% of global requests are lost across the 19 MCP sites\n- Uncoordinated concurrent reverts re-introduce the bad state, prolonging the outage\nFIX: Perform a single COORDINATED revert of AGGREGATES-OUT back to the last-good revision using commit-confirm semantics with a lock so only one engineer mutates the policy at a time (no concurrent reverts); restore the correct term order so site-locals are advertised before REJECT-THE-REST. Re-introduce the community-add change with a more granular, MCP-specific staged rollout. Do NOT scale, restart, or roll back Multimog, and do NOT let multiple engineers revert concurrently."
+  },
+  "remediation": {
+    "fix_tool": "rollback_deployment",
+    "canonical_fix": "Single coordinated revert of the AGGREGATES-OUT BGP export policy to the last-good revision using commit-confirm semantics and an exclusive change lock (one operator only), restoring the correct term order so site-local prefixes are advertised before the REJECT-THE-REST term; then re-roll the community-add change with a granular, staggered MCP-specific rollout. Do not revert concurrently.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "Multiple engineers reverting AGGREGATES-OUT concurrently without a lock or commit-confirm — they walked over each other's changes, reverted previous reverts, and the bad state reappeared sporadically (the postmortem's wrong move that PROLONGED the outage)",
+      "rollback_deployment / standard uncoordinated rollback that re-introduced the bad state because it raced other in-flight reverts",
+      "scale_deployment on multimog-lb — treating the loud LB overload as a capacity problem; adds replicas with still no route to forward over",
+      "restart_service / restart_pod on multimog-lb — restarting the route-starved victim does nothing because the site-local prefixes are still withdrawn upstream"
+    ],
+    "primary_metric": "bgp_site_local_prefixes_advertised",
+    "direction": "higher",
+    "state_before": { "bgp_site_local_prefixes_advertised": 0, "edge_request_rate_normalized": 0.50, "multimog_forward_error_rate": 0.62 },
+    "state_after": { "bgp_site_local_prefixes_advertised": 38, "edge_request_rate_normalized": 0.99, "multimog_forward_error_rate": 0.004 },
+    "recovery_check": "bgp_site_local_prefixes_advertised == 38 AND edge_request_rate_normalized > 0.95 AND multimog_forward_error_rate < 0.01",
+    "resolved": true
+  }
+}

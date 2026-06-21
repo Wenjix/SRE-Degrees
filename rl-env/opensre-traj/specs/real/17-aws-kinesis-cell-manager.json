@@ -1,0 +1,570 @@
+{
+  "incident": "aws_kinesis_cell_manager",
+  "provider": "k8s",
+  "source_company": "AWS",
+  "source_url": "https://aws.amazon.com/message/073024/",
+  "failure_mode": "control_plane_reshuffle_storm_addcapacity_trap",
+  "default_severity": "critical",
+  "scenario_difficulty": 5,
+  "alert": {
+    "title": "[real-k8s] error rate 22% + p99 latency spike on internal Kinesis cell — kinesis-dataplane",
+    "state": "alerting",
+    "alert_source": "prometheus",
+    "commonLabels": {
+      "alertname": "KinesisCellHighErrorRate",
+      "severity": "critical",
+      "service": "kinesis-dataplane",
+      "namespace": "kinesis-cell-7",
+      "workload_type": "statefulset",
+      "workload_name": "kinesis-dataplane",
+      "cluster_name": "kds-use1-internal"
+    },
+    "commonAnnotations": {
+      "summary": "kinesis-dataplane PutRecord/GetRecords error_rate 22% (SLO 0.5%) and p99 latency 9,400ms on internal cell kinesis-cell-7; downstream CloudWatch Logs, Firehose, Lambda, ECS, Redshift, Glue degraded",
+      "description": "An internally-used Kinesis Data Streams cell (kinesis-cell-7) is throwing elevated PutRecord/GetRecords errors and high latency, and downstream internal consumers (CloudWatch Logs, Firehose, Lambda, ECS, Redshift, Glue) are degraded. A routine single-AZ deployment rolled through the dataplane statefulset earlier today, which makes this look like a bad rollout. The loud symptom is on the dataplane pods and on the TLS connection-provisioner, which is pegged at its connection ceiling and looks like the capacity bottleneck. Investigate to find the true root cause.",
+      "error": "KinesisCellHighErrorRate: PutRecord/GetRecords error_rate 22% on internal cell kinesis-cell-7",
+      "suspected_symptom": "kinesis_cell_dataplane_error_and_latency_spike",
+      "k8s_failure_mode": "control_plane_reshuffle_storm_addcapacity_trap",
+      "context_sources": "prometheus_metrics,prometheus_alerts,k8s_pod_logs,k8s_events,k8s_node_health,query_traces,k8s_deployments"
+    }
+  },
+  "scenario": {
+    "adversarial_signals": [
+      "A routine single-AZ deployment rolled through the kinesis-dataplane statefulset starting 09:09 PDT, taking hosts in and out of service; because customer-visible impact began hours later it looks like a bad_deploy and tempts an immediate rollback — but the deployed image is byte-identical to the prior good revision and rolling it back does not stop the reshuffle storm. The deploy was only the TRIGGER that removed hosts; the defect is in how the cell manager rebalanced afterward.",
+      "The TLS connection-provisioner (conn-provisioner) is pegged at 100% of its connection ceiling and is the component throwing the most visible PutRecord/GetRecords errors, so it looks like the root cause / a capacity shortfall to be fixed by adding raw provisioner capacity alone; in reality it is a DOWNSTREAM victim being hammered by the shard-reshuffle storm, and adding capacity without first shedding load to shrink the status messages only buys time while the storm keeps churning.",
+      "Several dataplane hosts (kds-host-3/4) are reported UNHEALTHY by the cell manager and look like genuinely failed nodes that should be restarted or drained; in truth those hosts are healthy and serving — they were FALSELY marked unhealthy because their oversized status messages could not be ingested by the cell manager in time, and restarting/draining them adds even more rebalance churn.",
+      "Shard rebalance / redistribution rate is spiking, which looks like the cell manager correctly recovering from failed hosts; it is actually the storm itself — a self-amplifying loop where false-unhealthy verdicts trigger redistribution that creates more oversized status messages that cause more false-unhealthy verdicts.",
+      "Downstream services CloudWatch Logs, Firehose, S3 event delivery, ECS (awslogs blocking mode), Lambda, Redshift and Glue are all erroring, which looks like a broad multi-service control-plane outage; they are all simply consumers of this one impaired internal Kinesis cell and recover once the cell recovers.",
+      "All Kubernetes nodes report Ready with normal CPU and memory and no other Kinesis cell is affected (cell isolation held at the infra layer); there is no node_failure or cluster resource_exhaustion — the saturation is in the cell-management control loop and the connection-provisioner it overran."
+    ],
+    "available_evidence": [
+      "k8s_pods",
+      "k8s_events",
+      "k8s_pod_logs",
+      "k8s_node_health",
+      "k8s_deployments",
+      "prometheus_metrics",
+      "prometheus_alerts",
+      "traces"
+    ]
+  },
+  "evidence": {
+    "k8s_pods.json": {
+      "namespace": "kinesis-cell-7",
+      "pods": [
+        {
+          "name": "kinesis-cellmanager-0",
+          "node": "ip-10-30-1-11.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "63d",
+          "container": {
+            "name": "cellmanager",
+            "image": "registry.aws/kds-cellmanager:2024.07-r3",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2000m",
+            "cpu_limit": "4000m",
+            "memory_request": "4Gi",
+            "memory_limit": "8Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "SMOKING-GUN host. The cell manager process is up, but its status-ingestion queue is backed up: it is dropping/delaying oversized status messages from the few hosts now carrying most shards, then declaring those healthy hosts unhealthy and issuing redistribution commands. The fault is its balance-by-throughput-not-shard-count logic, not a crash."
+        },
+        {
+          "name": "kinesis-dataplane-kds-host-3",
+          "node": "ip-10-30-2-22.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "63d",
+          "container": {
+            "name": "dataplane",
+            "image": "registry.aws/kds-dataplane:2024.07-r3",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2000m",
+            "cpu_limit": "4000m",
+            "memory_request": "4Gi",
+            "memory_limit": "8Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Reported UNHEALTHY by the cell manager but is actually Ready and serving. After the deploy removed peer hosts, the rebalancer concentrated ~9,400 very-low-throughput shards here; its status message ballooned and could not be ingested in time, so the manager FALSELY marked it unhealthy. Restarting/draining it would add more churn — adversarial."
+        },
+        {
+          "name": "kinesis-dataplane-kds-host-4",
+          "node": "ip-10-30-3-33.ec2.internal",
+          "phase": "Running",
+          "ready": "1/1",
+          "restarts": 0,
+          "age": "63d",
+          "container": {
+            "name": "dataplane",
+            "image": "registry.aws/kds-dataplane:2024.07-r3",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "2000m",
+            "cpu_limit": "4000m",
+            "memory_request": "4Gi",
+            "memory_limit": "8Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "ContainersReady", "status": "True" }
+          ],
+          "note": "Second host carrying an oversized shard count after the rebalance; also FALSELY flagged unhealthy. Same byte-identical image as the prior good revision — this is not a code regression."
+        },
+        {
+          "name": "kinesis-connprovisioner-7f9c4d6b8-w2qx5",
+          "node": "ip-10-30-4-44.ec2.internal",
+          "phase": "Running",
+          "ready": "0/1",
+          "restarts": 0,
+          "age": "63d",
+          "container": {
+            "name": "conn-provisioner",
+            "image": "registry.aws/kds-conn-provisioner:1.9.2",
+            "state": "running",
+            "last_state": "none",
+            "cpu_request": "1000m",
+            "cpu_limit": "3000m",
+            "memory_request": "2Gi",
+            "memory_limit": "4Gi"
+          },
+          "conditions": [
+            { "type": "Ready", "status": "False", "reason": "ProbeFailed" },
+            { "type": "ContainersReady", "status": "False" }
+          ],
+          "note": "TLS connection provisioner — the LOUD victim. Pegged at its connection ceiling because the reshuffle storm is forcing constant re-provisioning of secure dataplane connections. It is downstream of the storm, NOT the root cause; adding capacity here alone does not stop the storm."
+        }
+      ]
+    },
+    "k8s_events.json": {
+      "namespace": "kinesis-cell-7",
+      "events": [
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "object": "statefulset/kinesis-dataplane",
+          "source": "deployment-controller",
+          "count": 1,
+          "first_seen": "2024-07-30T09:09:00-07:00",
+          "last_seen": "2024-07-30T09:41:00-07:00",
+          "message": "Routine single-AZ deployment: took dataplane hosts in and out of service in us-east-1a (image 2024.07-r3, byte-identical to prior good revision). This is the TRIGGER that removed hosts; adversarial — tempts a rollback."
+        },
+        {
+          "type": "Warning",
+          "reason": "ShardRebalanceConcentration",
+          "object": "pod/kinesis-cellmanager-0",
+          "source": "cellmanager",
+          "count": 1,
+          "first_seen": "2024-07-30T09:42:00-07:00",
+          "last_seen": "2024-07-30T09:42:00-07:00",
+          "message": "Rebalancer redistributed shards after host removal by THROUGHPUT/IO, not shard COUNT — concentrated a novel workload of many very-low-throughput shards onto kds-host-3/4 (~9,400 shards each). Balance-by-throughput logic did not spread shard COUNT."
+        },
+        {
+          "type": "Warning",
+          "reason": "StatusMessageOversized",
+          "object": "pod/kinesis-cellmanager-0",
+          "source": "cellmanager",
+          "count": 880,
+          "first_seen": "2024-07-30T14:40:00-07:00",
+          "last_seen": "2024-07-30T21:10:00-07:00",
+          "message": "Status messages from kds-host-3/4 exceeded ingestion size/time budget (status_message_bytes ~14MB vs ~80KB normal); could not be transmitted to and processed by the cell manager in a timely fashion, delaying status from OTHER hosts too."
+        },
+        {
+          "type": "Warning",
+          "reason": "FalseUnhealthyVerdict",
+          "object": "pod/kinesis-cellmanager-0",
+          "source": "cellmanager",
+          "count": 412,
+          "first_seen": "2024-07-30T14:43:00-07:00",
+          "last_seen": "2024-07-30T21:14:00-07:00",
+          "message": "Cell manager did not receive status messages in time and INCORRECTLY determined healthy hosts (kds-host-3/4) were unhealthy; began redistributing their shards — false-unhealthy → redistribute → bigger status messages → more false-unhealthy (self-amplifying)."
+        },
+        {
+          "type": "Warning",
+          "reason": "ReshuffleStorm",
+          "object": "statefulset/kinesis-dataplane",
+          "source": "cellmanager",
+          "count": 1,
+          "first_seen": "2024-07-30T14:45:00-07:00",
+          "last_seen": "2024-07-30T21:21:00-07:00",
+          "message": "Shard redistribution rate spiked to ~640/s (baseline ~2/s). The reshuffle storm forced constant secure-connection re-provisioning and eventually OVERLOADED the TLS connection-provisioner, impairing dataplane traffic."
+        },
+        {
+          "type": "Warning",
+          "reason": "Unhealthy",
+          "object": "pod/kinesis-connprovisioner-7f9c4d6b8-w2qx5",
+          "source": "kubelet",
+          "count": 73,
+          "first_seen": "2024-07-30T14:52:00-07:00",
+          "last_seen": "2024-07-30T21:18:00-07:00",
+          "message": "Readiness probe failed: conn-provisioner at connection ceiling (provisioned_conns 100% of limit), backlog of secure-connection requests from the reshuffle storm. Downstream victim, not cause."
+        }
+      ]
+    },
+    "k8s_pod_logs.json": {
+      "pods": [
+        {
+          "pod": "kinesis-cellmanager-0",
+          "container": "cellmanager",
+          "lines": [
+            "2024-07-30T09:42:03-07:00 INFO  host removed by deploy in us-east-1a; rebalancing shards by throughput/io across remaining hosts",
+            "2024-07-30T09:42:09-07:00 WARN  balance objective=throughput; shard_count NOT a balance dimension -> kds-host-3 assigned 9412 shards, kds-host-4 assigned 9388 shards (novel many-low-throughput workload)",
+            "2024-07-30T14:40:55-07:00 WARN  status ingest: message from kds-host-3 is 14.2MB (limit budget 256KB/250ms); transmit+process exceeded budget; status from other hosts delayed behind it",
+            "2024-07-30T14:43:12-07:00 ERROR no status from kds-host-3,kds-host-4 within timeout -> marking UNHEALTHY -> issuing shard redistribution (verdict is FALSE; hosts are serving)",
+            "2024-07-30T14:45:30-07:00 WARN  redistribution rate climbing 18/s -> 640/s; each move re-provisions secure dataplane connections via conn-provisioner",
+            "2024-07-30T15:02:41-07:00 ERROR conn-provisioner refusing new secure connections (at ceiling); dataplane PutRecord/GetRecords now erroring -> storm is self-sustaining"
+          ]
+        },
+        {
+          "pod": "kinesis-dataplane-kds-host-3",
+          "container": "dataplane",
+          "lines": [
+            "2024-07-30T14:39:50-07:00 INFO  serving 9412 shards; per-shard throughput tiny; aggregate IO well within host capacity; CPU 38% mem 47%",
+            "2024-07-30T14:40:55-07:00 WARN  status payload large (9412 shard descriptors -> 14.2MB); send to cellmanager retried 3x (size/time budget)",
+            "2024-07-30T14:43:15-07:00 WARN  cellmanager declared me UNHEALTHY and is moving my shards, but I am healthy and serving (0 errors locally until conn-provisioner started refusing)",
+            "2024-07-30T15:03:10-07:00 ERROR cannot obtain secure dataplane connection: conn-provisioner at ceiling (caused by the reshuffle storm churning connections)"
+          ]
+        },
+        {
+          "pod": "kinesis-connprovisioner-7f9c4d6b8-w2qx5",
+          "container": "conn-provisioner",
+          "lines": [
+            "2024-07-30T14:52:20-07:00 WARN  secure-connection request rate 3,900/s (baseline ~120/s) driven by shard reshuffle; pool saturating",
+            "2024-07-30T15:01:48-07:00 ERROR provisioned_conns at 100% of limit (60,000/60,000); rejecting new TLS connection setups",
+            "2024-07-30T16:30:05-07:00 INFO  raw capacity added but request rate still 3,800/s from ongoing storm — capacity alone is not draining the backlog",
+            "2024-07-30T16:31:12-07:00 WARN  provisioning recovers only after upstream load-shed shrinks status messages and the reshuffle rate falls"
+          ]
+        }
+      ]
+    },
+    "k8s_node_health.json": {
+      "nodes": [
+        {
+          "name": "ip-10-30-1-11.ec2.internal",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 44,
+          "memory_util_pct": 51,
+          "note": "cellmanager node healthy; the fault is the control-loop logic (false-unhealthy verdicts), not node resource pressure."
+        },
+        {
+          "name": "ip-10-30-2-22.ec2.internal",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 38,
+          "memory_util_pct": 47,
+          "note": "kds-host-3 node is Ready with normal CPU/mem despite being FALSELY flagged unhealthy by the cell manager. No node_failure — do not drain."
+        },
+        {
+          "name": "ip-10-30-3-33.ec2.internal",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 36,
+          "memory_util_pct": 45,
+          "note": "kds-host-4 node healthy; also false-unhealthy. Cell isolation held — no OTHER Kinesis cell is affected."
+        },
+        {
+          "name": "ip-10-30-4-44.ec2.internal",
+          "conditions": [
+            { "type": "Ready", "status": "True" },
+            { "type": "MemoryPressure", "status": "False" },
+            { "type": "DiskPressure", "status": "False" },
+            { "type": "PIDPressure", "status": "False" }
+          ],
+          "cpu_util_pct": 71,
+          "memory_util_pct": 63,
+          "note": "conn-provisioner node Ready; the provisioner is at its CONNECTION ceiling (a per-process/app limit driven by the storm), not node CPU/mem exhaustion."
+        }
+      ]
+    },
+    "k8s_deployments.json": {
+      "namespace": "kinesis-cell-7",
+      "deployments": [
+        {
+          "deployment": "kinesis-dataplane",
+          "replicas": { "desired": 8, "ready": 8, "available": 8, "updated": 8 },
+          "current_revision": 137,
+          "image": "registry.aws/kds-dataplane:2024.07-r3",
+          "last_rollout": "today 09:09-09:41 PDT (single AZ us-east-1a)",
+          "rollout_status": "complete",
+          "strategy": "RollingUpdate",
+          "conditions": [
+            { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+            { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }
+          ],
+          "note": "Rollout COMPLETED cleanly and 2024.07-r3 is byte-identical to the prior good revision; all 8 dataplane pods are Ready. The deploy only TRIGGERED the issue by taking hosts out of service; rolling it back does NOT stop the reshuffle storm. Not a bad_deploy."
+        },
+        {
+          "deployment": "kinesis-cellmanager",
+          "replicas": { "desired": 1, "ready": 1, "available": 1, "updated": 1 },
+          "current_revision": 41,
+          "image": "registry.aws/kds-cellmanager:2024.07-r3",
+          "last_rollout": "21d ago",
+          "rollout_status": "complete",
+          "conditions": [
+            { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" }
+          ],
+          "note": "Cell manager unchanged for 21d; up and Available. Its balance-by-throughput-not-shard-count logic is the latent defect exposed by the novel many-low-throughput-shard workload, not a recent rollout."
+        },
+        {
+          "deployment": "kinesis-connprovisioner",
+          "replicas": { "desired": 3, "ready": 2, "available": 2, "updated": 3 },
+          "current_revision": 19,
+          "image": "registry.aws/kds-conn-provisioner:1.9.2",
+          "last_rollout": "30d ago",
+          "rollout_status": "complete",
+          "conditions": [
+            { "type": "Available", "status": "False", "reason": "MinimumReplicasUnavailable" }
+          ],
+          "note": "Unchanged for 30d; degraded today ONLY because the reshuffle storm drove secure-connection request rate from ~120/s to ~3,900/s past its connection ceiling. Adding capacity here helped at 5:55/6:32 PM but only AFTER load-shed shrank the status messages and slowed the storm."
+        }
+      ]
+    },
+    "prometheus_metrics.json": {
+      "service": "kinesis-dataplane",
+      "namespace": "kinesis-cell-7",
+      "window": "5m",
+      "metrics": {
+        "putrecord_error_rate_pct": 22.0,
+        "getrecords_error_rate_pct": 19.4,
+        "p99_latency_ms": 9400,
+        "shard_redistribution_rate_per_s": 640,
+        "max_shards_per_host": 9412,
+        "cellmanager_status_ingest_lag_s": 41,
+        "status_message_bytes_max": 14680064,
+        "false_unhealthy_hosts": 2,
+        "conn_provisioner_provisioned_conns": 60000,
+        "conn_provisioner_conns_limit": 60000,
+        "conn_provisioner_request_rate_per_s": 3900,
+        "cellmanager_cpu_util_pct": 44,
+        "dataplane_host_cpu_util_pct": 38,
+        "other_cells_error_rate_pct": 0.2,
+        "restart_count": 0
+      },
+      "baseline": {
+        "putrecord_error_rate_pct": 0.2,
+        "getrecords_error_rate_pct": 0.2,
+        "p99_latency_ms": 70,
+        "shard_redistribution_rate_per_s": 2,
+        "max_shards_per_host": 1100,
+        "cellmanager_status_ingest_lag_s": 0.3,
+        "status_message_bytes_max": 81920,
+        "false_unhealthy_hosts": 0,
+        "conn_provisioner_provisioned_conns": 9200,
+        "conn_provisioner_conns_limit": 60000,
+        "conn_provisioner_request_rate_per_s": 120,
+        "cellmanager_cpu_util_pct": 30,
+        "dataplane_host_cpu_util_pct": 35,
+        "other_cells_error_rate_pct": 0.2
+      },
+      "samples": [
+        {
+          "metric": "status_message_bytes_max",
+          "query": "max(kinesis_cellmanager_status_message_bytes{cell=\"kinesis-cell-7\"})",
+          "value": 14680064,
+          "slo_threshold": 262144,
+          "breached": true,
+          "unit": "bytes",
+          "note": "SMOKING GUN: per-host status message ballooned to ~14MB (vs ~80KB normal) because kds-host-3/4 each carry ~9,400 shards. Oversized status messages cannot be ingested in time -> false-unhealthy verdicts -> reshuffle storm. This is the buried root signal, upstream of the conn-provisioner."
+        },
+        {
+          "metric": "max_shards_per_host",
+          "query": "max(kinesis_shards_assigned_per_host{cell=\"kinesis-cell-7\"})",
+          "value": 9412,
+          "slo_threshold": 2000,
+          "breached": true,
+          "unit": "shards",
+          "note": "The cell manager balances by throughput/IO, not shard COUNT, so a novel many-very-low-throughput-shard workload piled ~9,412 shards on one host while aggregate IO stayed low — the precondition for the oversized status messages."
+        },
+        {
+          "metric": "shard_redistribution_rate_per_s",
+          "query": "rate(kinesis_shard_redistributions_total{cell=\"kinesis-cell-7\"}[1m])",
+          "value": 640,
+          "slo_threshold": 20,
+          "breached": true,
+          "unit": "per_second",
+          "note": "Reshuffle storm: 640/s vs baseline ~2/s. Each move re-provisions secure connections and overruns the conn-provisioner. Falls only when load-shed shrinks status messages."
+        }
+      ],
+      "note": "Order of departure from baseline: max_shards_per_host (1,100 -> 9,412) right after the 09:09 deploy, then status_message_bytes_max (80KB -> 14MB) and cellmanager_status_ingest_lag_s (0.3 -> 41), then shard_redistribution_rate (2 -> 640), and ONLY THEN conn_provisioner saturation (9,200 -> 60,000 at ceiling) and the dataplane error spike. The conn-provisioner ceiling is the LAST link, not the first. other_cells_error_rate stayed at 0.2% (cell isolation held)."
+    },
+    "prometheus_alerts.json": {
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "KinesisCellHighErrorRate",
+            "severity": "critical",
+            "service": "kinesis-dataplane",
+            "namespace": "kinesis-cell-7",
+            "cluster_name": "kds-use1-internal"
+          },
+          "annotations": {
+            "summary": "PutRecord/GetRecords error_rate 22% on internal cell kinesis-cell-7 (SLO 0.5%)",
+            "error": "KinesisCellHighErrorRate: error_rate 22% p99 9,400ms"
+          },
+          "state": "firing",
+          "activeAt": "2024-07-30T14:45:00-07:00",
+          "value": "22.0"
+        },
+        {
+          "labels": {
+            "alertname": "CellManagerStatusIngestLag",
+            "severity": "critical",
+            "service": "kinesis-cellmanager",
+            "namespace": "kinesis-cell-7",
+            "cluster_name": "kds-use1-internal"
+          },
+          "annotations": {
+            "summary": "cell manager status-ingest lag 41s; per-host status messages up to 14MB; falsely marking healthy hosts unhealthy",
+            "error": "CellManagerStatusIngestLag: oversized status messages from over-concentrated shards"
+          },
+          "state": "firing",
+          "activeAt": "2024-07-30T14:41:00-07:00",
+          "value": "41",
+          "note": "Fired FIRST (14:41), before the dataplane error alert (14:45) and before the conn-provisioner saturation (14:52). Leading indicator of the true root cause: balance-by-throughput piled shards -> oversized status messages -> false-unhealthy."
+        },
+        {
+          "labels": {
+            "alertname": "ConnProvisionerAtCeiling",
+            "severity": "critical",
+            "service": "kinesis-connprovisioner",
+            "namespace": "kinesis-cell-7",
+            "cluster_name": "kds-use1-internal"
+          },
+          "annotations": {
+            "summary": "TLS connection provisioner at 100% of connection ceiling (60,000/60,000); request rate 3,900/s from shard reshuffle",
+            "error": "ConnProvisionerAtCeiling: rejecting new secure connections"
+          },
+          "state": "firing",
+          "activeAt": "2024-07-30T14:52:00-07:00",
+          "value": "60000",
+          "note": "Fired LAST (14:52). Loud downstream victim — adding capacity here alone does not stop the storm; it is overrun BY the reshuffle, not the origin."
+        }
+      ]
+    },
+    "traces.json": {
+      "service": "kinesis-dataplane",
+      "sampled_spans": 3,
+      "summary": "Failed PutRecord/GetRecords requests spend their time waiting on a secure dataplane connection that the conn-provisioner cannot grant (it is at its ceiling). Tracing the connection pressure backward shows it is driven by a flood of shard-move connection setups originating from the cell manager's redistribution loop, which itself is reacting to status-ingest timeouts caused by oversized status messages from over-concentrated shards. The dataplane hosts themselves are fast and healthy when a connection is available.",
+      "spans": [
+        {
+          "trace_id": "a1f0...77",
+          "root": "kinesis-dataplane:/PutRecord",
+          "total_ms": 9380,
+          "breakdown": [
+            { "span": "dataplane.validate", "ms": 4 },
+            { "span": "dataplane.acquire_secure_connection[conn-provisioner]", "ms": 9300, "note": "BLOCKED waiting for a TLS connection: conn-provisioner at ceiling, rejecting/queuing setups driven by the reshuffle storm" },
+            { "span": "dataplane.append_to_shard", "ms": 9, "note": "actual write is fast once a connection exists — the host is healthy" }
+          ]
+        },
+        {
+          "trace_id": "b2e1...3c",
+          "root": "kinesis-cellmanager:redistribution_cycle",
+          "total_ms": 41200,
+          "breakdown": [
+            { "span": "cellmanager.ingest_host_status[kds-host-3]", "ms": 41000, "note": "ROOT: status message 14MB exceeds size/time budget -> ingest times out -> host falsely judged unhealthy" },
+            { "span": "cellmanager.issue_redistribution", "ms": 120, "note": "emits shard-move commands for a host that was never actually unhealthy -> drives connection churn" },
+            { "span": "cellmanager.provision_move_connections[conn-provisioner]", "ms": 80, "note": "each move requests secure connections, feeding the conn-provisioner overload" }
+          ]
+        },
+        {
+          "trace_id": "c3d2...9a",
+          "root": "kinesis-dataplane:/GetRecords",
+          "total_ms": 8,
+          "error": "no_secure_connection",
+          "breakdown": [
+            { "span": "dataplane.acquire_secure_connection[conn-provisioner]", "ms": 8, "error": "ConnProvisionerAtCeiling: rejected", "note": "fast rejection — confirms the bottleneck is connection availability created by the storm, not dataplane compute" }
+          ]
+        }
+      ]
+    }
+  },
+  "answer": {
+    "root_cause_category": "saturation",
+    "root_cause_subtype": "cell-manager balances shards by throughput/IO not shard count -> novel many-low-throughput-shard workload over-concentrates shards on few hosts -> oversized status messages -> false-unhealthy verdicts -> shard-reshuffle storm overruns the TLS connection-provisioner (control-plane reshuffle storm; add-capacity trap)",
+    "required_keywords": [
+      "cell management system",
+      "balance by throughput not shard count",
+      "many very-low-throughput shards",
+      "over-concentrated shards on few hosts",
+      "oversized status messages",
+      "status messages not processed in time",
+      "falsely marked healthy hosts unhealthy",
+      "shard reshuffle storm",
+      "overloaded TLS connection provisioner",
+      "shed load first",
+      "deploy only triggered host removal"
+    ],
+    "forbidden_categories": [
+      "bad_deploy",
+      "node_failure",
+      "resource_exhaustion",
+      "config_error",
+      "dependency_failure"
+    ],
+    "ruling_out_keywords": [
+      "deploy image byte-identical to prior good revision",
+      "rollback does not stop the reshuffle storm",
+      "kds-host-3/4 actually Ready and serving",
+      "false-unhealthy not real node failure",
+      "nodes Ready no memory/disk pressure",
+      "dataplane write fast once a connection exists",
+      "conn-provisioner is downstream victim at connection ceiling",
+      "capacity alone does not drain the backlog",
+      "other Kinesis cells unaffected (cell isolation held)",
+      "status-ingest-lag alert fired first at 14:41"
+    ],
+    "optimal_trajectory": [
+      "get_alerts",
+      "get_metrics",
+      "get_events",
+      "get_logs",
+      "query_traces",
+      "get_deployment_status",
+      "get_node_status"
+    ],
+    "required_queries": [
+      "get_alerts",
+      "get_metrics",
+      "get_events",
+      "query_traces"
+    ],
+    "max_investigation_loops": 6,
+    "causal_chain": "A routine single-AZ deploy took dataplane hosts out of service; the cell manager rebalanced by throughput/IO (not shard count), so a novel workload of many very-low-throughput shards piled ~9,400 shards each onto a few hosts; those hosts emitted ~14MB status messages that could not be transmitted to and processed by the cell manager in time; the manager incorrectly judged the healthy hosts unhealthy and began redistributing their shards; the redistribution rate spiked into a reshuffle storm (640/s) whose constant secure-connection churn overloaded the TLS connection-provisioner, which hit its connection ceiling and impaired dataplane PutRecord/GetRecords; downstream internal consumers (CloudWatch Logs, Firehose, S3 events, ECS, Lambda, Redshift, Glue) degraded as a result.",
+    "model_response": "ROOT_CAUSE: The cell management system for internal Kinesis cell kinesis-cell-7 balances shards by THROUGHPUT/IO rather than shard COUNT. When a routine single-AZ deploy took dataplane hosts out of service, the rebalancer concentrated a novel workload of many very-low-throughput shards (~9,412 per host) onto a few hosts (kds-host-3/4). Those hosts' status messages became oversized, ballooning to ~14MB vs ~80KB baseline, and could not be transmitted to and processed by the cell manager in a timely fashion, so the cell manager INCORRECTLY judged the healthy hosts unhealthy and began redistributing their shards. That created a self-amplifying shard-reshuffle storm (640 redistributions/s vs ~2/s baseline) whose constant secure-connection setup overloaded the downstream TLS connection-provisioner, which hit its 60,000-connection ceiling and impaired dataplane traffic (PutRecord 22% errors, p99 9,400ms).\nROOT_CAUSE_CATEGORY: saturation\nVALIDATED_CLAIMS:\n- Per-host status messages reached ~14MB vs ~80KB baseline and cell-manager status-ingest lag hit 41s; the CellManagerStatusIngestLag alert fired FIRST at 14:41 [evidence: prometheus_metrics, prometheus_alerts, k8s_events]\n- The cell manager balances by throughput/IO not shard count, concentrating ~9,412 shards on a host while aggregate IO stayed low (host CPU 38%) [evidence: prometheus_metrics, k8s_pod_logs, k8s_events]\n- The cell manager falsely marked healthy hosts kds-host-3/4 unhealthy after status-ingest timeouts and issued redistribution; the hosts are Ready and serving [evidence: k8s_pods, k8s_pod_logs, traces]\n- Shard redistribution rate spiked to 640/s (baseline 2/s) — a reshuffle storm — and drove conn-provisioner request rate from 120/s to 3,900/s [evidence: prometheus_metrics, k8s_events]\n- Traces show requests blocked acquiring a secure connection from the conn-provisioner (at ceiling) while the actual shard write completes in ~9ms once a connection exists [evidence: traces]\nNON_VALIDATED_CLAIMS:\n- bad_deploy (loud red herring): the 09:09 single-AZ deploy completed cleanly and image 2024.07-r3 is byte-identical to the prior good revision; it only TRIGGERED host removal, and rolling it back does not stop the reshuffle storm [evidence: k8s_deployments, k8s_events]\n- node_failure on kds-host-3/4: they are Ready with normal CPU/mem and serving — they were FALSELY flagged unhealthy by the cell manager; restarting/draining them adds more churn [evidence: k8s_pods, k8s_node_health]\n- conn-provisioner capacity shortfall as the root cause: it is the LOUD downstream victim overrun by the storm (last alert at 14:52); adding raw capacity alone does not drain the backlog while the storm churns [evidence: prometheus_alerts, k8s_pod_logs, k8s_deployments]\n- resource_exhaustion / dependency_failure / config_error: no OOM, nodes Ready, no other cell affected (cell isolation held at 0.2%); the saturation is in the cell-management control loop, not a config, dependency, or cluster-resource fault [evidence: k8s_node_health, prometheus_metrics]\nTRAP (must reject): restarting/draining the 'unhealthy' hosts adds more rebalance churn; adding raw shard capacity or adding connection-provisioner capacity WITHOUT first shedding load to shrink the status messages does not stop the storm; relying on cell isolation to contain it does not work because the damage is inside the cell.\nCAUSAL_CHAIN:\n- Routine single-AZ deploy took dataplane hosts out of service\n- Cell manager rebalanced by throughput/IO, not shard count -> ~9,412 very-low-throughput shards concentrated on a few hosts\n- Those hosts' status messages grew to ~14MB and could not be ingested by the cell manager in time\n- Cell manager falsely judged the healthy hosts unhealthy and began redistributing their shards\n- Redistribution rate spiked into a self-amplifying reshuffle storm (640/s)\n- The storm's constant secure-connection setup overloaded the TLS connection-provisioner, which hit its connection ceiling\n- Dataplane PutRecord/GetRecords errored; downstream CloudWatch Logs, Firehose, S3 events, ECS, Lambda, Redshift, Glue degraded\nFIX: SHED LOAD FIRST — reduce incoming stream volume from less time-sensitive internal workloads so per-host status messages shrink, the cell manager can ingest status in time, false-unhealthy verdicts stop, and the reshuffle rate falls. THEN add capacity to the TLS connection-provisioner and tighten connection limits to absorb the residual churn. Durable: make the cell manager shard-count-aware so a many-low-throughput-shard workload never over-concentrates."
+  },
+  "remediation": {
+    "fix_tool": "scale_consumers",
+    "canonical_fix": "Order matters: (1) SHED LOAD FIRST — reduce incoming stream volume from less time-sensitive internal workloads so per-host status messages shrink, the cell manager can ingest status in time, false-unhealthy verdicts stop, and the shard-reshuffle rate falls; (2) THEN add capacity to the TLS connection-provisioner and enforce connection limits to absorb residual churn; (3) durable: make the cell manager balance by shard COUNT (not only throughput/IO) so a many-very-low-throughput-shard workload never over-concentrates and produces oversized status messages.",
+    "trust_tier": "approval",
+    "trap_actions": [
+      "restart_pod / restart_service: restart the 'unhealthy' dataplane hosts (kds-host-3/4) — they are FALSELY flagged unhealthy and are actually serving; restarting them adds MORE rebalance churn and feeds the reshuffle storm",
+      "scale_deployment: add raw shard/host capacity without addressing status-message size — more hosts do not shrink the oversized status messages and the cell manager keeps over-concentrating and false-flagging, so the storm continues",
+      "scale_deployment: add connection-provisioner capacity FIRST (before shedding load) — capacity alone does not drain the backlog while the reshuffle storm keeps churning ~3,900 secure-connection requests/s; it only helped after load-shed shrank the status messages",
+      "end_incident: rely on cell isolation to contain the impact — the damage is INSIDE the cell, so isolation does not stop this self-amplifying control-loop storm"
+    ],
+    "resolved": true
+  }
+}
