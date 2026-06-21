@@ -1,7 +1,7 @@
 # SRE-Degrees — Reticle Console
 
 A spatial SRE operations console where autonomous agents are first-class, living
-objects. **Seven lenses project one shared store.** Two are the hero surfaces:
+objects. **Eight lenses project one shared store.** Two are the hero surfaces:
 
 1. **SECTOR** — a blueprint mission-control board where agents are Dedalus-grade
    cards arranged by service zone, with proximity grouping, semantic zoom, and a
@@ -23,6 +23,11 @@ The rest turn that model into an operator's and a VP's working surfaces:
 5. **Authority & Blast-Radius map** — `// MAP`: pick an agent and see the
    transitive blast of one bad call (`dependsOn × tools × tier × env`) and what
    oversight actually contains it.
+6. **World model** — `// WORLD`: the fleet's production estate as a rotating globe
+   with Causal Search Engine queries (`what depends on Atlas?`, `what's burning`)
+   that drive a live code slice (MODEL view shows `toWorldModel` output; HARNESS
+   view shows `toHarness` legal-action filters). Picking an anchor on the globe
+   cross-links `selectedId` across all lenses.
 
 > This README is written for AI agents working in the repo. It is a map +
 > conventions reference, not marketing copy. Paths are relative to repo root.
@@ -80,6 +85,7 @@ app/dashboard/page.tsx
             ├─ activeView "queue"     → <QueueLens>      (agent actions awaiting human approval)
             ├─ activeView "fleet"     → <FleetLens>      (Risk & Economics board)
             ├─ activeView "blast"     → <BlastLens>      (authority + blast-radius map)
+            ├─ activeView "world"     → <WorldLens>      (globe + causal search + code slice)
             ├─ rail: <GroupLedger> (canvas/scatter) | <EvidenceLedger> (promote)
             └─ overlay: <AgentDossier>  (L3 slide-over)
 ```
@@ -115,6 +121,12 @@ lib/
                          FLEET_PRIOR_WEEK / TEAM_LEAD baselines
   blast.ts               BLAST RADIUS (pure): blastRadius (reverse-dependency BFS over
                          dependsOn × tools × tier × env) + topBlastRadii ranking
+  world.ts               WORLD MODEL (pure): WorldNode type + WORLD_TAXONOMY + worldNodes
+                         (anchor-per-agent + owned-service + ambient sample) + worldHeadcount
+  world-query.ts         CAUSAL SEARCH ENGINE (pure): parseQuery (intent→result), chipFilter,
+                         CHIP_TYPES, type ChipType, type QueryResult
+  world-code.ts          WORLD-AS-CODE (pure): toWorldModel (MODEL slice) + toHarness (HARNESS
+                         legal-action filter), both driven by QueryResult focus
   navigation.ts          Nav sections, StatusTone + STATUS_TONE_CLASS, Cmd+K command builder
   demo-data.ts           Legacy DemoProject data (projects/settings pages only)
   cn.ts                  classnames join
@@ -131,6 +143,10 @@ components/sector/        THE PRODUCT. See "Core concepts".
   QueueLens.tsx          On-call: human approval worklist (Approve/Deny/Escalate, SLA countdown)
   FleetLens.tsx          VP telescope: Economics / Oversight / Correlated authority / Ownership / Budget
   BlastLens.tsx          Authority & blast-radius SVG map (select origin → cascade highlight)
+  WorldLens.tsx          // WORLD lens: globe + causal search overlay + code panel compositor
+  WorldGlobe.tsx         Canvas-2D rotating globe with rAF, anchors, billboard labels, health color
+  CausalSearch.tsx       Chip strip + free-text search bar (chip filter ↔ parser handoff)
+  WorldCodePanel.tsx     Right-rail code panel (MODEL/HARNESS toggle, headcount, node-type list)
   AgentDossier.tsx       L3 detail slide-over (incl. a PROMOTION section)
   TemperatureField / HealthRing   ambient sensory overlays
   SoundToggle.tsx + useAmbientSound.ts   Web Audio sonifier (off by default)
@@ -155,9 +171,10 @@ test/
   fleet.test.ts          Fleet derivations + guards on the seeded demo narrative
   blast.test.ts          Blast-radius BFS, containment, ranking (+ seeded-fleet assertions)
   navigation.test.ts     Nav/command tests
+  world.test.ts          World taxonomy, node generation, causal parser, world-as-code generators
 ```
 (`pnpm test` enumerates these explicitly — add new files to the `test` script in
-`package.json`. Currently **33 tests** across 4 files; all pure, no DOM.)
+`package.json`. Currently **47 tests** across 5 files; all pure, no DOM.)
 
 ---
 

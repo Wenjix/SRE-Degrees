@@ -30,7 +30,7 @@ import {
 } from "@/lib/sre-data";
 import { computeReadiness, eligible, nextTier, prevTier, TIER_RANK } from "@/lib/promotion";
 
-export type ViewMode = "canvas" | "list" | "scatter" | "promote" | "incidents" | "queue" | "fleet" | "blast";
+export type ViewMode = "canvas" | "list" | "scatter" | "promote" | "incidents" | "queue" | "fleet" | "blast" | "world";
 
 export type LedgerEntry = {
 	ts: number;
