@@ -396,6 +396,11 @@ textarea::placeholder {
 	animation: ret-shatter 700ms ease-in forwards;
 }
 
+/* Live-incident pulse — the one banner that should breathe. */
+.ret-pulse {
+	animation: ret-hb 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.ret-skeleton::after,
 	.ret-caret,
@@ -404,7 +409,8 @@ textarea::placeholder {
 	.ret-tool[data-active="true"],
 	.ret-health-ring,
 	.ret-bracket-dissolve,
-	.ret-shatter {
+	.ret-shatter,
+	.ret-pulse {
 		animation: none !important;
 	}
 	.ret-cell,

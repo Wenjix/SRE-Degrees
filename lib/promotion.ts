@@ -82,7 +82,7 @@ export function gateFor(tier: AutonomyTier): GateDef | null {
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-const noCriticals = (a: SreAgent) => a.incidents === 0 && a.status !== "critical";
+const noCriticals = (a: SreAgent) => a.critsInWindow === 0 && a.status !== "critical";
 const serviceBurning = (a: SreAgent) => a.service.burnRate > 1;
 
 export type CriterionId = "runs" | "service" | "quality" | "correction" | "coverage" | "criticals" | "soak" | "env";
@@ -165,7 +165,7 @@ export function gateProgress(a: SreAgent): Criterion[] {
 			id: "criticals",
 			label: "zero criticals",
 			kind: "binary",
-			current: a.incidents,
+			current: a.critsInWindow,
 			target: 0,
 			pass: noCriticals(a),
 			inverted: false,

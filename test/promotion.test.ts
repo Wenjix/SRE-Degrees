@@ -28,7 +28,7 @@ function agent(over: Partial<SreAgent> = {}): SreAgent {
 		reviewSamplingRate: 0.4,
 		evalPassRate: 0.99,
 		humanAgreementRate: 0.97,
-		incidents: 0,
+		critsInWindow: 0,
 		soakMs: 7 * HOUR,
 		slo: { burnRate: 0.5, target: 99.9 },
 		service: { name: "checkout-api", sloTarget: 99.9, burnRate: 0.5, errorBudgetPct: 85 },
@@ -64,7 +64,7 @@ describe("readiness + eligibility", () => {
 	});
 
 	it("a critical agent loses trust (hard-capped) and cannot promote", () => {
-		const a = agent({ status: "critical", incidents: 1 });
+		const a = agent({ status: "critical", critsInWindow: 1 });
 		assert.equal(eligible(a), false);
 		assert.ok(computeReadiness(a) <= 60, "critical hard-caps readiness near 60");
 	});

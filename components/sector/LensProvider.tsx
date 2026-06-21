@@ -18,15 +18,19 @@ import {
 	toneForStatus,
 	WORLD,
 	zones,
+	incidentsSeed,
+	pendingActionsSeed,
 	type AgentStatus,
 	type AutonomyTier,
+	type Incident,
+	type PendingAction,
 	type ProvingEnv,
 	type SreAgent,
 	type Tier,
 } from "@/lib/sre-data";
 import { computeReadiness, eligible, nextTier, prevTier, TIER_RANK } from "@/lib/promotion";
 
-export type ViewMode = "canvas" | "list" | "scatter" | "promote";
+export type ViewMode = "canvas" | "list" | "scatter" | "promote" | "incidents" | "queue";
 
 export type LedgerEntry = {
 	ts: number;
@@ -52,6 +56,9 @@ export type LensState = {
 	promotingId: string | null; // transient: a promotion ceremony in flight
 	demotingId: string | null; // transient: a demotion ceremony in flight
 	ledger: LedgerEntry[];
+	// --- on-call cockpit ---
+	incidents: Incident[];
+	pendingActions: PendingAction[];
 };
 
 type Action =
@@ -69,7 +76,8 @@ type Action =
 	| { type: "PROMOTE"; id: string }
 	| { type: "ROLLBACK"; id: string }
 	| { type: "HOLD"; id: string }
-	| { type: "CLEAR_CEREMONY" };
+	| { type: "CLEAR_CEREMONY" }
+	| { type: "RESOLVE_ACTION"; id: string; decision: "approve" | "deny" | "escalate" };
 
 function clamp(v: number, lo: number, hi: number) {
 	return Math.max(lo, Math.min(hi, v));
@@ -159,7 +167,7 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 		);
 
 		const critStreak = status === "critical" ? a.critStreak + 1 : 0;
-		const incidents = status === "critical" && a.status !== "critical" ? a.incidents + 1 : a.incidents;
+		const critsInWindow = status === "critical" && a.status !== "critical" ? a.critsInWindow + 1 : a.critsInWindow;
 		const soakMs = a.soakMs + 0.5 * MS_PER_HOUR;
 		const cooldown = Math.max(0, a.cooldown - 1);
 
@@ -185,7 +193,7 @@ function stepTelemetry(list: SreAgent[]): SreAgent[] {
 			successRate,
 			overrideRate,
 			critStreak,
-			incidents,
+			critsInWindow,
 			soakMs,
 			cooldown,
 		};
@@ -210,12 +218,26 @@ function applyTierChange(a: SreAgent, to: AutonomyTier, demote: boolean): SreAge
 		...a,
 		autonomyTier: to,
 		soakMs: 0,
-		incidents: 0,
+		critsInWindow: 0,
 		critStreak: 0,
 		cooldown: 5,
 		provingEnv: demote ? ENV_BACK[a.provingEnv] : a.provingEnv,
 	};
 	return { ...next, readiness: computeReadiness(next) };
+}
+
+// --- on-call cockpit aging (sim-compressed so durations/SLAs visibly move) ----
+const COCKPIT_TICK_MS = 24_000;
+function stepIncidents(list: Incident[]): Incident[] {
+	return list.map((inc) => {
+		const last = inc.burnTrend[inc.burnTrend.length - 1] ?? 1;
+		const delta = inc.trend === "worsening" ? 0.08 : inc.trend === "recovering" ? -0.08 : (Math.random() - 0.5) * 0.06;
+		const next = Math.max(0.1, Math.round((last + delta) * 10) / 10);
+		return { ...inc, ageMs: inc.ageMs + COCKPIT_TICK_MS, burnTrend: [...inc.burnTrend.slice(-11), next] };
+	});
+}
+function agePending(list: PendingAction[]): PendingAction[] {
+	return list.map((p) => ({ ...p, ageMs: p.ageMs + 8_000 }));
 }
 
 function reducer(state: LensState, action: Action): LensState {
@@ -241,6 +263,8 @@ function reducer(state: LensState, action: Action): LensState {
 		}
 		case "TICK": {
 			const agents = stepTelemetry(state.agents);
+			const incidents = stepIncidents(state.incidents);
+			const pendingActions = agePending(state.pendingActions);
 			// auto-demote at most one agent on sustained critical — but only when no
 			// ceremony is in flight, and respecting per-agent cooldown (no thrash).
 			if (!state.promotingId && !state.demotingId) {
@@ -257,10 +281,10 @@ function reducer(state: LensState, action: Action): LensState {
 						actor: "auto",
 						reason: "sustained critical — trust revoked",
 					};
-					return { ...state, agents: next, demotingId: victim.id, ledger: [entry, ...state.ledger].slice(0, 60) };
+					return { ...state, agents: next, incidents, pendingActions, demotingId: victim.id, ledger: [entry, ...state.ledger].slice(0, 60) };
 				}
 			}
-			return { ...state, agents };
+			return { ...state, agents, incidents, pendingActions };
 		}
 		case "SELECT_CANDIDATE":
 			return { ...state, promoteSelectedId: action.id, selectedId: action.id };
@@ -320,6 +344,20 @@ function reducer(state: LensState, action: Action): LensState {
 		}
 		case "CLEAR_CEREMONY":
 			return { ...state, promotingId: null, demotingId: null };
+		case "RESOLVE_ACTION": {
+			const act = state.pendingActions.find((p) => p.id === action.id);
+			if (!act) return state;
+			const verb = action.decision === "approve" ? "APPROVED" : action.decision === "deny" ? "DENIED" : "ESCALATED";
+			return {
+				...state,
+				pendingActions: state.pendingActions.filter((p) => p.id !== action.id),
+				agents: state.agents.map((a) =>
+					a.id === act.agentId
+						? { ...a, terminalLines: [...a.terminalLines.slice(-7), `${act.id} ${act.action} → ${verb} by operator`] }
+						: a,
+				),
+			};
+		}
 		case "TOGGLE_SOUND":
 			return { ...state, soundOn: !state.soundOn };
 		case "SET_SOUND":
@@ -356,6 +394,7 @@ export type LensContextValue = {
 	rollback: (id: string) => void;
 	hold: (id: string) => void;
 	clearCeremony: () => void;
+	resolveAction: (id: string, decision: "approve" | "deny" | "escalate") => void;
 	worstStatus: AgentStatus;
 };
 
@@ -373,6 +412,8 @@ export function LensProvider({ children }: { children: ReactNode }) {
 		promotingId: null,
 		demotingId: null,
 		ledger: [],
+		incidents: incidentsSeed,
+		pendingActions: pendingActionsSeed,
 	}));
 
 	// Restore persisted sound preference (off by default).
@@ -434,6 +475,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
 	const rollback = useCallback((id: string) => dispatch({ type: "ROLLBACK", id }), []);
 	const hold = useCallback((id: string) => dispatch({ type: "HOLD", id }), []);
 	const clearCeremony = useCallback(() => dispatch({ type: "CLEAR_CEREMONY" }), []);
+	const resolveAction = useCallback((id: string, decision: "approve" | "deny" | "escalate") => dispatch({ type: "RESOLVE_ACTION", id, decision }), []);
 
 	const value = useMemo<LensContextValue>(
 		() => ({
@@ -451,9 +493,10 @@ export function LensProvider({ children }: { children: ReactNode }) {
 			rollback,
 			hold,
 			clearCeremony,
+			resolveAction,
 			worstStatus,
 		}),
-		[state, worstStatus, setView, select, open, close, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony],
+		[state, worstStatus, setView, select, open, close, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony, resolveAction],
 	);
 
 	return <LensContext.Provider value={value}>{children}</LensContext.Provider>;

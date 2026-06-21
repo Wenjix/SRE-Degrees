@@ -80,13 +80,50 @@ export type SreAgent = {
 	evalPassRate: number; // 0-1 decision-quality eval suite pass rate
 	humanAgreementRate: number; // 0-1 agreement on sampled decisions
 	reviewSamplingRate: number; // 0-1 fraction of actions still human-reviewed (the override DENOMINATOR)
-	incidents: number; // criticals in the current soak window
+	critsInWindow: number; // criticals in the current soak window (NOT a declared incident)
 	soakMs: number; // accumulated sim-time in the current tier
 	critStreak: number; // consecutive critical ticks (sim-managed)
 	cooldown: number; // ticks until eligible for auto-demote again
 };
 
 export const MS_PER_HOUR = 3_600_000;
+const MIN = 60_000;
+
+// --- On-call cockpit: declared incidents + the human approval queue ----------
+export type Severity = 1 | 2 | 3 | 4; // SEV1 = worst
+export type IncidentTrend = "worsening" | "stable" | "recovering";
+
+export type Incident = {
+	id: string; // INC-204
+	severity: Severity;
+	title: string;
+	service: string; // affected service
+	zones: Tier[];
+	customerImpact: boolean;
+	agentIds: string[]; // implicated / responding agents
+	trigger: string; // the signal that fired
+	burnTrend: number[]; // owned-service burn since onset (sparkline)
+	lastAction: string;
+	trend: IncidentTrend;
+	commander: string | null; // human incident commander; null = unassigned
+	ageMs: number; // accumulated sim duration since onset
+};
+
+export type ActionRisk = "read" | "mutate";
+
+export type PendingAction = {
+	id: string; // ACT-91
+	agentId: string;
+	action: string; // "scale edge-router x2"
+	risk: ActionRisk; // read-only vs mutating/irreversible
+	blastServices: number;
+	blastInstances: number;
+	blastScope: string; // "eu-west-1 · prod"
+	reasoning: string; // the agent's stated justification
+	confidence: number; // 0-1
+	ageMs: number; // time waiting
+	slaMs: number; // decision deadline
+};
 
 // --- Spatial constants (shared by data, canvas, hooks) ---------------------
 export const CELL = 48;
@@ -451,7 +488,7 @@ export const agents: SreAgent[] = SEEDS.map((s, i) => {
 		evalPassRate: w.evalPassRate,
 		humanAgreementRate: w.humanAgreementRate,
 		reviewSamplingRate: w.reviewSamplingRate,
-		incidents: auto.incidents,
+		critsInWindow: auto.incidents,
 		soakMs: Math.round(auto.soakH * MS_PER_HOUR),
 		critStreak: 0,
 		cooldown: 0,
@@ -477,4 +514,55 @@ export function fleetOverview(list: SreAgent[] = agents) {
 		critical: count("critical"),
 		idle: count("idle"),
 	};
+}
+
+// --- Declared incidents (the real object, distinct from agent crit counters) --
+export const incidentsSeed: Incident[] = [
+	{
+		id: "INC-204", severity: 1, title: "control-plane API error budget burning", service: "control-plane-api",
+		zones: ["core"], customerImpact: true, agentIds: ["sre-7f2a"], trigger: "SLO burn 4.2x · probe core-2 FAIL x3",
+		burnTrend: [1.1, 1.4, 1.9, 2.6, 3.4, 4.2], lastAction: "Atlas paging on-call", trend: "worsening", commander: null, ageMs: 12 * MIN,
+	},
+	{
+		id: "INC-205", severity: 2, title: "payments-ledger budget exhausting", service: "payments-ledger",
+		zones: ["core"], customerImpact: true, agentIds: ["sre-8a13"], trigger: "service burn 3.8x · budget 7%",
+		burnTrend: [4.1, 3.9, 3.8, 3.8, 3.7, 3.8], lastAction: "Zeus armed auto-rollback", trend: "stable", commander: "@rivera", ageMs: 34 * MIN,
+	},
+	{
+		id: "INC-206", severity: 3, title: "edge cache latency elevated", service: "cdn-cache",
+		zones: ["edge"], customerImpact: false, agentIds: ["sre-9c1f"], trigger: "probe edge-3 SLOW 268ms",
+		burnTrend: [2.8, 2.4, 2.0, 1.7, 1.4, 1.2], lastAction: "Nyx scheduled purge-cache", trend: "recovering", commander: "@okafor", ageMs: 51 * MIN,
+	},
+];
+
+// --- The human approval queue (supervised/guarded agents proposing risky acts) -
+export const pendingActionsSeed: PendingAction[] = [
+	{
+		id: "ACT-91", agentId: "sre-3a07", action: "scale edge-router ×2", risk: "mutate",
+		blastServices: 1, blastInstances: 8, blastScope: "eu-west-1 · prod",
+		reasoning: "p95 268ms > 200ms SLO; +2 replicas restores headroom within budget", confidence: 0.94, ageMs: 2 * MIN, slaMs: 5 * MIN,
+	},
+	{
+		id: "ACT-92", agentId: "sre-7f2a", action: "rotate prod certs · control-plane", risk: "mutate",
+		blastServices: 3, blastInstances: 40, blastScope: "us-east-1 · prod",
+		reasoning: "certs expire in 12m; rotation unblocks probe core-2 and the SEV1", confidence: 0.88, ageMs: 1 * MIN, slaMs: 4 * MIN,
+	},
+	{
+		id: "ACT-93", agentId: "sre-9c1f", action: "failover pop-fra-1 → pop-ams-1", risk: "mutate",
+		blastServices: 1, blastInstances: 3, blastScope: "eu-west-1 · canary",
+		reasoning: "fra POP error rate climbing; ams has capacity and lower latency", confidence: 0.79, ageMs: 4 * MIN, slaMs: 8 * MIN,
+	},
+	{
+		id: "ACT-94", agentId: "sre-6c18", action: "compact-parquet on ingest", risk: "read",
+		blastServices: 1, blastInstances: 1, blastScope: "us-east-1 · prod",
+		reasoning: "scan latency rising; compaction is reversible and low blast radius", confidence: 0.97, ageMs: 6 * MIN, slaMs: 20 * MIN,
+	},
+];
+
+export const SEVERITY_LABEL: Record<Severity, string> = { 1: "SEV1", 2: "SEV2", 3: "SEV3", 4: "SEV4" };
+
+// SEV1/2 are health-critical, SEV3 degraded, SEV4 informational — maps to the
+// health color ramp (incident severity IS a health signal).
+export function severityTone(sev: Severity): AgentStatus {
+	return sev <= 2 ? "critical" : sev === 3 ? "degraded" : "healthy";
 }
