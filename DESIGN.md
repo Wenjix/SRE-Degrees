@@ -104,12 +104,15 @@ It is dual-theme (a true light blueprint exists at `:root`), but dark is its fac
 
 This system explicitly rejects the **generic SaaS observability dashboard** (endless identical card grids, the hero-metric template, the cool-gray + single-accent monoculture of Datadog/Grafana), the **dark "hacker" cliché** (neon-on-black, matrix-rain, terminal-as-costume), **consumer/playful** friendliness (rounded shapes, bright multi-color, mascots), and **heavy enterprise** chrome (dense gray tables, Bootstrap/AdminLTE, modal-on-modal).
 
+**Lineage — the interface has senses.** The system follows Amelia Wattenberger's thesis in *"Our interfaces have lost their senses"* and *"Evolving the infinite canvas"*: information should reach the operator through more than reading — peripheral vision, ambient warmth, motion, sound, and spatial memory. So health is never only a label. The board's `TemperatureField` warms toward the fire; a degrading agent's status dot *breathes* and a critical one *pings* outward as peripheral bait; the worst card physically lifts to win the visual fight; and an opt-in sonifier turns aggregate health into a low drone with panned earcons on every transition. Space is information too: agents live on a pannable, semantically-zoomed dot-grid world, clustered by proximity, where position carries meaning. Every sense is a **redundant** cue layered on the text — never the sole signal — and every one is silenced by `prefers-reduced-motion` (sound stays off until asked).
+
 **Key Characteristics:**
 - Square corners (`--ret-card-radius: 0`), 1px hairlines, zero shadows — flat by construction.
 - Saturated color = agent health, and nothing else; the accent is an ink, never a hue.
 - Mono data everywhere: numbers are tabular Geist Mono; labels are mono uppercase tracked.
 - A 48px dot-grid "world" with drafting guides (rail/cross) as the spatial substrate.
 - Calm by default; motion is a signal of real state change, always reduced-motion-gated.
+- Ambient senses (after Wattenberger): temperature, breathing/sonar motion, and an opt-in sonifier as **redundant** health cues — never the sole signal.
 
 ## 2. Colors
 
@@ -159,10 +162,14 @@ A near-monochrome instrument field where the only saturated pigments are the fou
 
 ## 4. Elevation
 
-There are no shadows. Depth is built from three flat devices: **1px hairlines** that separate every region, a **tonal ladder** (`bg #09090b` → `bg-soft/surface #111113` → `surface-hover #1a1a1e`) that lifts panels one step at a time, and the **48px dot-grid + drafting guides** that give the world a measured ground. The ambient `TemperatureField` warms the whole board by aggregate fleet health — the closest thing to "elevation," and it's atmosphere, not a drop shadow.
+Flat by default. Depth is built from three flat devices: **1px hairlines** that separate every region, a **tonal ladder** (`bg #09090b` → `bg-soft/surface #111113` → `surface-hover #1a1a1e`) that lifts panels one step at a time, and the **48px dot-grid + drafting guides** that give the world a measured ground. The ambient `TemperatureField` warms the whole board by aggregate fleet health — atmosphere, not a drop shadow.
+
+There is exactly **one** shadow in the system, and it is a *response to state*, never ambient: the worst card in view (a critical agent) lifts `translateY(-4px)` with a soft accent-glow (`box-shadow: 0 14px 36px var(--ret-accent-glow)`) so the fire wins the visual fight. Elevation is earned by severity, not used for decoration.
 
 ### Named Rules
-**The Flat-By-Default Rule.** Surfaces are flat at rest and stay flat. If you reach for a `box-shadow` to separate two things, use a hairline or a tonal step instead. Square corners only (`--ret-card-radius: 0`).
+**The Flat-By-Default Rule.** Surfaces are flat at rest and stay flat. If you reach for a `box-shadow` to separate two things, use a hairline or a tonal step instead. The lone exception is the critical card's state-lift. Square corners only (`--ret-card-radius: 0`).
+
+**The Senses Rule.** Health reaches the operator through redundant ambient channels — temperature (peripheral warmth), motion (a breathing dot, a sonar ping), and an opt-in sonifier (a 55Hz drone + panned earcons) — each layered on the text label, never replacing it. Every channel obeys `prefers-reduced-motion`; sound is off until the operator asks for it.
 
 ## 5. Components
 
@@ -196,6 +203,8 @@ Every control reads like console equipment: square, hairline-bordered, mono-labe
 - **Agent Card (Dedalus-grade machine card):** a square, hairline instrument tile. Health is the only color (a status dot + label + sparkline); work signals (actions / tool-ok / decision p95 / $/hr) and the owned service's burn read in mono. An `AutonomyChip` rides the footer.
 - **AutonomyChip:** the single shared autonomy renderer — chain/shackle icon + monochrome ink fill bar + tier label + `RDY`. Color-free by rule.
 - **Canvas instruments (globe / blast map / spatial board):** hand-rolled canvas-2D; health-colored nodes, ink selection rings, reduced-motion static frames, and a parallel screen-reader control list (the canvas is never the only path).
+- **Promotion ceremonies (the launch track):** state changes are dramatized, not just toggled. Earning autonomy fires a one-shot **release pulse** (`ret-promote-pulse`, 900ms, in accent *ink* — never a health hue); the final REMOVE OVERSIGHT beat **dissolves the guardrail bracket** (`ret-bracket-dissolve`, 800ms) and **shatters the last chain link** (`ret-shatter`, 700ms); losing trust fires a **health ring** (`ret-health-ring`, 900ms, in the health color) and a reverse slide. Reduced-motion collapses each to an instant state change + an EvidenceLedger entry + an `aria-live` announcement.
+- **Sonifier (opt-in, off by default):** a 55Hz drone whose gain tracks aggregate fleet health, with discrete panned earcons on transitions — rising `[392, 523, 659]` for recovery/promotion, falling `[330, 247]` for degradation/demotion — panned by board position / autonomy tier. The mute toggle is the gesture that resumes the `AudioContext`. Sound is always a redundant cue, never the sole signal.
 
 ## 6. Do's and Don'ts
 
@@ -205,6 +214,7 @@ Every control reads like console equipment: square, hairline-bordered, mono-labe
 - **Do** set every number in Geist Mono with `tabular-nums`; set labels in mono uppercase tracked and muted.
 - **Do** separate regions with 1px hairlines and the tonal ladder (`bg` → `surface` → `surface-hover`); keep corners square.
 - **Do** gate every animation behind `prefers-reduced-motion`, and give canvas surfaces a keyboard + screen-reader path (the List lens is the spine).
+- **Do** treat motion, temperature, and sound as **redundant** ambient cues for health (Wattenberger's "senses") — reserved for genuine state change and always layered on the text label.
 
 ### Don't:
 - **Don't** build the **generic SaaS dashboard**: no endless identical card grids, no hero-metric template (big number + small label + gradient), no cool-gray + single-accent monoculture. (Datadog/Grafana sameness is the thing to avoid.)
@@ -214,3 +224,4 @@ Every control reads like console equipment: square, hairline-bordered, mono-labe
 - **Don't** use gradient text (`background-clip: text`), decorative glassmorphism, or any `box-shadow` for elevation.
 - **Don't** convey status by color alone, and **don't** let `--ret-accent` or `signal-blue` read as a fifth health state.
 - **Don't** round corners or introduce a second accent hue; square + ink is the system.
+- **Don't** autoplay sound, animate for decoration, or let any single channel (color, motion, or sound) be the only carrier of a signal.

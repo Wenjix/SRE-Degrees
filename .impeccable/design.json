@@ -20,12 +20,18 @@
       "body": { "displayName": "Body", "purpose": "Prose, reasoning lines, descriptions. 65–75ch measure." },
       "label": { "displayName": "Mono Label", "purpose": "Data labels, units, column heads. Mono uppercase tracked, muted." }
     },
-    "shadows": [],
+    "shadows": [
+      { "name": "crit-state-lift", "value": "0 14px 36px var(--ret-accent-glow)", "purpose": "The single shadow in the system: a critical card lifts (translateY -4px) to win the visual fight — a response to state, never ambient." }
+    ],
     "motion": [
       { "name": "ret-heartbeat", "value": "ret-hb 1.8s ease-in-out infinite (warn) / 0.95s (crit)", "purpose": "A status dot that breathes on a degrading agent and races on a critical one. Health-paced, not decorative." },
       { "name": "ret-sonar", "value": "ret-sonar 1.6s ease-out infinite", "purpose": "Critical agents ping outward as peripheral bait — the only thing that draws the eye across the board." },
       { "name": "ret-promote-pulse", "value": "ret-promote-pulse 900ms ease-out", "purpose": "Accent (ink) release pulse when an agent earns autonomy. Never an alarm color." },
       { "name": "ret-pulse", "value": "ret-hb 1.6s ease-in-out infinite", "purpose": "The active-incident banner dot. Reduced-motion → static." },
+      { "name": "ret-health-ring", "value": "ret-health-ring 900ms ease-out forwards", "purpose": "One-shot expanding ring (in the health color) on a fleet status transition / auto-demotion." },
+      { "name": "ret-bracket-dissolve + ret-shatter", "value": "800ms ease-out + 700ms ease-in forwards", "purpose": "The REMOVE OVERSIGHT signature beat: the guardrail bracket dissolves and the last chain link shatters as an agent goes fully autonomous." },
+      { "name": "ret-tool-flash", "value": "ret-tool-flash 2.2s ease-in-out infinite", "purpose": "An active capability in the tool rail flashes gently." },
+      { "name": "sonifier", "value": "55Hz drone (gain tracks aggregate health) + panned earcons — rising [392,523,659] recover/promote, falling [330,247] degrade/demote", "purpose": "Opt-in ambient sound, off by default: health as a low drone, transitions as discrete panned earcons. Always a redundant cue, never the sole signal." },
       { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce){ animation:none; transition:none }", "purpose": "Non-negotiable: every ceremony degrades to an instant state change + ledger/aria-live announcement." }
     ],
     "breakpoints": [
@@ -95,27 +101,30 @@
   ],
   "narrative": {
     "northStar": "The Blueprint Control Room",
-    "overview": "Reticle is a drafting-table blueprint you operate from a calm control room. The world is a 48px dot-grid plane; agents, services, incidents and the production estate are plotted on it as instruments, not cards. Structure is drawn with 1px hairlines and square corners; nothing is rounded, nothing is shadowed, nothing decorates. The surface stays deliberately quiet — a near-black field under mono readouts — so that the one thing allowed to be loud, agent health, is the only saturated color on screen. It is dual-theme (a true light blueprint exists), but dark is its face: a control room at 3am. Motion is reserved — a heartbeat on a degrading agent, a sonar ping on a critical one, a release pulse when an agent earns autonomy — never ambient decoration, always reduced-motion-gated.",
+    "overview": "Reticle is a drafting-table blueprint you operate from a calm control room. The world is a 48px dot-grid plane; agents, services, incidents and the production estate are plotted on it as instruments, not cards. Structure is drawn with 1px hairlines and square corners; nothing is rounded, nothing is shadowed, nothing decorates. The surface stays deliberately quiet — a near-black field under mono readouts — so that the one thing allowed to be loud, agent health, is the only saturated color on screen. It is dual-theme (a true light blueprint exists), but dark is its face: a control room at 3am. Motion is reserved — a heartbeat on a degrading agent, a sonar ping on a critical one, a release pulse when an agent earns autonomy — never ambient decoration, always reduced-motion-gated. Its sensory layer follows Amelia Wattenberger's thesis ('Our interfaces have lost their senses', 'Evolving the infinite canvas'): health reaches the operator through peripheral warmth, motion, sound, and spatial memory — each a redundant cue, never the sole signal.",
     "keyCharacteristics": [
       "Square corners (--ret-card-radius: 0), 1px hairlines, zero shadows — flat by construction.",
       "Saturated color = agent health, and nothing else; the accent is an ink, never a hue.",
       "Mono data everywhere: numbers are tabular Geist Mono; labels are mono uppercase tracked.",
       "A 48px dot-grid world with drafting guides (rail/cross) as the spatial substrate.",
-      "Calm by default; motion signals real state change and is always reduced-motion-gated."
+      "Calm by default; motion signals real state change and is always reduced-motion-gated.",
+      "Ambient senses (after Wattenberger): temperature, breathing/sonar motion, and an opt-in sonifier as redundant health cues — never the sole signal."
     ],
     "rules": [
       { "name": "The One-Color-One-Meaning Rule", "body": "Saturated color means agent health — full stop. It is always paired with a text label + a shape/position cue; status is never conveyed by color alone.", "section": "colors" },
       { "name": "The Ink-Accent Rule", "body": "--ret-accent is an ink (near-white #ededed dark / near-black #18181b light), not a hue. It carries active / primary / autonomy and must never read as a fifth status color.", "section": "colors" },
       { "name": "The Ink-Not-Hue Autonomy Rule", "body": "Autonomy is encoded by left→right position + a monochrome ink fill bar + a chain/shackle icon + a mono label — never by color.", "section": "colors" },
       { "name": "The Mono-Data Rule", "body": "Every number is Geist Mono with tabular-nums so live-ticking columns never reflow; labels and units are mono uppercase tracked and muted so the value reads first.", "section": "typography" },
-      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest and stay flat. If you reach for a box-shadow to separate two things, use a 1px hairline or a tonal step instead. Square corners only.", "section": "elevation" }
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest and stay flat. If you reach for a box-shadow to separate two things, use a 1px hairline or a tonal step instead. Square corners only (lone exception: the critical card's state-lift).", "section": "elevation" },
+      { "name": "The Senses Rule", "body": "Health reaches the operator through redundant ambient channels — temperature, motion (a breathing/pinging status dot), and an opt-in sonifier (drone + panned earcons) — each layered on the text label, never replacing it. Every channel obeys prefers-reduced-motion; sound is off until asked.", "section": "elevation" }
     ],
     "dos": [
       "Do keep saturated color for agent health only (#4ade80 / #fbbf24 / #f87171), always paired with a text label and a shape/position cue.",
       "Do use --ret-accent as an ink for the active control, the primary action, and the autonomy fill — never as a status color.",
       "Do set every number in Geist Mono with tabular-nums; set labels in mono uppercase tracked and muted.",
       "Do separate regions with 1px hairlines and the tonal ladder (bg → surface → surface-hover); keep corners square.",
-      "Do gate every animation behind prefers-reduced-motion, and give canvas surfaces a keyboard + screen-reader path (the List lens is the spine)."
+      "Do gate every animation behind prefers-reduced-motion, and give canvas surfaces a keyboard + screen-reader path (the List lens is the spine).",
+      "Do treat motion, temperature, and sound as redundant ambient cues for health (Wattenberger's senses) — reserved for genuine state change and layered on the text label."
     ],
     "donts": [
       "Don't build the generic SaaS dashboard: no endless identical card grids, no hero-metric template, no cool-gray + single-accent monoculture (Datadog/Grafana sameness).",
@@ -124,7 +133,8 @@
       "Don't use border-left/border-right > 1px as a colored side-stripe; use full borders, tints, or leading marks.",
       "Don't use gradient text, decorative glassmorphism, or any box-shadow for elevation.",
       "Don't convey status by color alone, and don't let the accent or signal-blue read as a fifth health state.",
-      "Don't round corners or introduce a second accent hue; square + ink is the system."
+      "Don't round corners or introduce a second accent hue; square + ink is the system.",
+      "Don't autoplay sound, animate for decoration, or let any single channel (color, motion, or sound) be the only carrier of a signal."
     ]
   }
 }
