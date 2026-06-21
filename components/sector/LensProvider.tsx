@@ -60,7 +60,18 @@ export type LensState = {
 	incidents: Incident[];
 	pendingActions: PendingAction[];
 	// --- undo toast ---
-	toast: { token: number; label: string; restore: PendingAction | null } | null;
+	// `restore` + `agentId`/`terminalLine`/`ledgerEntry` carry everything UNDO
+	// needs to fully reverse a RESOLVE_ACTION (queue, terminal tail, and ledger).
+	toast:
+		| {
+				token: number;
+				label: string;
+				restore: PendingAction | null;
+				agentId: string | null;
+				terminalLine: string | null;
+				ledgerEntry: LedgerEntry | null;
+		  }
+		| null;
 };
 
 // monotonic token for toast deduplication
@@ -251,6 +262,9 @@ function applyTierChange(a: SreAgent, to: AutonomyTier, demote: boolean): SreAge
 const COCKPIT_TICK_MS = 24_000;
 function stepIncidents(list: Incident[]): Incident[] {
 	return list.map((inc) => {
+		// fire's out: freeze the timer and burn-trend at the resolution moment so a
+		// resolved incident doesn't keep aging or drawing a live sparkline.
+		if (inc.resolved) return inc;
 		const last = inc.burnTrend[inc.burnTrend.length - 1] ?? 1;
 		const delta = inc.trend === "worsening" ? 0.08 : inc.trend === "recovering" ? -0.08 : (Math.random() - 0.5) * 0.06;
 		const next = Math.max(0.1, Math.round((last + delta) * 10) / 10);
@@ -372,6 +386,7 @@ function reducer(state: LensState, action: Action): LensState {
 			const verb = action.decision === "approve" ? "APPROVED" : action.decision === "deny" ? "DENIED" : "ESCALATED";
 			const token = ++_toastToken;
 			const la = state.agents.find((a) => a.id === act.agentId);
+			const termLine = `${act.id} ${act.action} → ${verb} by operator`;
 			const lentry: LedgerEntry | null = la
 				? { ts: Date.now(), agentId: la.id, agentName: la.name, fromTier: la.autonomyTier, toTier: la.autonomyTier, actor: "operator", reason: `${act.id} ${verb.toLowerCase()} · ${act.action}` }
 				: null;
@@ -380,17 +395,19 @@ function reducer(state: LensState, action: Action): LensState {
 				pendingActions: state.pendingActions.filter((p) => p.id !== action.id),
 				agents: state.agents.map((a) =>
 					a.id === act.agentId
-						? { ...a, terminalLines: [...a.terminalLines.slice(-7), `${act.id} ${act.action} → ${verb} by operator`] }
+						? { ...a, terminalLines: [...a.terminalLines.slice(-7), termLine] }
 						: a,
 				),
-				toast: { token, label: `${act.id} ${verb}`, restore: act },
+				// carry the exact terminal line + ledger entry so UNDO can strip them.
+				toast: { token, label: `${act.id} ${verb}`, restore: act, agentId: la ? act.agentId : null, terminalLine: la ? termLine : null, ledgerEntry: lentry },
 				ledger: lentry ? [lentry, ...state.ledger].slice(0, 60) : state.ledger,
 			};
 		}
 		case "ACKNOWLEDGE_INCIDENT": {
 			const inc = state.incidents.find((i) => i.id === action.id);
-			const a = inc ? state.agents.find((x) => x.id === inc.agentIds[0]) : undefined;
-			const entry: LedgerEntry | null = inc && a
+			if (!inc || inc.resolved) return state; // a resolved fire is frozen — nothing to ack
+			const a = state.agents.find((x) => x.id === inc.agentIds[0]);
+			const entry: LedgerEntry | null = a
 				? { ts: Date.now(), agentId: a.id, agentName: a.name, fromTier: a.autonomyTier, toTier: a.autonomyTier, actor: "operator", reason: `${inc.id} acknowledged — investigating` }
 				: null;
 			return {
@@ -403,7 +420,7 @@ function reducer(state: LensState, action: Action): LensState {
 			return {
 				...state,
 				incidents: state.incidents.map((inc) =>
-					inc.id === action.id && inc.commander === null ? { ...inc, commander: "you" } : inc,
+					inc.id === action.id && inc.commander === null && !inc.resolved ? { ...inc, commander: "you" } : inc,
 				),
 			};
 		}
@@ -444,10 +461,26 @@ function reducer(state: LensState, action: Action): LensState {
 			};
 		}
 		case "UNDO_TOAST": {
-			if (!state.toast?.restore) return { ...state, toast: null };
+			const t = state.toast;
+			if (!t?.restore) return { ...state, toast: null };
+			// Reverse ALL of RESOLVE_ACTION's side effects, not just the queue removal:
+			// put the action back, strip the terminal line it wrote, and drop its
+			// ledger entry — otherwise the audit trail keeps saying "approved" while
+			// the action sits back in the queue (a contradictory record).
+			const agents =
+				t.agentId && t.terminalLine
+					? state.agents.map((a) => {
+							if (a.id !== t.agentId) return a;
+							const idx = a.terminalLines.lastIndexOf(t.terminalLine!);
+							return idx === -1 ? a : { ...a, terminalLines: [...a.terminalLines.slice(0, idx), ...a.terminalLines.slice(idx + 1)] };
+						})
+					: state.agents;
+			const ledger = t.ledgerEntry ? state.ledger.filter((e) => e !== t.ledgerEntry) : state.ledger;
 			return {
 				...state,
-				pendingActions: [state.toast.restore, ...state.pendingActions],
+				agents,
+				pendingActions: [t.restore, ...state.pendingActions],
+				ledger,
 				toast: null,
 			};
 		}

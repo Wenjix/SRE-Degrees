@@ -113,6 +113,17 @@ describe("world-as-code generators", () => {
 		assert.match(harness, /implicated in INC-204/);
 	});
 
+	it("prefers an active fire over a resolved one for the same agent", () => {
+		const atlasId = id("Atlas");
+		const mixed = [
+			{ ...incidentsSeed[0], id: "INC-900", agentIds: [atlasId], resolved: true, severity: 2 as const },
+			{ ...incidentsSeed[0], id: "INC-901", agentIds: [atlasId], resolved: false, severity: 1 as const },
+		];
+		const code = toWorldModel(atlas, agents, mixed);
+		assert.match(code, /implicated in INC-901/); // the live fire, not the recovered one
+		assert.doesNotMatch(code, /recovered from INC-900/);
+	});
+
 	it("WORLD MODEL emits typed state, the owned service, and a violated invariant", () => {
 		const code = toWorldModel(atlas, agents);
 		assert.match(code, /const world = \{/);

@@ -66,8 +66,10 @@ export function SectorWorkspace() {
 				{VIEW_LABEL[view]} view
 			</div>
 
-			{/* active-incident banner — health-colored, the one thing that should pull focus */}
-			{worst && view !== "incidents" ? (
+			{/* active-incident banner — health-colored, the one thing that should pull focus.
+			    Suppressed in cockpit (incidents are already shown inline; the banner would
+			    only navigate away to the standalone view). */}
+			{worst && view !== "incidents" && view !== "cockpit" ? (
 				<button
 					type="button"
 					onClick={() => setView("incidents")}
@@ -103,7 +105,7 @@ export function SectorWorkspace() {
 					<FleetSummary className="hidden sm:flex" />
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
-					{pendingCount > 0 && view !== "queue" ? (
+					{pendingCount > 0 && view !== "queue" && view !== "cockpit" ? (
 						<button
 							type="button"
 							onClick={() => setView("queue")}

@@ -22,7 +22,9 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 function incidentNotes(subs: SreAgent[], incidents: Incident[]): string[] {
 	const out: string[] = [];
 	for (const a of subs) {
-		const inc = incidents.find((i) => i.agentIds.includes(a.id));
+		// prefer an ACTIVE fire over a resolved one, so a recovered incident never
+		// masks a live one in the provenance comment.
+		const inc = incidents.find((i) => !i.resolved && i.agentIds.includes(a.id)) ?? incidents.find((i) => i.agentIds.includes(a.id));
 		if (!inc) continue;
 		out.push(
 			inc.resolved
