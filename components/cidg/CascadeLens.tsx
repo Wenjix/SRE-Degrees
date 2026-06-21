@@ -132,6 +132,12 @@ export function CascadeLens() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
+			{/* polite SR announcement of the evolving cascade state (house a11y rule) */}
+			<p aria-live="polite" className="sr-only">
+				{`${scenario.id} — tick ${clampedTick} of ${scenario.maxTick}, ${inject ? "fault injected" : "control (no fault)"}${
+					loudest ? `, loudest alert on ${loudest.node}` : ""
+				}.`}
+			</p>
 			{/* header + scenario picker */}
 			<div className="shrink-0 border-b border-[var(--ret-border)] bg-[var(--ret-bg)] px-4 py-3">
 				<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
