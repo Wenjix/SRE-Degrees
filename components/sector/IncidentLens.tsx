@@ -78,12 +78,14 @@ function IncidentRow({
 }) {
 	const { acknowledgeIncident, assignCommander, resolveIncident, open, setView, select, focusZone } = useLens();
 	const color = STATUS_COLOR_VAR[severityTone(inc.severity)];
+	const headerRef = useRef<HTMLButtonElement>(null);
 
 	const handleAck = useCallback(
 		(e: React.MouseEvent) => {
 			e.stopPropagation();
 			acknowledgeIncident(inc.id);
 			onAnnounce(`${inc.id} acknowledged`);
+			headerRef.current?.focus(); // keep keyboard/SR focus on the row when the button unmounts
 		},
 		[acknowledgeIncident, inc.id, onAnnounce],
 	);
@@ -93,6 +95,7 @@ function IncidentRow({
 			e.stopPropagation();
 			assignCommander(inc.id);
 			onAnnounce(`IC assigned to ${inc.id}`);
+			headerRef.current?.focus(); // keep keyboard/SR focus on the row when the button unmounts
 		},
 		[assignCommander, inc.id, onAnnounce],
 	);
@@ -121,6 +124,7 @@ function IncidentRow({
 			e.stopPropagation();
 			resolveIncident(inc.id);
 			onAnnounce(`${inc.id} resolved — fire out`);
+			headerRef.current?.focus(); // keep keyboard/SR focus on the row when the button unmounts
 		},
 		[resolveIncident, inc.id, onAnnounce],
 	);
@@ -147,6 +151,7 @@ function IncidentRow({
 			{/* row header — selectable, maps the agent on the canvas */}
 			<button
 				type="button"
+				ref={headerRef}
 				onClick={handleRowClick}
 				className="block w-full p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--ret-accent)]"
 			>

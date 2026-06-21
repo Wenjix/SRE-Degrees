@@ -85,6 +85,8 @@ function QueueRow({
 	// Armed state for high-blast two-step confirm. View-local; resets on unmount
 	// or after 3s of inactivity.
 	const [armed, setArmed] = useState(false);
+	// sr-only announcement for the two-step arm window (parity with the visual bar)
+	const [liveMsg, setLiveMsg] = useState("");
 	const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const clearArmTimer = useCallback(() => {
@@ -116,34 +118,40 @@ function QueueRow({
 		if (!armed) {
 			// First click: arm the button and start the 3s disarm timer.
 			setArmed(true);
+			setLiveMsg(`Approve ${p.id} armed — press again within 3 seconds to confirm`);
 			clearArmTimer();
 			armTimerRef.current = setTimeout(() => {
 				setArmed(false);
+				setLiveMsg(`Approve ${p.id} arm window expired`);
 				armTimerRef.current = null;
 			}, 3000);
 		} else {
 			// Second click while armed: confirm and fire.
 			clearArmTimer();
 			setArmed(false);
+			setLiveMsg("");
 			onApprove();
 		}
-	}, [highBlast, armed, onApprove, clearArmTimer]);
+	}, [highBlast, armed, onApprove, clearArmTimer, p.id]);
 
 	// Clicking elsewhere (Deny / Escalate) must also disarm.
 	const handleDeny = useCallback(() => {
 		clearArmTimer();
 		setArmed(false);
+		setLiveMsg("");
 		onDeny();
 	}, [onDeny, clearArmTimer]);
 
 	const handleEscalate = useCallback(() => {
 		clearArmTimer();
 		setArmed(false);
+		setLiveMsg("");
 		onEscalate();
 	}, [onEscalate, clearArmTimer]);
 
 	return (
 		<li className="border border-[var(--ret-border)] bg-[var(--ret-bg)] p-3">
+			<span role="status" aria-live="polite" aria-atomic="true" className="sr-only">{liveMsg}</span>
 			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">

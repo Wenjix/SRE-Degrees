@@ -179,7 +179,10 @@ export function PromoteLens({ className }: { className?: string }) {
 								const pos = slots.get(ceremonyAgent.id);
 								if (!pos) return null;
 								const color = STATUS_COLOR_VAR[ceremonyAgent.status];
-								const reason = state.ledger[0]?.reason ?? "trust revoked";
+								// match THIS agent's tier-change entry (not ledger[0], which an operator
+							// action during the ~950ms ceremony can displace); auto live-fire
+							// entries keep the same tier, so fromTier !== toTier isolates the demotion.
+							const reason = state.ledger.find((e) => e.agentId === ceremonyAgent.id && e.fromTier !== e.toTier)?.reason ?? "trust revoked";
 								return (
 									<div
 										key={`demote-${demotingId}`}
