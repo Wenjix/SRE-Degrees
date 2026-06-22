@@ -57,7 +57,8 @@ export type Toast = {
 export type LensState = {
 	agents: SreAgent[];
 	selectedId: string | null;
-	openAgentId: string | null; // L3 dossier
+	openAgentId: string | null; // L3 dossier (operational record, right drawer)
+	recordAgentId: string | null; // service record — the centered "character profile" sheet (PROMOTE lens)
 	activeView: ViewMode;
 	focusZone: Tier | null; // intent: canvas should frame this zone
 	focusNonce: number; // bump to re-fire focus even for same zone
@@ -85,6 +86,8 @@ type Action =
 	| { type: "SELECT"; id: string | null }
 	| { type: "OPEN"; id: string }
 	| { type: "CLOSE" }
+	| { type: "OPEN_RECORD"; id: string }
+	| { type: "CLOSE_RECORD" }
 	| { type: "FOCUS_ZONE"; zone: Tier | null }
 	| { type: "MOVE_AGENT"; id: string; x: number; y: number }
 	| { type: "TICK" }
@@ -287,9 +290,17 @@ function reducer(state: LensState, action: Action): LensState {
 		case "SELECT":
 			return { ...state, selectedId: action.id };
 		case "OPEN":
-			return { ...state, openAgentId: action.id, selectedId: action.id };
+			// the operational dossier and the service record are both z-70 overlays;
+			// opening one closes the other so they never stack.
+			return { ...state, openAgentId: action.id, selectedId: action.id, recordAgentId: null };
 		case "CLOSE":
 			return { ...state, openAgentId: null };
+		case "OPEN_RECORD":
+			// double-click in PROMOTE: open the centered service record AND dock the
+			// same agent in the bottom CandidateDossier so the two stay in sync.
+			return { ...state, recordAgentId: action.id, promoteSelectedId: action.id, selectedId: action.id, openAgentId: null };
+		case "CLOSE_RECORD":
+			return { ...state, recordAgentId: null };
 		case "FOCUS_ZONE":
 			return { ...state, focusZone: action.zone, focusNonce: state.focusNonce + 1 };
 		case "MOVE_AGENT": {
@@ -537,6 +548,8 @@ export type LensContextValue = {
 	select: (id: string | null) => void;
 	open: (id: string) => void;
 	close: () => void;
+	openRecord: (id: string) => void;
+	closeRecord: () => void;
 	focusZone: (zone: Tier | null) => void;
 	moveAgent: (id: string, x: number, y: number) => void;
 	toggleSound: () => void;
@@ -560,6 +573,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
 		agents: seedAgents,
 		selectedId: null,
 		openAgentId: null,
+		recordAgentId: null,
 		activeView: "canvas",
 		focusZone: null,
 		focusNonce: 0,
@@ -624,6 +638,8 @@ export function LensProvider({ children }: { children: ReactNode }) {
 	const select = useCallback((id: string | null) => dispatch({ type: "SELECT", id }), []);
 	const open = useCallback((id: string) => dispatch({ type: "OPEN", id }), []);
 	const close = useCallback(() => dispatch({ type: "CLOSE" }), []);
+	const openRecord = useCallback((id: string) => dispatch({ type: "OPEN_RECORD", id }), []);
+	const closeRecord = useCallback(() => dispatch({ type: "CLOSE_RECORD" }), []);
 	const focusZone = useCallback((zone: Tier | null) => dispatch({ type: "FOCUS_ZONE", zone }), []);
 	const moveAgent = useCallback((id: string, x: number, y: number) => dispatch({ type: "MOVE_AGENT", id, x, y }), []);
 	const toggleSound = useCallback(() => dispatch({ type: "TOGGLE_SOUND" }), []);
@@ -647,6 +663,8 @@ export function LensProvider({ children }: { children: ReactNode }) {
 			select,
 			open,
 			close,
+			openRecord,
+			closeRecord,
 			focusZone,
 			moveAgent,
 			toggleSound,
@@ -664,7 +682,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
 			dismissToast,
 			worstStatus,
 		}),
-		[state, worstStatus, setView, select, open, close, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony, resolveAction, acknowledgeIncident, assignCommander, resolveIncident, undoToast, dismissToast],
+		[state, worstStatus, setView, select, open, close, openRecord, closeRecord, focusZone, moveAgent, toggleSound, renameGroup, selectCandidate, promote, rollback, hold, clearCeremony, resolveAction, acknowledgeIncident, assignCommander, resolveIncident, undoToast, dismissToast],
 	);
 
 	return <LensContext.Provider value={value}>{children}</LensContext.Provider>;

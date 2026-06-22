@@ -20,6 +20,7 @@ import { QueueLens } from "./QueueLens";
 import { ToastStack } from "./ToastStack";
 import { ScatterLens } from "./ScatterLens";
 import { SectorCanvas } from "./SectorCanvas";
+import { ServiceRecord } from "./ServiceRecord";
 import { SoundToggle } from "./SoundToggle";
 import { ViewModeSwitch } from "./ViewModeSwitch";
 import { STATUS_COLOR_VAR } from "./visual";
@@ -155,6 +156,7 @@ export function SectorWorkspace() {
 			</div>
 
 			<AgentDossier />
+			<ServiceRecord />
 			<ToastStack />
 		</div>
 	);

@@ -21,7 +21,7 @@ const TOKEN_H = 112;
 // are absolutely placed by tier+slot; a tier change animates the lane slide via
 // a pure CSS transition. Promotion fires an accent release pulse + earcon.
 export function PromoteLens({ className }: { className?: string }) {
-	const { state, selectCandidate, promote, hold, rollback, clearCeremony } = useLens();
+	const { state, selectCandidate, openRecord, promote, hold, rollback, clearCeremony } = useLens();
 	const { agents, promoteSelectedId, promotingId, demotingId } = state;
 
 	// stable slot per agent (sorted by name within tier so only tier changes move)
@@ -118,7 +118,15 @@ export function PromoteLens({ className }: { className?: string }) {
 									key={a.id}
 									type="button"
 									onClick={() => selectCandidate(a.id)}
-									aria-label={`${a.name}, ${TIER_LABEL[a.autonomyTier]}, readiness ${Math.round(a.readiness)}, ${a.status}`}
+									onDoubleClick={() => openRecord(a.id)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") {
+											e.preventDefault();
+											openRecord(a.id);
+										}
+									}}
+									aria-haspopup="dialog"
+									aria-label={`${a.name}, ${TIER_LABEL[a.autonomyTier]}, readiness ${Math.round(a.readiness)}, ${a.status}. Double-click or Enter for service record.`}
 									data-ceremony={isCeremony ? "1" : undefined}
 									className={cn(
 										"ret-token absolute left-0 top-0 block text-left outline-none transition-transform duration-[600ms] ease-out",

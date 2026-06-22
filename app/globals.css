@@ -492,6 +492,48 @@ textarea::placeholder {
 	animation: ret-arm-window 3000ms linear forwards;
 }
 
+/* Service Record — the centered "character profile" sheet develops in like a
+   blueprint being drawn; its transcript rows settle in one after another; the
+   candidacy meter sweeps once to value on open. All ink-only, all gated below. */
+@keyframes ret-record-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px) scale(0.985);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.ret-record-in {
+	animation: ret-record-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ret-record-row {
+	from {
+		opacity: 0;
+		transform: translateX(-5px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+/* `both` (not a 0-opacity base) so a headless/hidden render still settles to
+   opacity 1 if the animation never plays — content is never gated to invisible. */
+.ret-record-row {
+	animation: ret-record-row 280ms ease-out both;
+}
+
+/* the candidacy meter fill — compositor-friendly scaleX (transform-origin left)
+   the component drives 0 -> value on open, matching .ret-anim-fill / .ret-arm-window. */
+.ret-meter-fill {
+	transform-origin: left;
+	transition: transform 760ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.ret-skeleton::after,
 	.ret-caret,
@@ -502,12 +544,15 @@ textarea::placeholder {
 	.ret-bracket-dissolve,
 	.ret-shatter,
 	.ret-pulse,
-	.ret-toast-in {
+	.ret-toast-in,
+	.ret-record-in,
+	.ret-record-row {
 		animation: none !important;
 	}
 	.ret-cell,
 	.ret-token,
-	.ret-anim-fill {
+	.ret-anim-fill,
+	.ret-meter-fill {
 		transition: none !important;
 	}
 	.ret-promote-pulse {
