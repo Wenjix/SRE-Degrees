@@ -71,7 +71,7 @@ function ServiceRecordSheet({ agent }: { agent: SreAgent }) {
 	const to = nextTier(agent.autonomyTier);
 	const ok = eligible(agent);
 	const reason = blockingReason(agent);
-	const readiness = Math.round(computeReadiness(agent));
+	const readiness = Math.round(agent.readiness);
 	const toGo = Math.max(0, 100 - readiness);
 	const criteria = gateProgress(agent);
 	const requiredEnv = to ? GATES[agent.autonomyTier].requiredEnv : undefined;
