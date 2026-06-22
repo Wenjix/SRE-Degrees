@@ -31,8 +31,8 @@ export default function DesignSystemPage() {
 		<>
 			<PageHeader
 				kicker="Design system"
-				title="Reticle console primitives"
-				description="A compact inventory of the tokens, controls, loading states, panels, and status treatments used by the starter."
+				title="SRE Promotion Engine primitives"
+				description="A compact inventory of the tokens, controls, loading states, panels, and status treatments used by the promotion console."
 				right={<ReticleBadge variant="accent">v0.1</ReticleBadge>}
 			/>
 			<DashboardPageBody>

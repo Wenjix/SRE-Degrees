@@ -538,7 +538,7 @@ function zoneAtPoint(cx: number, cy: number): Tier | null {
 	return z ? z.id : null;
 }
 
-const SOUND_KEY = "reticle-console.sound";
+const SOUND_KEY = "sre-promotion-engine.sound";
 
 const LensContext = createContext<LensContextValue | null>(null);
 

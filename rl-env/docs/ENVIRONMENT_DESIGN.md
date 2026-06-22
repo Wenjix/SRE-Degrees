@@ -16,7 +16,7 @@ We are building an autonomous SRE / incident-response agent. The approach is
 Game Playing" + "AutoHarness / code-as-verify" (Wendelken, ICLR). **The LLM is frozen and
 model-agnostic — we never fine-tune.** Reliability comes from _evolving code_ around the
 LLM, scored by unit tests + a verifiable SLO check. (This supersedes the earlier
-SFT→DPO→RLVR-of-Qwen framing in `README.md`/`HANDOFF.md`.)
+SFT→DPO→RLVR-of-Qwen framing preserved in older handoff notes.)
 
 The agent loop is a state-transition task — the existing schema
 `system_state_before → remediation_tool → system_state_after → resolved?` **is** an

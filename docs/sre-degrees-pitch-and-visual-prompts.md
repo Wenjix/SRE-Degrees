@@ -32,7 +32,7 @@ SRE Degrees gives agents a path from harnessed execution to supervised operation
 
 - Project/framework name: **SRE Degrees**
 - Demo/product surface name: **SRE Promotion Engine**
-- Avoid leading with **Reticle Console** in the presentation. Reticle can remain an internal design/system name, but it is less immediately clear to judges.
+- Use **SRE Promotion Engine** as the product surface name in the presentation. Treat Reticle, if mentioned at all, as an internal visual-system name.
 
 ## Gamma Deck Brief: 7 Slides
 

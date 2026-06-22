@@ -2,7 +2,7 @@
 
 **Status:** Implemented baseline; updated with REx evidence framing.
 **Date:** 2026-06-20
-**Surface:** A new 8th lens in the Reticle Console (`/dashboard`), over the existing `LensProvider` store.
+**Surface:** A new 8th lens in SRE Promotion Engine (`/dashboard`), over the existing `LensProvider` store.
 
 ---
 
@@ -23,7 +23,7 @@ the Snorkel AI reading group:
 
 The lens lets the operator toggle between those two ends for any slice of the world.
 
-The preliminary REx sweep sharpens the product framing: Reticle should not claim
+The preliminary REx sweep sharpens the product framing: SRE Promotion Engine should not claim
 "bigger model wins." It should show the executable proving loop that closes the
 gap. On the current 5-incident calibration set, frontier baselines span
 `0.630-0.810`; REx converges all five models to the ceiling-aware `0.860`

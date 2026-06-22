@@ -1,8 +1,8 @@
 export const BRAND = {
-	name: "Reticle Console",
-	wordmark: "reticle-console",
-	shortName: "RC",
-	themeStorageKey: "reticle-console.theme",
+	name: "SRE Promotion Engine",
+	wordmark: "sre-promotion-engine",
+	shortName: "SPE",
+	themeStorageKey: "sre-promotion-engine.theme",
 } as const;
 
 export type IconName =

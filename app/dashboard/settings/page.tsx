@@ -73,7 +73,7 @@ export default function SettingsPage() {
 				</div>
 				<EmptyState
 					title="No external integrations configured"
-					description="Reticle Console intentionally starts with local data only. Add integration adapters after the domain model is settled."
+					description="SRE Promotion Engine intentionally starts with local data only. Add integration adapters after the domain model is settled."
 					hint="interface Adapter { listProjects(): Promise<Project[]> }"
 				/>
 			</DashboardPageBody>

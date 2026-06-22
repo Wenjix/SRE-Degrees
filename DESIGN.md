@@ -1,5 +1,5 @@
 ---
-name: Reticle Console
+name: SRE Promotion Engine
 description: A blueprint control room for operating fleets of autonomous SRE agents.
 colors:
   bg: "#09090b"
@@ -92,13 +92,13 @@ components:
     padding: "8px 10px"
 ---
 
-# Design System: Reticle Console
+# Design System: SRE Promotion Engine
 
 ## 1. Overview
 
 **Creative North Star: "The Blueprint Control Room"**
 
-Reticle is a drafting-table blueprint you operate from a calm control room. The world is a 48px dot-grid plane; agents, services, incidents and the production estate are plotted on it as instruments, not cards. Structure is drawn with 1px hairlines and square corners; nothing is rounded, nothing is shadowed, nothing decorates. The surface stays deliberately quiet — a near-black field (`#09090b`) under mono readouts — so that the one thing allowed to be loud, **agent health**, is the only saturated color on screen. The operator reads the board the way an engineer reads a schematic: position carries meaning, type carries data, and color carries alarm.
+SRE Promotion Engine is a drafting-table blueprint you operate from a calm control room. The world is a 48px dot-grid plane; agents, services, incidents and the production estate are plotted on it as instruments, not cards. Structure is drawn with 1px hairlines and square corners; nothing is rounded, nothing is shadowed, nothing decorates. The surface stays deliberately quiet — a near-black field (`#09090b`) under mono readouts — so that the one thing allowed to be loud, **agent health**, is the only saturated color on screen. The operator reads the board the way an engineer reads a schematic: position carries meaning, type carries data, and color carries alarm.
 
 It is dual-theme (a true light blueprint exists at `:root`), but dark is its face: a control room at 3am. Motion is reserved — a heartbeat on a degrading agent, a sonar ping on a critical one, a release pulse when an agent earns autonomy — never ambient decoration. Everything obeys `prefers-reduced-motion`.
 

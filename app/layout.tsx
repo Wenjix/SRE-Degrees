@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 		template: `%s | ${BRAND.name}`,
 	},
 	description:
-		"A neutral Next.js dashboard starter adapted from the Reticle visual system.",
+		"A promotion console where SRE agents earn autonomy through verified incident evidence.",
 	applicationName: BRAND.name,
 };
 

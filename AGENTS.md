@@ -178,7 +178,7 @@ Read these only when the task needs the detail — they're long on purpose.
 | Doc | When to read |
 |---|---|
 | `README.md` | **Start here.** The master map of the UI: architecture, the full domain model, lens-by-lens walkthrough, conventions. |
-| `DESIGN.md` | The complete Reticle design system (colors, type, elevation, components, named rules). Read before any visual/styling work. |
+| `DESIGN.md` | The complete SRE Promotion Engine design system (colors, type, elevation, components, named rules). Read before any visual/styling work. |
 | `PRODUCT.md` | Users, product purpose, brand personality, design principles. Read before product/UX decisions. |
 | `.impeccable/design.json` | Machine-readable design tokens, component CSS, motion spec, dos/donts. |
 | `rl-env/ARCHITECTURE.md` | The RL thesis, system diagram, the anti-gaming reward, the REx result table. |

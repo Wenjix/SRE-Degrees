@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an 8th lens to the Reticle Console — a rotating, health-colored globe of a modeled production estate with a Causal Search Engine that distills any slice into the code an agent plans against (WORLD MODEL ↔ HARNESS).
+**Goal:** Add an 8th lens to SRE Promotion Engine — a rotating, health-colored globe of a modeled production estate with a Causal Search Engine that distills any slice into the code an agent plans against (WORLD MODEL ↔ HARNESS).
 
 **Architecture:** Three pure, node-tested `lib/world*.ts` modules (taxonomy + sampled nodes; intent parser; code generators) feed four client components (`WorldGlobe`, `CausalSearch`, `WorldCodePanel`, `WorldLens`) projected through the existing `LensProvider` store. Globe rotation is a view-local `requestAnimationFrame` loop; the single store TICK keeps health live.
 
