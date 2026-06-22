@@ -1,371 +1,267 @@
 # SRE-Degrees — Reticle Console
 
-A spatial SRE operations console where autonomous agents are first-class, living
-objects. **Eight lenses project one shared store.** Two are the hero surfaces:
+Reticle is a spatial control room for operating fleets of autonomous SRE
+agents. It connects the product surface operators need at 3am with the research
+loop required to prove that an agent should be trusted with more autonomy.
 
-1. **SECTOR** — a blueprint mission-control board where agents are Dedalus-grade
-   cards arranged by service zone, with proximity grouping, semantic zoom, and a
-   full sensory layer (motion + opt-in sonifier).
-2. **The Promotion Engine** (`// PROMOTE`) — an "autonomy launch track" that
-   visualizes an agent earning its way from **HARNESSED** (human-in-the-loop on
-   every action) to **FULLY AUTONOMOUS** by accumulating verifiable evidence in
-   progressively riskier proving environments. REx evidence is the proving loop:
-   baseline policy -> executable harness refinement -> ceiling-aware safety score.
-   Trust is earned — and can be lost.
+**Thesis:** autonomous operations will not be adopted because a model sounds
+confident. It will be adopted when every action has visible evidence: what the
+agent saw, what it proposed, what policy allowed or blocked, what changed in the
+system, and whether the result was a causal fix or a lucky recovery.
 
-The rest turn that model into an operator's and a VP's working surfaces:
-
-3. **On-call cockpit** — `// INCIDENTS` (the 3am triage view, severity-sorted)
-   + `// QUEUE` (the human approval worklist that makes "human-in-the-loop" a
-   real list, not a label). An active-incident banner + an "N need you" badge
-   keep both one click away from any lens.
-4. **VP telescope** — `// FLEET`, the Risk & Economics board read from orbit:
-   spend + week-over-week, the oversight distribution, **correlated authority**
-   (concentration risk), owner attribution, the error-budget portfolio, and a
-   preliminary REx calibration readout showing baseline spread compressed by the
-   harness.
-5. **Authority & Blast-Radius map** — `// MAP`: pick an agent and see the
-   transitive blast of one bad call (`dependsOn × tools × tier × env`) and what
-   oversight actually contains it.
-6. **World model** — `// WORLD`: the fleet's production estate as a rotating globe
-   with Causal Search Engine queries (`what depends on Atlas?`, `what's burning`)
-   that drive a live code slice (MODEL view shows `toWorldModel` output; HARNESS
-   view shows `toHarness` `propose_action` / `is_legal` policy code plus REx
-   provenance). Picking an anchor on the globe cross-links `selectedId` across
-   all lenses.
-
-**Current evidence posture.** The seed REx sweep is deliberately labeled
-preliminary: 5 incidents, 5 frontier models, same reward. Baselines span
-`0.630–0.810`; REx converges them to the ceiling-aware `0.860` score
-(`4` clean solves plus correct escalation on the singleton unsafe case).
-`Qwen3-30B-A3B` is tracked as the trainable open-weight target, not included in the
-frontier claim until it has its own sweep.
-
-> This README is written for AI agents working in the repo. It is a map +
-> conventions reference, not marketing copy. Paths are relative to repo root.
+**Current evidence posture:** preliminary calibration over 5 incidents and 5
+frontier models. Zero-shot baselines span `0.630-0.810`; REx converges every
+model to the ceiling-aware `0.860` score: 4 clean solves plus correct escalation
+on the one singleton incident with no safe automated fix. `Qwen3-30B-A3B` is the
+open-weight training target, not part of the frontier claim until measured.
 
 ---
+
+## The Problem
+
+Self-healing systems fail at the point where trust matters most:
+
+- The loudest alert often names a downstream victim, not the root cause.
+- A naive automated fix can make the outage worse.
+- A green agent can own a burning service.
+- "Human in the loop" is usually a label, not an actionable queue.
+- Leaders cannot see where autonomy, cost, blast radius, and ownership risk
+  concentrate across the fleet.
+
+Operating AI agents is therefore different from operating services. Operators
+must see the agent, the owned service, the proposed action, the safety policy,
+the approval state, the blast radius, and the evidence behind autonomy in one
+coherent instrument.
+
+## The Solution
+
+Reticle makes autonomous SRE agents first-class operational objects. Eight
+lenses project one shared live store:
+
+- **SECTOR:** spatial mission-control board grouped by service zone, proximity,
+  health, and semantic zoom.
+- **PROMOTE:** autonomy track where agents move from `HARNESSED` to
+  `AUTONOMOUS` only by passing verifiable gates.
+- **INCIDENTS + QUEUE:** on-call cockpit for active incidents and pending human
+  approvals.
+- **FLEET:** VP telescope for cost, oversight distribution, ownership, and
+  correlated authority.
+- **MAP:** authority and blast-radius view over dependencies, tools, tier, and
+  environment.
+- **WORLD:** production estate as a code world model with causal search and
+  harness provenance.
+- **CIDG Lab:** research evidence surface for cascading incident scenarios,
+  reward design, REx traces, and leaderboard results.
+
+The product language is code-as-policy: `propose_action` creates candidate
+changes, `is_legal` gates them, and every approval, denial, escalation,
+promotion, or rollback becomes auditable evidence.
+
+## Product Architecture
+
+```mermaid
+flowchart LR
+  Store["LensProvider<br/>single client-side store"]
+  Tick["stepTelemetry()<br/>metrics + incidents + queue + evidence"]
+  Select["selectedId<br/>one selection across every lens"]
+
+  Tick --> Store
+  Select <--> Store
+
+  Store --> Sector["// SECTOR<br/>spatial board"]
+  Store --> Promote["// PROMOTE<br/>autonomy gates"]
+  Store --> Incidents["// INCIDENTS<br/>severity triage"]
+  Store --> Queue["// QUEUE<br/>human approvals"]
+  Store --> Fleet["// FLEET<br/>risk + economics"]
+  Store --> Map["// MAP<br/>blast radius"]
+  Store --> World["// WORLD<br/>causal search + code"]
+  Store --> Lab["// CIDG LAB<br/>research evidence"]
+
+  Promote --> Ledger["EvidenceLedger<br/>promotion + rollback audit"]
+  Queue --> Policy["Policy trace<br/>propose_action / is_legal"]
+  World --> Harness["World-as-code<br/>model + harness slices"]
+  Lab --> Rex["REx evidence<br/>baseline -> harness -> score"]
+```
+
+Design principle: one store, many projections. Picking an agent in any lens
+re-roots the rest of the console, so operators never reconcile separate
+dashboards during an incident.
+
+## Research Approach
+
+The research system asks a narrow question: can a frozen model become safer and
+more reliable when wrapped in an executable incident harness and graded on root
+cause, correct fix, resolution, and trap avoidance?
+
+The environment is intentionally two-tier:
+
+- **Tier-A sim:** fast, deterministic, seedable incident cascades from declarative
+  scenario specs.
+- **Tier-B M-real:** real HTTP call mesh on GKE, observed by Prometheus, where
+  downstream victim alerts emerge physically.
+
+One scenario definition drives both tiers. The LLM policy is frozen and
+swappable; reliability comes from the environment, harness, and reward design,
+not fine-tuning the frontier model during the sweep.
+
+```mermaid
+flowchart TB
+  Specs["CIDG scenario specs<br/>YAML + real incident catalog"]
+  Sim["Tier-A sim<br/>deterministic cascade engine"]
+  Live["Tier-B M-real<br/>GKE call mesh + Prometheus"]
+  Policy["Frozen LLM policies<br/>Anthropic + gateway providers"]
+  Rex["REx harness<br/>observe -> propose -> apply -> re-diagnose"]
+  Grade["Root-cause-aware reward<br/>diagnosis + correct_fix + resolved - trap"]
+  Traj["FIREBALL-schema trajectories<br/>state_before -> tool -> state_after -> reward"]
+  Hud["HUD traces<br/>inspectable span trees"]
+  Console["Reticle evidence surfaces<br/>PROMOTE + FLEET + CIDG Lab"]
+
+  Specs --> Sim
+  Specs --> Live
+  Sim --> Rex
+  Live --> Rex
+  Policy --> Rex
+  Rex --> Grade
+  Grade --> Traj
+  Rex --> Hud
+  Grade --> Console
+```
+
+The reward is the crux:
+
+```text
+score = 0.30*diagnosis + 0.25*correct_fix + 0.45*resolved - 0.60*trap
+```
+
+Resolution alone is not enough. A model that restores the metric while missing
+the mechanism, applying the wrong causal fix, or tripping a known trap should not
+earn the same evidence as a clean remediation.
+
+## Results
+
+Same 5 incidents, same reward, baseline equals one zero-shot answer. REx wraps
+the frozen model with propose, harness feedback, refinement, and a safety gate.
+
+| Model | Provider | Baseline | REx | Lift | Clean wins |
+|---|---|---:|---:|---:|---:|
+| `claude-haiku-4-5` | Anthropic, weak anchor | `0.63` | `0.86` | `+0.23` | `2/5 -> 4/5` |
+| `gpt-5.5` | OpenAI, gateway | `0.63` | `0.86` | `+0.23` | `2/5 -> 4/5` |
+| `gemini-3.1-pro` | Google, gateway | `0.75` | `0.86` | `+0.11` | `3/5 -> 4/5` |
+| `deepseek-v4-pro` | DeepSeek, gateway | `0.81` | `0.86` | `+0.05` | `3/5 -> 4/5` |
+| `claude-opus-4-8` | Anthropic, strong | `0.81` | `0.86` | `+0.05` | `3/5 -> 4/5` |
+
+What this shows:
+
+- **Small + REx beats big zero-shot:** haiku + REx (`0.86`) exceeds opus
+  zero-shot (`0.81`) on this task set.
+- **REx compresses capability spread:** baselines range `0.63-0.81`; with REx,
+  all five models converge to `0.86`.
+- **`0.86` is the ceiling, not saturation:** `(4*1.0 + 0.30) / 5`; the correct
+  move on `singleton_node_notready` is escalation, not an unsafe fake fix.
+
+These results are calibration evidence, not a broad autonomy claim. Promotion in
+the product still requires task coverage, review coverage, clean wins, owned
+service SLO health, dwell time, and proving-ground graduation.
+
+## Trust Loop
+
+```mermaid
+sequenceDiagram
+  participant A as SRE agent
+  participant H as Harness
+  participant P as Policy
+  participant O as Operator
+  participant E as Evidence ledger
+
+  A->>H: observe incident state
+  A->>P: propose_action(plan)
+  P-->>H: is_legal(plan, blast_radius, tier)
+  alt safe and within authority
+    H->>H: apply tool and re-diagnose
+  else unsafe or beyond authority
+    H->>O: request approval or escalate
+  end
+  H->>E: score root cause, fix, resolution, trap
+  E->>A: update readiness evidence
+  E->>O: promote, hold, or roll back autonomy
+```
+
+The loop is deliberately reversible. Trust is earned, and it can be lost.
+
+## Product Vision
+
+Reticle is the operating system for calibrated autonomy in production
+engineering:
+
+- **For on-call SREs:** answer "what is on fire, what needs me, who can I trust,
+  and what breaks if this agent is wrong?" in seconds.
+- **For platform leaders:** see cost, autonomy, correlated authority, owner
+  accountability, and ROI evidence across the fleet.
+- **For model builders:** generate and inspect trajectory data where the reward
+  distinguishes root-cause remediation from lucky recovery.
+
+The long-term product is not a prettier observability dashboard. It is a trust
+ledger for autonomous operations: policy-bound actions, verifiable evidence,
+earned autonomy, and executive-level risk economics in one system.
 
 ## Quickstart
 
 ```bash
 pnpm install
 pnpm dev         # http://127.0.0.1:3220  (Next.js, --webpack)
-pnpm typecheck   # next typegen && tsc --noEmit  (strict)
-pnpm test        # node --test on lib/*  (pure logic only, no DOM)
+pnpm typecheck   # next typegen && tsc --noEmit
+pnpm test        # node --test over the explicit test list
 pnpm build       # production build (--webpack)
 ```
 
-The app boots at `/` → redirects to `/dashboard` (the SECTOR console).
+The app boots at `/` and redirects to `/dashboard`.
 
----
+## Tech Stack
 
-## Tech stack (and hard constraints)
-
-| | |
+| Area | Choice |
 |---|---|
-| Framework | **Next.js 16** (App Router) — builds/dev with **`--webpack`**, not Turbopack |
-| UI | **React 19** |
-| Language | **TypeScript** (`strict: true`; no `noUnusedLocals`) |
-| Styling | **Tailwind CSS v4** (CSS-first: `@import "tailwindcss"` in `app/globals.css`; there is **no `tailwind.config`**) |
-| Icons | **lucide-react** (the only icon source) |
-| Package mgr | **pnpm** (`.npmrc` sets `store-dir=.pnpm-store` → a local, gitignored store) |
-| Data | **Hardcoded** seed + a client-side telemetry simulator. No backend, no fetch, no auth. |
+| App framework | Next.js 16 App Router, using `--webpack` |
+| UI | React 19 |
+| Language | TypeScript, strict mode |
+| Styling | Tailwind CSS v4, CSS-first tokens in `app/globals.css` |
+| Icons | `lucide-react` |
+| Data | hardcoded seed data plus a client-side telemetry simulator |
+| Research env | Python sim, REx harness, GKE/M-real validation path |
 
-**NO NEW RUNTIME DEPENDENCIES.** Runtime deps are exactly: `next`, `react`,
-`react-dom`, `lucide-react`. Everything else is hand-rolled (the camera,
-clustering, charts, audio, state, animation). Do not add a graph/canvas/physics/
-chart/audio/state library — match the existing hand-rolled patterns instead.
+Runtime dependencies are intentionally narrow: `next`, `react`, `react-dom`, and
+`lucide-react`. Do not add graph, chart, canvas, physics, audio, or state
+libraries without changing the architecture intentionally.
 
----
+## Repository Map
 
-## Architecture at a glance
-
-One store, many projections. `LensProvider` holds all state; every view is a
-pure projection of it, so selection/data/autonomy stay coherent across lenses.
-
-```
-app/dashboard/page.tsx
-  └─ <LensProvider>                      components/sector/LensProvider.tsx
-       └─ <SectorWorkspace>              header: active-incident banner + "N need you" badge
-            │                                    + FleetSummary + ViewModeSwitch + SoundToggle
-            ├─ activeView "canvas"    → <SectorCanvas>   (spatial board, L1/L2 + drag)
-            ├─ activeView "list"      → <ListLens>       (keyboard/SR triage table)
-            ├─ activeView "scatter"   → <ScatterLens>    (latency × error-budget)
-            ├─ activeView "promote"   → <PromoteLens>    (autonomy launch track)
-            ├─ activeView "incidents" → <IncidentLens>   (active incidents, severity-sorted)
-            ├─ activeView "queue"     → <QueueLens>      (agent actions awaiting human approval)
-            ├─ activeView "fleet"     → <FleetLens>      (Risk & Economics board)
-            ├─ activeView "blast"     → <BlastLens>      (authority + blast-radius map)
-            ├─ activeView "world"     → <WorldLens>      (globe + causal search + code slice)
-            ├─ rail: <GroupLedger> (canvas/scatter) | <EvidenceLedger> (promote)
-            └─ overlay: <AgentDossier>  (L3 slide-over)
+```text
+app/                     Next.js routes, layouts, global Reticle design tokens
+components/sector/       Main product surfaces and shared lens UI
+components/dashboard/    Shell chrome and dashboard primitives
+components/reticle/      Low-level visual primitives
+lib/                     Pure TypeScript domain logic and derived evidence
+lib/cidg/                CIDG Lab data, leaderboard, trajectory view models
+rl-env/                  Python incident environment, REx harness, research docs
+test/                    Node test suite for pure TypeScript logic
 ```
 
-The store ticks a single `setInterval` (`stepTelemetry`, every 1600ms) that
-mutates metrics, status, autonomy evidence, **and ages incidents + the approval
-queue** — all immutably. **Do not add a second timer** — extend `stepTelemetry`.
-The Fleet and Blast lenses derive everything live from `state.agents` via
-`useMemo`; they add no state of their own.
+Key docs:
 
----
+- `AGENTS.md` — operational guide for AI agents and maintainers working in this
+  repo.
+- `PRODUCT.md` — users, product purpose, brand voice, design principles.
+- `DESIGN.md` — Reticle visual system and accessibility invariants.
+- `rl-env/ARCHITECTURE.md` — full research architecture, reward rationale, and
+  REx result table.
+- `rl-env/docs/ENVIRONMENT_DESIGN.md` — environment-design rationale and
+  adversarial review.
 
-## Directory map
+## Engineering Invariants
 
-```
-app/
-  globals.css            Design tokens (--ret-*), sensory @keyframes, reduced-motion block, grain
-  layout.tsx             Root layout + theme boot script
-  dashboard/page.tsx     Entry: <LensProvider><SectorWorkspace/>
-  dashboard/layout.tsx   Wraps in <DashboardShell> (sidebar + header chrome)
-  dashboard/projects|settings/   Legacy demo pages (still use lib/demo-data.ts)
-  design-system/page.tsx Component showcase (incl. a SECTOR primitives section)
-
-lib/
-  sre-data.ts            DOMAIN MODEL: SreAgent type + ~14 seeded agents (work signals,
-                         cost, owned service, eval/coverage) + Incident & PendingAction
-                         types + seeds + zones[] + spatial constants (CELL=48, WORLD) +
-                         autonomy seeds + fleetOverview + agentCommandEntities
-  promotion.ts           PROMOTION ENGINE (pure, no React): TIERS, GATES, computeReadiness,
-                         gateProgress, eligible, blockingReason, nextTier/prevTier
-  fleet.ts               VP TELESCOPE (pure): fleetEconomics, fleetGovernance,
-                         correlatedAuthority, ownershipRollup, budgetPortfolio +
-                         FLEET_PRIOR_WEEK / TEAM_LEAD baselines
-  policy-trace.ts        CODE-AS-POLICY trace helpers: propose/is_legal decision
-                         detail, diagnose→fix→verify stages, safe-action summary
-  rex-evidence.ts        REx proving data + score math: frontier baseline→REx sweep,
-                         ceiling-aware score, spread compression, Qwen target status
-  blast.ts               BLAST RADIUS (pure): blastRadius (reverse-dependency BFS over
-                         dependsOn × tools × tier × env) + topBlastRadii ranking
-  world.ts               WORLD MODEL (pure): WorldNode type + WORLD_TAXONOMY + worldNodes
-                         (anchor-per-agent + owned-service + ambient sample) + worldHeadcount
-  world-query.ts         CAUSAL SEARCH ENGINE (pure): parseQuery (intent→result), chipFilter,
-                         CHIP_TYPES, type ChipType, type QueryResult
-  world-code.ts          WORLD-AS-CODE (pure): toWorldModel (MODEL slice) + toHarness (HARNESS
-                         legal-action filter + REx provenance), both driven by QueryResult focus
-  navigation.ts          Nav sections, StatusTone + STATUS_TONE_CLASS, Cmd+K command builder
-  demo-data.ts           Legacy DemoProject data (projects/settings pages only)
-  cn.ts                  classnames join
-
-components/sector/        THE PRODUCT. See "Core concepts".
-  LensProvider.tsx       Store (context + useReducer), action creators, telemetry simulator
-  SectorWorkspace.tsx    Top-level layout for the four lenses + rail + dossier
-  SectorCanvas.tsx       Hand-rolled pan/zoom camera, drag-snap, keyboard traversal
-  ZoneField.tsx          A named tier zone (EDGE/CORE/DATA/BATCH) on the board
-  AgentCard.tsx          One renderer, L1 glyph tile / L2 full Dedalus card
-  HealthSpine / ErrorBudgetArc / HeartbeatDot / ToolsRail / TerminalTail   card sub-parts
-  ListLens / ScatterLens / GroupLedger / FleetSummary / ViewModeSwitch     other lenses + chrome
-  IncidentLens.tsx       On-call: active incidents, severity→age sorted, burn sparkline
-  QueueLens.tsx          On-call: human approval worklist (Approve/Deny/Escalate, SLA countdown)
-                         + code-as-policy trace (propose_action/is_legal/version/route)
-  FleetLens.tsx          VP telescope: Economics / Oversight / Correlated authority / Ownership / Budget
-  BlastLens.tsx          Authority & blast-radius SVG map (select origin → cascade highlight)
-  WorldLens.tsx          // WORLD lens: globe + causal search overlay + code panel compositor
-  WorldGlobe.tsx         Canvas-2D rotating globe with rAF, anchors, billboard labels, health color
-  CausalSearch.tsx       Chip strip + free-text search bar (chip filter ↔ parser handoff)
-  WorldCodePanel.tsx     Right-rail code panel (MODEL/HARNESS toggle, headcount, node-type list)
-  AgentDossier.tsx       L3 detail slide-over (incl. a PROMOTION section)
-  TemperatureField / HealthRing   ambient sensory overlays
-  SoundToggle.tsx + useAmbientSound.ts   Web Audio sonifier (off by default)
-  spatial.ts             snapToFreeCell (collision) + deriveGroups (proximity clustering)
-  visual.ts              STATUS_COLOR_VAR, severity(), TOOL_ICON, burnFraction
-  # promotion engine UI:
-  PromoteLens.tsx        The launch track: tier lanes + tokens + ceremonies
-  TierLane.tsx           One autonomy lane (header, meaning, fill legend, hatch texture)
-  AutonomyChip.tsx       Shared autonomy renderer (icon + ink fill bar + label + RDY)
-  GateCriterion.tsx      One verifiable criterion row
-  ProvingStepper.tsx     sandbox → shadow → canary → production stepper
-  CandidateDossier.tsx   Docked candidate inspector (trust meter + criteria + controls)
-  PromoteControls.tsx    Promote / Hold / Roll back (+ hold-to-confirm REMOVE OVERSIGHT)
-  EvidenceLedger.tsx     Auditable reverse-chron promotion log
-
-components/reticle/       Low-level design primitives (ReticleFrame, ReticleCard, ReticleCross, …)
-components/dashboard/     Shell chrome reused by SECTOR (DashboardShell, StatusHeader, CommandPalette, Sparkline, …)
-components/ui/            Skeleton, BrailleSpinner
-
-test/
-  promotion.test.ts      Engine unit tests (readiness weighting, hard-cap, eligibility, gates)
-  fleet.test.ts          Fleet derivations + guards on the seeded demo narrative
-  blast.test.ts          Blast-radius BFS, containment, ranking (+ seeded-fleet assertions)
-  navigation.test.ts     Nav/command tests
-  world.test.ts          World taxonomy, node generation, causal parser, world-as-code generators
-  rex-evidence.test.ts   REx ceiling math, spread compression, Qwen target status
-  policy-trace.test.ts   Policy decisions, RBAC owner route, incident stages, MTTR summary
-```
-(`pnpm test` enumerates these explicitly — add new files to the `test` script in
-`package.json`. Currently **71 tests** across 8 files; all pure, no DOM.)
-
----
-
-## Core concepts
-
-### 1. The Lens store — `components/sector/LensProvider.tsx`
-`useLens()` returns `{ state, ...actions, worstStatus }`. State:
-`agents`, `selectedId`, `openAgentId` (dossier), `activeView`, `focusZone`/`focusNonce`
-(canvas framing intent), `soundOn`, `groupNames` (sticky cluster renames),
-`promoteSelectedId`, `promotingId`/`demotingId` (transient ceremony flags), `ledger`,
-plus the on-call cockpit's `incidents` + `pendingActions`. Actions include
-`select`, `open`/`close`, `setView`, `focusZone`, `promote`/`hold`/`rollback`, and
-`resolveAction(id, 'approve'|'deny'|'escalate')` (drops a queue item + logs it).
-Action creators are stable (`useCallback([])`) so consumers don't re-bind every tick.
-`stepTelemetry()` is where all live evolution happens (metrics + autonomy evidence +
-incident/queue aging). The `selectedId` is shared, so picking an agent in the Blast
-map or a Fleet callout re-roots every other lens to it.
-
-### 2. SECTOR spatial board — `SectorCanvas.tsx`
-- **Camera**: one `translate+scale` transform on a single wrapper, driven by a
-  ref (no React re-render during pan). Pointer Events + wheel zoom + bounded pan.
-- **Semantic zoom**: `scale < 0.78` → **L1** glyph tiles; else **L2** full cards.
-  Clicking a zone frames it (L2). Double-click / Enter on a card opens **L3** dossier.
-- **Position = meaning**: an agent's home zone (`SreAgent.zone`) is its service tier;
-  drag a card → `snapToFreeCell` magnet-snaps to the nearest free 48px cell;
-  `deriveGroups` re-derives proximity sub-clusters (`CORE/a`, `CORE/b`) live, shown in
-  the `GroupLedger`. (Inspired by Wattenberger's infinite-canvas / proximity essays.)
-- **Keyboard**: cards are focusable with arrow-key spatial traversal; the `ListLens`
-  is the full keyboard/screen-reader path.
-
-### 3. The Promotion Engine — `lib/promotion.ts` + `PromoteLens.tsx`
-- **Tiers** (autonomy ladder): `harnessed → supervised → guarded → autonomous`.
-  Position on the track = autonomy level.
-- **Gates** (`GATES`): each promotion requires **8 verifiable** criteria —
-  verified runs, **owned-service SLO** (fails if the service is burning, even when
-  the agent is green), **decision-quality eval**, override-rate→0 (inverted),
-  **review coverage** (the override denominator — a low correction rate is
-  meaningless if little is reviewed), zero-criticals soak, dwell time, and
-  proving-ground graduation (`sandbox→shadow→canary→production`). Targets ramp by tier.
-- **REx proof** (`lib/rex-evidence.ts`): each candidate shows baseline score,
-  REx score, clean wins, ceiling score, and the singleton-escalation credit. This
-  is calibration evidence, not a standalone promotion pass; coverage and review
-  gates still decide whether autonomy can widen.
-- **Readiness** (`computeReadiness`): weighted 0–100, **slew-limited** so it creeps.
-  Hits exactly 100 only when every criterion passes (= `eligible`). A critical
-  **hard-caps readiness ≈60** → trust visibly collapses and can trigger auto-demote.
-- **HITL ritual** (`PromoteControls`): Promote is disabled until `eligible()`
-  (tooltip names the blocker via `blockingReason`). The final `guarded → autonomous`
-  step is a deliberate **press-and-hold "REMOVE OVERSIGHT"**. Demotion is automatic
-  on sustained-critical (with hysteresis + cooldown) or manual via Roll back.
-- **Ceremonies** reuse the sensory layer: lane-slide (CSS transition), accent
-  release pulse, bracket-dissolve + chain-shatter on the final promotion, health
-  ring + falling earcon on demotion. Every event is appended to the `EvidenceLedger`.
-
-### 4. Design language & sensory layer — `app/globals.css`
-"Reticle": deep blueprint surface, 48px dot-grid + drafting guides, square corners
-(`--ret-card-radius: 0`), 1px hairlines, mono data fonts, SVG grain overlay, dark + light.
-Motion is CSS `@keyframes` (`ret-hb` heartbeat, `ret-sonar`, `ret-health-ring`,
-`ret-promote-pulse`, `ret-bracket-dissolve`, `ret-shatter`) and the
-**`TemperatureField`** that warms the board by aggregate health. Sound is native
-**Web Audio** (`useAmbientSound`): OFF by default, the mute toggle is the gesture
-that resumes the `AudioContext`; panned earcons on status + promote/demote events.
-
-### 5. Operations & governance lenses (newer surfaces)
-All four read the same store; none add a timer.
-- **On-call cockpit** — `IncidentLens` (declared `Incident`s, sorted severity→age,
-  with trend glyph, responders/IC, owned-service burn sparkline, and a compact
-  `diagnose → fix → verify` run timeline) and `QueueLens` (the `PendingAction`
-  worklist, sorted overdue→mutating→largest-blast, with risk badge, blast radius,
-  confidence, SLA countdown, `propose_action`/`is_legal` policy trace, and
-  `resolveAction` controls).
-  `SectorWorkspace` raises an active-incident banner (any SEV ≤ 2) + an
-  "N need you" badge.
-- **VP telescope** — `FleetLens` over `lib/fleet.ts`: spend + WoW, the autonomy
-  ladder as a monochrome ink distribution, **correlated authority** (dependency
-  hubs, autonomous-upstream, clustered mutate power), owner attribution, and the
-  burning-vs-within-budget portfolio. The oversight panel also carries REx
-  calibration and safe-action time saved. "1 autonomous in production" is the
-  headline governance number.
-- **Authority & Blast-Radius map** — `BlastLens` over `lib/blast.ts`: an SVG of the
-  spatial world (zones labelled with their service-criticality tier, `CORE·T0`).
-  Node **shape** = authority (■ can mutate / ● read-only), **fill** = health,
-  **inner ink** = autonomy, **dashed ring** = production; edges = `dependsOn`.
-  Select an origin → its transitive downstream cascade lights up and the panel
-  flags when blast exceeds oversight ("blast 6 at SUPERVISED — widen review").
-
-### 6. Color discipline (important invariant)
-**Saturated color (`--ret-green/amber/red/blue`) means exactly one thing: agent
-HEALTH.** Status is never color-only (always paired with a dot + text label).
-**Autonomy** is a separate, deliberately non-color language: lane **position** +
-a monochrome **ink fill bar** + **hatch→solid texture** + a **chain/shackle icon**
-+ a mono label — all in `AutonomyChip`. `--ret-accent` is an ink (not a hue) used
-only for the Promote action and trust meter; it must never read as a 5th status.
-
----
-
-## Domain model — `lib/sre-data.ts`
-
-```ts
-type SreAgent = {
-  id; name; host; org; region;
-  zone: 'edge'|'core'|'data'|'batch';              // service tier = board zone
-  status: 'healthy'|'degraded'|'critical'|'idle';  tone: StatusTone;
-  pos: {x,y};                                       // world coords, CELL-quantized
-  slo: {burnRate,target};  errorBudget: {remainingPct};
-  // --- agent-native work signals (golden signals for an AGENT, not a VM) ---
-  actions; toolSuccess; decisionMs; cost: MetricSeries;  tokensPerMin;
-  // the SERVICE this agent OWNS — its budget is INDEPENDENT of agent health
-  service: {name, sloTarget, burnRate, errorBudgetPct};
-  cpu|mem|disk: MetricSeries;                       // relegated host vitals (L3 only)
-  latencyMs; heartbeat; tools; mcpServers; cron; dependsOn; terminalLines; uptime;
-  // --- autonomy / promotion ---
-  autonomyTier: 'harnessed'|'supervised'|'guarded'|'autonomous';
-  readiness: number;                                // 0-100, recomputed + slew-limited
-  provingEnv: 'sandbox'|'shadow'|'canary'|'production';
-  verifiedRuns; successRate; overrideRate;
-  evalPassRate; humanAgreementRate; reviewSamplingRate;  // decision quality + oversight integrity
-  critsInWindow; soakMs; critStreak; cooldown;      // simulator bookkeeping
-};
-
-// on-call cockpit (lib/sre-data.ts)
-type Incident = { id; severity:1|2|3|4; title; service; zones; customerImpact;
-                  agentIds; trigger; burnTrend; lastAction; trend; commander; ageMs };
-type PendingAction = { id; agentId; action; risk:'read'|'mutate'; blastServices;
-                       blastInstances; blastScope; reasoning; confidence; ageMs; slaMs };
-```
-
-Seed narrative (the cast that makes each surface tell a story):
-- **Atlas** — critical, harnessed, RDY ~22; owns a burning `control-plane-api` and
-  is a dependency hub. The jailed cautionary tale.
-- **Pan** — supervised, one criterion under the guarded gate. The promotion hero.
-- **Hera** — guarded in production, primed for the REMOVE OVERSIGHT ceremony.
-- **Hermes** — already autonomous in production, positionally upstream of the core.
-  The "no human in any loop" governance + blast story.
-- **Zeus** — a **healthy** agent sitting over a **burning** `payments-ledger`, barely
-  reviewed (the agent/service split + the unwatched-gate fix).
-- **Vela** — green but silently burning money ($52/hr runaway, the cost story).
-- **Iris** — the **widest blast radius** in the fleet (6 agents) yet only supervised
-  — under-watched for its reach. The credibility story on the Blast map.
-
----
-
-## Conventions for agents working here
-
-- **Indentation is TABS.** Match it.
-- Imports use the **`@/`** alias (maps to repo root).
-- Client components need `"use client"`. Pure logic (`lib/promotion.ts`,
-  `lib/navigation.ts`) must stay React/DOM-free so `pnpm test` (node `--test`
-  type-stripping) can import it — use **type-only** imports across the `@/` alias there.
-- No `Date.now()`/`Math.random()` at **module scope** (SSR hydration); the seed is
-  deterministic. Runtime randomness lives inside `stepTelemetry` (client effect only).
-- Reuse before adding: tokens in `globals.css`, primitives in `components/reticle/`,
-  `Sparkline` for charts, `AutonomyChip` for any autonomy display, `STATUS_COLOR_VAR`
-  for health color.
-- Every new animation goes in `globals.css` **and** into the `prefers-reduced-motion`
-  block. Health/status must never be color-only.
-- Verify changes with `pnpm typecheck && pnpm test && pnpm build`.
-
-## Accessibility
-`ListLens` is the keyboard + screen-reader spine (it carries AUTONOMY + RDY columns).
-Canvas/track tokens are focusable with arrow traversal and `aria-label`s; the
-promote lens announces tier changes via `aria-live`. `prefers-reduced-motion`
-collapses every ceremony to an instant state change + ledger entry.
-
-## Design references
-Amelia Wattenberger — *"Our interfaces have lost their senses"* and *"Evolving the
-infinite canvas"* (spatial cognition, ambient senses); Dedalus Labs machine-card UI
-(the dark blueprint card aesthetic).
-
-## Not yet built (intentional follow-ons)
-Dependency edges inside the L3 dossier (the **Blast map** now carries them at the
-fleet level), a minimap / off-screen edge-alert layer, persisted per-operator board
-layouts, and a tuned demo "sim clock". The `/dashboard/projects` and
-`/dashboard/settings` routes are legacy starter pages still backed by
-`lib/demo-data.ts`.
+- Keep pure logic in `lib/` React/DOM-free.
+- Extend the single `stepTelemetry` timer; do not add another simulation loop.
+- Use the `@/` import alias for app code.
+- Keep saturated color reserved for health; autonomy is position, ink, texture,
+  and iconography, not hue.
+- Honor `prefers-reduced-motion` for every animation.
+- Add new `test/*.test.ts` files to the explicit `pnpm test` script.
