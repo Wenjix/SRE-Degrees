@@ -24,18 +24,22 @@ import {
 	REX_TASKSET,
 	frontierRexSummary,
 	rexLift,
+	type RexProvider,
 	type ScoredRexEvidence,
-} from "@/lib/rex-evidence";
+} from "../rex-evidence.ts";
+import { REWARD_WEIGHTS } from "./trajectory.ts";
 
 export const REWARD_FORMULA = {
-	// rl-env/rex/scoring.py  (W_ROOT, W_FIX, W_RESOLVED, TRAP_PENALTY)
-	expr: "score = 0.30·diagnosis + 0.25·correct_fix + 0.45·resolved − 0.60·trap",
+	// rl-env/rex/scoring.py  (W_ROOT, W_FIX, W_RESOLVED, TRAP_PENALTY). Weights are
+	// sourced from REWARD_WEIGHTS (lib/cidg/trajectory.ts) — the single definition —
+	// so the formula, the term bars, and the Replay readout can't drift apart.
+	expr: `score = ${REWARD_WEIGHTS.diagnosis.toFixed(2)}·diagnosis + ${REWARD_WEIGHTS.correctFix.toFixed(2)}·correct_fix + ${REWARD_WEIGHTS.resolved.toFixed(2)}·resolved − ${REWARD_WEIGHTS.trapPenalty.toFixed(2)}·trap`,
 	clamp: "clamp 0..1",
 	terms: [
-		{ key: "diagnosis", weight: 0.3, sign: "+", note: "LLM-judge on the MECHANISM (category), not the words" },
-		{ key: "correct_fix", weight: 0.25, sign: "+", note: "the causal remediation tool is present in the plan" },
-		{ key: "resolved", weight: 0.45, sign: "+", note: "sim reports SLO restored AND root cleared" },
-		{ key: "trap", weight: 0.6, sign: "−", note: "any forbidden/worsening action (e.g. scale a crash-loop) → −0.60" },
+		{ key: "diagnosis", weight: REWARD_WEIGHTS.diagnosis, sign: "+", note: "LLM-judge on the MECHANISM (category), not the words" },
+		{ key: "correct_fix", weight: REWARD_WEIGHTS.correctFix, sign: "+", note: "the causal remediation tool is present in the plan" },
+		{ key: "resolved", weight: REWARD_WEIGHTS.resolved, sign: "+", note: "sim reports SLO restored AND root cleared" },
+		{ key: "trap", weight: REWARD_WEIGHTS.trapPenalty, sign: "−", note: "any forbidden/worsening action (e.g. scale a crash-loop) → −0.60" },
 	],
 } as const;
 
@@ -49,10 +53,13 @@ export const SWEEP = {
 	nSolvable: REX_TASKSET.solvableIncidents,
 	nModels: _summary.modelCount,
 	ceiling: _summary.ceilingScore, // 0.86 = (4 × 1.0 + 1 × 0.30) / 5
-	ceilingIdentity: "(4×1.0 + 0.30) / 5 = 0.86",
-};
+	// derived from REX_TASKSET so the identity string can't drift from the ceiling.
+	ceilingIdentity: `(${REX_TASKSET.solvableIncidents}×1.0 + ${REX_TASKSET.singletonEscalationScore.toFixed(2)}) / ${REX_TASKSET.tasksetSize} = ${_summary.ceilingScore.toFixed(2)}`,
+} as const;
 
-export type Provider = "Anthropic" | "OpenAI" | "Google" | "DeepSeek";
+// The provider union lives in rex-evidence (the single source); aliased here for
+// the LeaderboardRow view-model.
+export type Provider = RexProvider;
 
 export type LeaderboardRow = {
 	model: string;
@@ -68,18 +75,14 @@ export type LeaderboardRow = {
 	rexCleanWins: number; // MEASURED — clean wins under REx, of 5
 };
 
-// rex-evidence encodes the route/anchor inside the provider string, e.g.
-// "Anthropic (weak anchor)", "OpenAI (gateway)", "Anthropic (strong)".
+// rex-evidence carries provider/route/anchor as structured fields, so the
+// view-model is a straight projection — no string parsing, no unchecked casts.
 function rowFromEvidence(e: ScoredRexEvidence): LeaderboardRow {
-	const provider = e.provider.split(" (")[0] as Provider;
-	const paren = e.provider.match(/\(([^)]+)\)/)?.[1];
-	const route: "native" | "gateway" = paren === "gateway" ? "gateway" : "native";
-	const anchor = paren && paren !== "gateway" ? paren : undefined;
 	return {
 		model: e.model,
-		provider,
-		route,
-		anchor,
+		provider: e.providerName,
+		route: e.inferenceRoute,
+		anchor: e.routeNote,
 		baseline: e.baselineScore,
 		rex: e.rexScore,
 		lift: rexLift(e),
@@ -88,7 +91,7 @@ function rowFromEvidence(e: ScoredRexEvidence): LeaderboardRow {
 	};
 }
 
-export const LEADERBOARD: LeaderboardRow[] = FRONTIER_REX_SWEEP.map(rowFromEvidence);
+export const LEADERBOARD: readonly LeaderboardRow[] = FRONTIER_REX_SWEEP.map(rowFromEvidence);
 
 // The fixed incident set (rl-env/rex/frontier.py SCENARIOS), in cascade order.
 // `solvable` incidents have a safe causal fix; the singleton has NONE by design —

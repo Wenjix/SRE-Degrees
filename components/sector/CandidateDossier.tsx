@@ -103,15 +103,14 @@ export function CandidateDossier({
 				</div>
 			) : null}
 
-			{/* Distinguish the two REx lenses the merge brought together. */}
-			{criteria.length > 0 ? (
-				<p className="mt-1.5 font-mono text-[9px] leading-relaxed text-[var(--ret-text-muted)]">
-					The <span className="text-[var(--ret-text-dim)]">CIDG capstone</span> criterion above is this agent&apos;s own
-					held-out exam (per-agent, pass/fail — necessary but not sufficient). The REx panel below is the
-					frontier-method calibration it&apos;s benchmarked against — same approach, every frontier model lifted to the
-					0.86 ceiling.
-				</p>
-			) : null}
+			{/* Distinguish the two REx lenses the merge brought together. Rendered with the
+			    REx panel (which is always present), so it never assumes the criteria grid above. */}
+			<p className="mt-2 font-mono text-[9px] leading-relaxed text-[var(--ret-text-muted)]">
+				Two lenses. The <span className="text-[var(--ret-text-dim)]">CIDG capstone</span> is this agent&apos;s own
+				held-out exam (per-agent, pass/fail — necessary but not sufficient). The REx panel below is the
+				frontier-method calibration it&apos;s benchmarked against — same approach, every frontier model lifted to the
+				0.86 ceiling.
+			</p>
 
 			{/* REx proving evidence — calibration data, not a standalone promotion pass. */}
 			<div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-[var(--ret-border)] pt-2 sm:grid-cols-4">

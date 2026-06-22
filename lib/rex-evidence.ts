@@ -3,12 +3,16 @@
 
 export type RexEvidenceStatus = "preliminary";
 export type RexModelRole = "frontier" | "training-target";
+export type RexProvider = "Anthropic" | "OpenAI" | "Google" | "DeepSeek";
 
 export type ScoredRexEvidence = {
 	id: string;
 	role: "frontier";
 	model: string;
-	provider: string;
+	provider: string; // display string, e.g. "Anthropic (weak anchor)"
+	providerName: RexProvider; // structured — canonical provider, enforced by the union
+	inferenceRoute: "native" | "gateway"; // structured — replaces the parenthetical route encoding
+	routeNote?: string; // structured — optional qualifier ("weak anchor" / "strong")
 	tasksetId: string;
 	harnessVersion: string;
 	status: RexEvidenceStatus;
@@ -89,7 +93,7 @@ const base = {
 	singletonEscalationScore: REX_TASKSET.singletonEscalationScore,
 	ceilingScore: CEILING,
 	tracedInHud: false,
-} satisfies Omit<ScoredRexEvidence, "id" | "role" | "model" | "provider" | "baselineScore" | "rexScore" | "baselineCleanWins" | "rexCleanWins">;
+} satisfies Omit<ScoredRexEvidence, "id" | "role" | "model" | "provider" | "providerName" | "inferenceRoute" | "routeNote" | "baselineScore" | "rexScore" | "baselineCleanWins" | "rexCleanWins">;
 
 export const FRONTIER_REX_SWEEP: ScoredRexEvidence[] = [
 	{
@@ -98,6 +102,9 @@ export const FRONTIER_REX_SWEEP: ScoredRexEvidence[] = [
 		role: "frontier",
 		model: "claude-haiku-4-5",
 		provider: "Anthropic (weak anchor)",
+		providerName: "Anthropic",
+		inferenceRoute: "native",
+		routeNote: "weak anchor",
 		baselineScore: 0.63,
 		rexScore: 0.86,
 		baselineCleanWins: 2,
@@ -109,6 +116,8 @@ export const FRONTIER_REX_SWEEP: ScoredRexEvidence[] = [
 		role: "frontier",
 		model: "gpt-5.5",
 		provider: "OpenAI (gateway)",
+		providerName: "OpenAI",
+		inferenceRoute: "gateway",
 		baselineScore: 0.63,
 		rexScore: 0.86,
 		baselineCleanWins: 2,
@@ -120,6 +129,8 @@ export const FRONTIER_REX_SWEEP: ScoredRexEvidence[] = [
 		role: "frontier",
 		model: "gemini-3.1-pro",
 		provider: "Google (gateway)",
+		providerName: "Google",
+		inferenceRoute: "gateway",
 		baselineScore: 0.75,
 		rexScore: 0.86,
 		baselineCleanWins: 3,
@@ -131,6 +142,8 @@ export const FRONTIER_REX_SWEEP: ScoredRexEvidence[] = [
 		role: "frontier",
 		model: "deepseek-v4-pro",
 		provider: "DeepSeek (gateway)",
+		providerName: "DeepSeek",
+		inferenceRoute: "gateway",
 		baselineScore: 0.81,
 		rexScore: 0.86,
 		baselineCleanWins: 3,
@@ -142,6 +155,9 @@ export const FRONTIER_REX_SWEEP: ScoredRexEvidence[] = [
 		role: "frontier",
 		model: "claude-opus-4-8",
 		provider: "Anthropic (strong)",
+		providerName: "Anthropic",
+		inferenceRoute: "native",
+		routeNote: "strong",
 		baselineScore: 0.81,
 		rexScore: 0.86,
 		baselineCleanWins: 3,

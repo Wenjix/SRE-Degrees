@@ -3,7 +3,7 @@
 // guard (AutoHarness). Pure string builders → deterministic + node-testable.
 
 import type { Incident, SreAgent } from "./sre-data";
-import { formatScore, rexEvidenceForAgent, rexLift } from "./rex-evidence.ts";
+import { QWEN_REX_TARGET, formatScore, rexEvidenceForAgent, rexLift } from "./rex-evidence.ts";
 import type { QueryResult } from "./world-query";
 
 // Minimum review coverage (0–1) below which a mutating prod action can't be
@@ -43,7 +43,7 @@ function rexNotes(subs: SreAgent[]): string[] {
 	return [
 		`// rex · ${rex.model} ${formatScore(rex.baselineScore)} -> ${formatScore(rex.rexScore)} (lift +${formatScore(rexLift(rex))})`,
 		`// rex · clean wins ${rex.baselineCleanWins}/${rex.tasksetSize} -> ${rex.rexCleanWins}/${rex.tasksetSize}; singleton escalation ${formatScore(rex.singletonEscalationScore)}`,
-		`// rex · ${rex.status} ${rex.tasksetSize}-incident calibration; Qwen3-30B-A3B target pending`,
+		`// rex · ${rex.status} ${rex.tasksetSize}-incident calibration; ${QWEN_REX_TARGET.model} target pending`,
 	];
 }
 

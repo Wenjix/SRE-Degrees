@@ -106,7 +106,7 @@ export function ReplayLens() {
 					</div>
 					<div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide text-[var(--ret-text-muted)]">
 						<Scale className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
-						0.30 diag · 0.25 fix · 0.45 resolved · −0.60 trap
+						{`${REWARD_WEIGHTS.diagnosis.toFixed(2)} diag · ${REWARD_WEIGHTS.correctFix.toFixed(2)} fix · ${REWARD_WEIGHTS.resolved.toFixed(2)} resolved · −${REWARD_WEIGHTS.trapPenalty.toFixed(2)} trap`}
 					</div>
 				</div>
 
